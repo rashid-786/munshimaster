@@ -25,7 +25,9 @@ exports.list = async (req, res) => {
       `SELECT COUNT(*) as total FROM invoices i JOIN customers c ON i.customer_id = c.id ${where}`, params
     );
     const [rows] = await db.query(
-      `SELECT i.*, c.name as customer_name FROM invoices i
+      `SELECT i.*, c.name as customer_name,
+       (SELECT COUNT(*) FROM attachments a WHERE a.tenant_id = i.tenant_id AND a.entity_type = 'invoice' AND a.entity_id = i.id) as attachment_count
+       FROM invoices i
        JOIN customers c ON i.customer_id = c.id ${where}
        ORDER BY i.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]

@@ -159,14 +159,14 @@ const Employees = () => {
           <h3 className="text-lg font-semibold text-gray-900">Onboard New Employee</h3>
         </div>
         <form onSubmit={handleSubmit} className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
-            <input type="text" placeholder="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} required className="input-field" />
-            <input type="text" placeholder="Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} required className="input-field" />
-            <input type="email" placeholder="Work Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field" />
-            <input type="tel" placeholder="Phone (optional)" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field" />
-            <input type="password" placeholder="Temp Password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required className="input-field" />
-            <input type="number" placeholder="Monthly Base Salary" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
-            <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="input-field">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <input type="text" placeholder="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} required className="input-field w-1/2" />
+            <input type="text" placeholder="Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} required className="input-field w-1/2" />
+            <input type="email" placeholder="Work Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field w-1/2" />
+            <input type="tel" placeholder="Phone (optional)" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field w-1/2" />
+            <input type="password" placeholder="Temp Password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required className="input-field w-1/2" />
+            <input type="number" placeholder="Monthly Base Salary" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field w-1/2" />
+            <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="input-field sm:col-span-2 w-1/4">
               <option value="employee">Standard Employee</option>
               <option value="tenant_admin">Company Admin</option>
             </select>
@@ -211,24 +211,24 @@ const Employees = () => {
                     <>
                       <td className="table-cell">
                         <div className="flex gap-2">
-                          <input type="text" name="firstName" value={editForm.firstName} onChange={handleEditChange} className="input-field !py-1 text-sm w-24" />
-                          <input type="text" name="lastName" value={editForm.lastName} onChange={handleEditChange} className="input-field !py-1 text-sm w-24" />
+                          <input type="text" name="firstName" value={editForm.firstName} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/2" />
+                          <input type="text" name="lastName" value={editForm.lastName} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/2" />
                         </div>
                       </td>
                       <td className="table-cell">
-                        <input type="email" name="email" value={editForm.email} onChange={handleEditChange} className="input-field !py-1 text-sm" />
+                        <input type="email" name="email" value={editForm.email} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/2" />
                       </td>
                       <td className="table-cell">
-                        <input type="tel" name="phone" value={editForm.phone} onChange={handleEditChange} className="input-field !py-1 text-sm w-28" />
+                        <input type="tel" name="phone" value={editForm.phone} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/2" />
                       </td>
                       <td className="table-cell">
-                        <select name="role" value={editForm.role} onChange={handleEditChange} className="input-field !py-1 text-sm">
+                        <select name="role" value={editForm.role} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/4">
                           <option value="employee">Employee</option>
                           <option value="tenant_admin">Admin</option>
                         </select>
                       </td>
                       <td className="table-cell">
-                        <input type="number" name="baseSalary" value={editForm.baseSalary} onChange={handleEditChange} className="input-field !py-1 text-sm w-28" />
+                        <input type="number" name="baseSalary" value={editForm.baseSalary} onChange={handleEditChange} className="input-field !py-1 text-sm w-1/2" />
                       </td>
                       <td className="table-cell">
                         <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>

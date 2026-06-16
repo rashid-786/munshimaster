@@ -202,7 +202,7 @@ const Invoices = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+            <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="table-header">Invoice #</th>
@@ -211,6 +211,7 @@ const Invoices = () => {
                 <th className="table-header">Due Date</th>
                 <th className="table-header text-right">Amount</th>
                 <th className="table-header">Status</th>
+                <th className="table-header text-center">Attachments</th>
                 <th className="table-header text-right">Actions</th>
               </tr>
             </thead>
@@ -224,6 +225,13 @@ const Invoices = () => {
                   <td className="table-cell text-gray-500">{inv.due_date?.split('T')[0] || '—'}</td>
                   <td className="table-cell text-right font-medium">{formatINR(inv.total_amount)}</td>
                   <td className="table-cell"><span className={statusBadge[inv.status]}>{inv.status}</span></td>
+                  <td className="table-cell text-center">
+                    {(inv.attachment_count || 0) > 0 && (
+                      <span className="text-indigo-600 hover:text-indigo-800 cursor-pointer" title={`${inv.attachment_count} attachment${inv.attachment_count > 1 ? 's' : ''}`}>
+                        📎 {inv.attachment_count}
+                      </span>
+                    )}
+                  </td>
                   <td className="table-cell text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1.5 justify-end">
                       <button onClick={() => openEdit(inv)} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
@@ -233,7 +241,7 @@ const Invoices = () => {
                 </tr>
               ))}
               {invoices.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-gray-400 py-8">No invoices found</td></tr>
+                <tr><td colSpan={8} className="text-center text-gray-400 py-8">No invoices found</td></tr>
               )}
             </tbody>
           </table>

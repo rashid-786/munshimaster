@@ -44,6 +44,7 @@ app.use('/api/v1/core/invoices', invoiceRoutes);
 app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
 app.use('/uploads', express.static('uploads'));
+app.use('/api/v1/uploads', express.static('uploads'));
 
 // ==========================================
 // 3. SUPER ADMIN ROUTES (No Tenant Header Required)

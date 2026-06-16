@@ -204,7 +204,7 @@ const PurchaseOrders = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+            <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="table-header">PO #</th>
@@ -213,6 +213,7 @@ const PurchaseOrders = () => {
                 <th className="table-header">Expected</th>
                 <th className="table-header text-right">Amount</th>
                 <th className="table-header">Status</th>
+                <th className="table-header text-center">Attachments</th>
                 <th className="table-header text-right">Actions</th>
               </tr>
             </thead>
@@ -226,6 +227,13 @@ const PurchaseOrders = () => {
                   <td className="table-cell text-gray-500">{po.expected_date?.split('T')[0] || '—'}</td>
                   <td className="table-cell text-right font-medium">{formatINR(po.total_amount)}</td>
                   <td className="table-cell"><span className={statusBadge[po.status]}>{po.status}</span></td>
+                  <td className="table-cell text-center">
+                    {(po.attachment_count || 0) > 0 && (
+                      <span className="text-indigo-600 hover:text-indigo-800 cursor-pointer" title={`${po.attachment_count} attachment${po.attachment_count > 1 ? 's' : ''}`}>
+                        📎 {po.attachment_count}
+                      </span>
+                    )}
+                  </td>
                   <td className="table-cell text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1.5 justify-end">
                       <button onClick={() => openEdit(po)} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
@@ -235,7 +243,7 @@ const PurchaseOrders = () => {
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-gray-400 py-8">No purchase orders found</td></tr>
+                <tr><td colSpan={8} className="text-center text-gray-400 py-8">No purchase orders found</td></tr>
               )}
             </tbody>
           </table>

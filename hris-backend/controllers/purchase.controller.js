@@ -25,7 +25,9 @@ exports.list = async (req, res) => {
       `SELECT COUNT(*) as total FROM purchase_orders p JOIN suppliers s ON p.supplier_id = s.id ${where}`, params
     );
     const [rows] = await db.query(
-      `SELECT p.*, s.name as supplier_name FROM purchase_orders p
+      `SELECT p.*, s.name as supplier_name,
+       (SELECT COUNT(*) FROM attachments a WHERE a.tenant_id = p.tenant_id AND a.entity_type = 'purchase_order' AND a.entity_id = p.id) as attachment_count
+       FROM purchase_orders p
        JOIN suppliers s ON p.supplier_id = s.id ${where}
        ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
