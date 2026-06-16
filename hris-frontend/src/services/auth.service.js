@@ -8,13 +8,14 @@ export const authService = {
     return response.data;
   },
 
-  // Log an employee into their respective company dashboard
-  login: async (email, password, tenantId) => {
-    if (!tenantId) throw new Error('Tenant ID is required.');
+  login: async (email, password, subdomain) => {
+    if (!subdomain) throw new Error('Company ID is required.');
 
-    localStorage.setItem('tenant_id', tenantId);
-
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post('/auth/login', { email, password, subdomain });
+    const { tenant } = response.data;
+    if (tenant?.id) {
+      localStorage.setItem('tenant_id', tenant.id);
+    }
     return response.data;
   }
 };

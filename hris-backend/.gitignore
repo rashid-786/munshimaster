@@ -1,3 +1,10 @@
 node_modules
 dist
 .env
+.DS_Store
+uploads
+seed-data.js
+seed-phone.js
+seed-po-inv.js
+test-upload.js
+

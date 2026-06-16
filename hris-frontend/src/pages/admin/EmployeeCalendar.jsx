@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { hrService } from '../../services/hr.service';
+import SearchableSelect from '../../components/SearchableSelect';
 
 const COLORS = {
   present: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
@@ -47,9 +48,12 @@ const EmployeeCalendar = () => {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [clockInVal, setClockInVal] = useState('09:00');
   const [clockOutVal, setClockOutVal] = useState('18:00');
+  const [totalHoursVal, setTotalHoursVal] = useState(9);
+  const [lastEdited, setLastEdited] = useState('clockIn');
   const [modalMsg, setModalMsg] = useState('');
   const [tooltip, setTooltip] = useState(null);
   const cellRefs = useRef({});
+  const [weekendDays, setWeekendDays] = useState([0]);
 
   useEffect(() => {
     hrService.getEmployees().then(setEmployees).catch(() => {});
@@ -62,6 +66,7 @@ const EmployeeCalendar = () => {
       if (selectedEmployee) params.employeeId = selectedEmployee;
       const data = await hrService.getEmployeeCalendar(params);
       setCalendarData(data);
+      if (data.weekendDays) setWeekendDays(data.weekendDays);
     } catch (err) {
       console.error('Calendar fetch failed:', err);
     } finally {
@@ -76,7 +81,7 @@ const EmployeeCalendar = () => {
   const dayHeaders = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month - 1, d).getDay();
-    dayHeaders.push({ day: d, dow, isWeekend: dow === 0 });
+    dayHeaders.push({ day: d, dow, isWeekend: weekendDays.includes(dow) });
   }
 
   const prevMonth = () => {
@@ -94,13 +99,49 @@ const EmployeeCalendar = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  const fmtClock = (d) => {
+    if (!d) return '09:00';
+    if (typeof d === 'string') return d;
+    if (d instanceof Date) return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return '09:00';
+  };
+
   const openDay = (employee, day) => {
     setSelectedDay({ employee, day });
     const status = day.type === 'idle' || day.type === 'weekend' ? '' : day.type;
     setSelectedStatus(status);
-    setClockInVal('09:00');
-    setClockOutVal('18:00');
+    const ci = day.clockIn ? fmtClock(day.clockIn) : '09:00';
+    const co = day.clockOut ? fmtClock(day.clockOut) : '18:00';
+    setClockInVal(ci);
+    setClockOutVal(co);
+    setTotalHoursVal(day.hours && day.hours > 0 ? day.hours : 9);
     setModalMsg('');
+  };
+
+  useEffect(() => {
+    if (modalMsg?.toLowerCase().includes('success')) {
+      const t = setTimeout(() => setSelectedDay(null), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [modalMsg]);
+
+  const recalcClockOut = (clockIn, totalHrs) => {
+    if (!clockIn || totalHrs == null) return;
+    const [h, m] = clockIn.split(':').map(Number);
+    const totalMin = h * 60 + m + totalHrs * 60;
+    const outH = Math.floor(totalMin / 60) % 24;
+    const outM = Math.round(totalMin % 60);
+    setClockOutVal(`${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`);
+  };
+
+  const recalcClockIn = (clockOut, totalHrs) => {
+    if (!clockOut || totalHrs == null) return;
+    const [oh, om] = clockOut.split(':').map(Number);
+    const totalMin = (oh * 60 + om) - totalHrs * 60;
+    if (totalMin < 0) return;
+    const inH = Math.floor(totalMin / 60) % 24;
+    const inM = Math.round(totalMin % 60);
+    setClockInVal(`${String(inH).padStart(2, '0')}:${String(inM).padStart(2, '0')}`);
   };
 
   const handleSave = async () => {
@@ -145,16 +186,16 @@ const EmployeeCalendar = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
         <h3 className="text-sm md:text-lg font-semibold text-gray-900">Attendance Calendar</h3>
         <div className="flex items-center gap-1.5 md:gap-2">
-          <select
+          <SearchableSelect
+            options={[
+              { value: '', label: 'All Employees' },
+              ...employees.map(emp => ({ value: emp.id, label: `${emp.first_name} ${emp.last_name}` })),
+            ]}
             value={selectedEmployee}
-            onChange={e => setSelectedEmployee(e.target.value)}
-            className="input-field text-xs md:text-sm max-w-[150px] md:max-w-none"
-          >
-            <option value="">All Employees</option>
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>{emp.first_name} {emp.last_name}</option>
-            ))}
-          </select>
+            onChange={setSelectedEmployee}
+            placeholder="All Employees"
+            className="w-[180px]"
+          />
           <div className="flex items-center gap-1 ml-auto md:ml-0">
             <button onClick={prevMonth} className="btn-secondary text-xs md:text-sm px-1.5 md:px-2.5 py-1 md:py-1.5">&larr;</button>
             <h4 className="text-xs md:text-base font-semibold text-gray-800 text-nowrap">
@@ -165,14 +206,13 @@ const EmployeeCalendar = () => {
         </div>
       </div>
 
-      <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto">
-        {Object.entries({
-          present: 'Present', absent: 'Absent', sick: 'Sick', annual: 'Annual', weekend: 'Weekend (Sun)',
-        }).map(([type, label]) => (
-          <div key={type} className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${COLORS[type]?.dot || 'bg-gray-300'}`}></span>
-            {label}
-          </div>
+      <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap">
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Present</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Absent</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>Sick</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Annual</div>
+        {weekendDays.map(d => (
+          <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>Weekend ({DAY_SHORT[d]})</div>
         ))}
       </div>
 
@@ -180,19 +220,19 @@ const EmployeeCalendar = () => {
 
       {calendarData && calendarData.employees.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="w-full" style={{ minWidth: 400 }}>
+          <table className="w-full" style={{ minWidth: 900 }}>
             <thead>
               <tr>
-                <th className="sticky left-0 bg-white z-10 px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 min-w-[140px]">Employee</th>
+                <th className="sticky left-0 bg-white z-10 px-2 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 min-w-[110px] max-w-[130px]">Employee</th>
                 {dayHeaders.map(h => (
                   <th
                     key={h.day}
-                    className={`px-1 py-1.5 text-center border-b border-gray-200 w-[34px] ${h.isWeekend ? 'bg-red-50' : ''}`}
+                    className={`px-1.5 py-2 text-center border-b border-gray-200 w-[42px] ${h.isWeekend ? 'bg-red-50' : ''}`}
                   >
                     <div className={`text-[11px] font-semibold uppercase tracking-wider ${h.isWeekend ? 'text-red-400' : 'text-gray-400'}`}>
                       {DAY_SHORT[h.dow]}
                     </div>
-                    <div className={`text-xs font-bold mt-0.5 ${h.isWeekend ? 'text-red-500' : 'text-gray-700'}`}>
+                    <div className={`text-sm font-bold mt-0.5 ${h.isWeekend ? 'text-red-500' : 'text-gray-700'}`}>
                       {h.day}
                     </div>
                   </th>
@@ -204,8 +244,8 @@ const EmployeeCalendar = () => {
                 const empDays = emp.days || [];
                 return (
                   <tr key={emp.employee.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="sticky left-0 bg-white z-10 px-3 py-2 whitespace-nowrap border-r border-gray-100">
-                      <span className="text-sm font-medium text-gray-800">
+                    <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[130px] truncate">
+                      <span className="text-xs font-medium text-gray-800">
                         {emp.employee.firstName} {emp.employee.lastName}
                       </span>
                     </td>
@@ -219,7 +259,7 @@ const EmployeeCalendar = () => {
                         <td
                           key={idx}
                           ref={el => cellRefs.current[key] = el}
-                          className={`px-0.5 py-1 text-center border-b border-gray-50 relative ${
+                          className={`px-1 py-1.5 text-center border-b border-gray-50 relative ${
                             isWeekend ? 'bg-red-50/40' : ''
                           } ${
                             !isWeekend && !isFuture ? 'cursor-pointer' : ''
@@ -230,14 +270,17 @@ const EmployeeCalendar = () => {
                           onMouseEnter={() => !isFuture && handleMouseEnter(emp.employee.id, idx, day)}
                           onMouseLeave={handleMouseLeave}
                         >
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className={`text-[11px] font-medium leading-tight ${
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-xs font-semibold leading-tight ${
                               isWeekend ? 'text-red-300' : isIdle ? 'text-gray-300' : COLORS[day.type]?.text || 'text-gray-600'
                             }`}>
                               {new Date(day.date).getDate()}
                             </span>
                             {hasColor && (
-                              <span className={`w-1.5 h-1.5 rounded-full ${COLORS[day.type]?.dot}`} />
+                              <span className={`w-2 h-2 rounded-full ${COLORS[day.type]?.dot}`} />
+                            )}
+                            {day.type === 'present' && day.hours != null && day.hours > 0 && (
+                              <span className="text-[10px] text-gray-400 font-medium">{day.hours}h</span>
                             )}
                           </div>
                         </td>
@@ -298,30 +341,51 @@ const EmployeeCalendar = () => {
                 </div>
 
                 {selectedStatus === 'present' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock In</label>
-                      <input type="time" value={clockInVal} onChange={e => setClockInVal(e.target.value)} className="input-field text-sm" />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock In</label>
+                        <input type="time" value={clockInVal}
+                          onFocus={() => setLastEdited('clockIn')}
+                          onChange={e => {
+                            setClockInVal(e.target.value);
+                            recalcClockOut(e.target.value, totalHoursVal);
+                          }}
+                          className="input-field text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock Out</label>
+                        <input type="time" value={clockOutVal}
+                          onFocus={() => setLastEdited('clockOut')}
+                          onChange={e => {
+                            setClockOutVal(e.target.value);
+                            if (clockInVal && e.target.value) {
+                              const [ih, im] = clockInVal.split(':').map(Number);
+                              const [oh, om] = e.target.value.split(':').map(Number);
+                              const diff = ((oh * 60 + om) - (ih * 60 + im)) / 60;
+                              if (diff > 0) setTotalHoursVal(parseFloat(diff.toFixed(1)));
+                            }
+                          }}
+                          className="input-field text-sm" />
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock Out</label>
-                      <input type="time" value={clockOutVal} onChange={e => setClockOutVal(e.target.value)} className="input-field text-sm" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Total Hours</label>
+                      <input type="number" step="0.5" min="0.5" max="24"
+                        value={totalHoursVal}
+                        onFocus={() => setLastEdited('totalHours')}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setTotalHoursVal(v);
+                          if (lastEdited === 'clockOut') {
+                            recalcClockIn(clockOutVal, v);
+                          } else {
+                            recalcClockOut(clockInVal, v);
+                          }
+                        }}
+                        className="input-field text-sm" />
                     </div>
                   </div>
-                )}
-
-                {selectedStatus === 'present' && clockInVal && clockOutVal && (
-                  <p className="text-xs text-gray-500">
-                    Total hours:{' '}
-                    <span className="font-semibold text-gray-800">
-                      {(() => {
-                        const [ih, im] = clockInVal.split(':').map(Number);
-                        const [oh, om] = clockOutVal.split(':').map(Number);
-                        const diff = ((oh * 60 + om) - (ih * 60 + im)) / 60;
-                        return diff > 0 ? `${diff.toFixed(1)}h` : 'Invalid';
-                      })()}
-                    </span>
-                  </p>
                 )}
 
                 {modalMsg && (

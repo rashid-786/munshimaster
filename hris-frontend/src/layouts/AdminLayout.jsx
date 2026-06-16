@@ -9,18 +9,30 @@ const navGroups = [
     items: [
       { to: '/admin/dashboard', label: 'Employee Directory' },
       { to: '/admin/calendar', label: 'Attendance Calendar' },
+      { to: '/admin/leaves', label: 'Leave Management' },
+      { to: '/admin/payroll', label: 'Payroll' },
     ],
   },
-  { to: '/admin/leaves', label: 'Leave Management', icon: '📋' },
-  { to: '/admin/payroll', label: 'Payroll', icon: '💰' },
+  {
+    label: 'Vendors',
+    icon: '🏢',
+    items: [
+      { to: '/admin/suppliers', label: 'Suppliers' },
+      { to: '/admin/customers', label: 'Customers' },
+      { to: '/admin/purchase-orders', label: 'Purchase Orders' },
+      { to: '/admin/invoices', label: 'Invoices' },
+    ],
+  },
   { to: '/admin/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth();
+  const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [employeesOpen, setEmployeesOpen] = useState(true);
+  const [openGroups, setOpenGroups] = useState({ Employees: true, Vendors: false });
+
+  const toggleGroup = (label) => setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }));
 
   const handleLogout = () => {
     logout();
@@ -30,7 +42,9 @@ export default function AdminLayout() {
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="h-16 flex items-center px-4 border-b border-gray-200">
-        <span className="font-bold text-lg text-indigo-600">HRIS</span>
+        <button onClick={() => navigate('/admin/dashboard')} className="font-bold text-lg text-indigo-600 hover:text-indigo-500 truncate">
+          {tenant?.name || 'HRIS'}
+        </button>
       </div>
 
       <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
@@ -39,19 +53,19 @@ export default function AdminLayout() {
             return (
               <div key={group.label}>
                 <button
-                  onClick={() => setEmployeesOpen(!employeesOpen)}
+                  onClick={() => toggleGroup(group.label)}
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
                 >
                   <span className="text-lg">{group.icon}</span>
                   <span className="flex-1 text-left">{group.label}</span>
                   <svg
-                    className={`w-4 h-4 transition-transform ${employeesOpen ? 'rotate-90' : ''}`}
+                    className={`w-4 h-4 transition-transform ${openGroups[group.label] ? 'rotate-90' : ''}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
-                {employeesOpen && (
+                {openGroups[group.label] && (
                   <div className="ml-2 mt-0.5 space-y-0.5 border-l-2 border-indigo-200 pl-2">
                     {group.items.map((item) => (
                       <NavLink
@@ -127,7 +141,7 @@ export default function AdminLayout() {
               <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm">
                 {user.firstName?.[0]}{user.lastName?.[0]}
               </div>
-              <span className="text-sm text-gray-600 hidden sm:block">{user.firstName} {user.lastName}</span>
+              <span className="text-sm text-gray-600 hidden sm:block">Welcome, {user.firstName} {user.lastName}</span>
             </div>
           )}
         </header>

@@ -6,6 +6,13 @@ const employeeRoutes = require('./routes/employee.routes');
 const timeRoutes = require('./routes/time.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const tenantRoutes = require('./routes/tenant.routes');
+const supplierRoutes = require('./routes/supplier.routes');
+const customerRoutes = require('./routes/customer.routes');
+const purchaseRoutes = require('./routes/purchase.routes');
+const invoiceRoutes = require('./routes/invoice.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const profileRoutes = require('./routes/profile.routes');
+const superRoutes = require('./routes/super.routes');
 const db = require('./config/db');
 require('dotenv').config();
 
@@ -30,6 +37,18 @@ app.use('/api/v1/core/employees', employeeRoutes);
 app.use('/api/v1/core/time', timeRoutes);
 app.use('/api/v1/core/payroll', payrollRoutes);
 app.use('/api/v1/core/tenant', tenantRoutes);
+app.use('/api/v1/core/suppliers', supplierRoutes);
+app.use('/api/v1/core/customers', customerRoutes);
+app.use('/api/v1/core/purchase-orders', purchaseRoutes);
+app.use('/api/v1/core/invoices', invoiceRoutes);
+app.use('/api/v1/core/uploads', uploadRoutes);
+app.use('/api/v1/core/profile', profileRoutes);
+app.use('/uploads', express.static('uploads'));
+
+// ==========================================
+// 3. SUPER ADMIN ROUTES (No Tenant Header Required)
+// ==========================================
+app.use('/api/v1/super', superRoutes);
 
 // Secure Test Route to verify multi-tenancy context later
 const { authenticateToken } = require('./middleware/auth');

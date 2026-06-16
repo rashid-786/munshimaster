@@ -1,12 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { registerTenant, loginEmployee } = require('../controllers/auth.controller');
-const tenantResolver = require('../middleware/tenant');
+const { registerTenant, loginEmployee, changePassword } = require('../controllers/auth.controller');
 
-// Public route: A company signs up for your SaaS platform
 router.post('/register', registerTenant);
-
-// Tenant-scoped route: Employee logs into their specific company portal
-router.post('/login', tenantResolver, loginEmployee);
+router.post('/login', loginEmployee);
 
 module.exports = router;

@@ -9,7 +9,7 @@ exports.getTenantSettings = async (req, res) => {
     const tenant = rows[0];
     const settings = typeof tenant.settings === 'string' ? JSON.parse(tenant.settings) : tenant.settings;
 
-    res.json({ companyName: tenant.company_name, settings: settings || { primaryColor: '#0052cc' } });
+    res.json({ companyName: tenant.company_name, settings: settings || { primaryColor: '#0052cc', weekendDays: [0], taxRate: 18 } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to extract organization identity frames.' });
   }

@@ -236,13 +236,21 @@ exports.getTenantLeaves = async (req, res) => {
   const tenantId = req.tenantId;
 
   try {
+    let where = 'WHERE l.tenant_id = ?';
+    const params = [tenantId];
+
+    if (req.user.role !== 'tenant_admin') {
+      where += ' AND l.employee_id = ?';
+      params.push(req.user.id);
+    }
+
     const [rows] = await db.execute(
       `SELECT l.id, l.leave_type, l.start_date, l.end_date, l.status, e.first_name, e.last_name
              FROM leaves l
              JOIN employees e ON l.employee_id = e.id
-             WHERE l.tenant_id = ?
+             ${where}
              ORDER BY l.created_at DESC`,
-      [tenantId]
+      params
     );
     res.json(rows);
   } catch (error) {
@@ -256,11 +264,11 @@ exports.getTenantLeaves = async (req, res) => {
 exports.getEmployeeCalendar = async (req, res) => {
   const tenantId = req.tenantId;
 
-  if (req.user.role !== 'tenant_admin') {
-    return res.status(403).json({ error: 'Access denied. Administrative authority required.' });
-  }
+  let { month, year, employeeId } = req.query;
 
-  const { month, year, employeeId } = req.query;
+  if (req.user.role !== 'tenant_admin') {
+    employeeId = req.user.id;
+  }
   const m = parseInt(month) || (new Date().getMonth() + 1);
   const y = parseInt(year) || new Date().getFullYear();
 
@@ -269,7 +277,16 @@ exports.getEmployeeCalendar = async (req, res) => {
   const firstDay = `${y}-${pad(m)}-01`;
   const lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
 
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
   try {
+    const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
+    let weekendDays = [0];
+    if (tenantRows.length > 0) {
+      const s = typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : (tenantRows[0].settings || {});
+      weekendDays = s.weekendDays || [0];
+    }
+
     const [attendance] = await db.execute(
       `SELECT a.date, a.clock_in, a.clock_out, a.total_hours, a.employee_id,
               e.first_name, e.last_name, e.role
@@ -308,12 +325,19 @@ exports.getEmployeeCalendar = async (req, res) => {
       if (d instanceof Date) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       return String(d).split('T')[0];
     };
+    const fmtTime = (d) => {
+      if (!d) return null;
+      if (d instanceof Date) return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const s = String(d);
+      const t = s.includes('T') ? s.split('T')[1] : (s.includes(' ') ? s.split(' ')[1] : s);
+      return t?.slice(0, 5) || null;
+    };
     const attendanceMap = {};
     attendance.forEach(a => {
       if (!attendanceMap[a.employee_id]) attendanceMap[a.employee_id] = {};
       attendanceMap[a.employee_id][fmtDate(a.date)] = {
-        clockIn: a.clock_in,
-        clockOut: a.clock_out,
+        clockIn: fmtTime(a.clock_in),
+        clockOut: fmtTime(a.clock_out),
         totalHours: a.total_hours,
       };
     });
@@ -334,7 +358,7 @@ exports.getEmployeeCalendar = async (req, res) => {
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayOfWeek = new Date(y, m - 1, d).getDay();
-        const isWeekend = dayOfWeek === 0;
+        const isWeekend = weekendDays.includes(dayOfWeek);
 
         const att = attendanceMap[emp.id]?.[dateStr];
         const leave = leaveMap[emp.id]?.[dateStr];
@@ -345,7 +369,7 @@ exports.getEmployeeCalendar = async (req, res) => {
 
         if (isWeekend) {
           type = 'weekend';
-          label = 'Weekend';
+          label = `Weekend (${DAY_NAMES[dayOfWeek]})`;
         } else if (leave) {
           type = leave.toLowerCase();
           label = `${leave} Leave`;
@@ -363,12 +387,12 @@ exports.getEmployeeCalendar = async (req, res) => {
           }
         }
 
-        days.push({ date: dateStr, day: d, type, label, hours, isWeekend });
+        days.push({ date: dateStr, day: d, type, label, hours, isWeekend, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
       }
       return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role }, days };
     });
 
-    res.json({ month: m, year: y, employees: result });
+    res.json({ month: m, year: y, employees: result, weekendDays });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to generate calendar data.' });

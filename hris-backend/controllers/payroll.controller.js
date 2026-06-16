@@ -2,9 +2,20 @@ const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
 
-// 1. RUN AND GENERATE PAYROLL DRAFTS
+function countWeekdays(start, end) {
+  let count = 0;
+  const d = new Date(start);
+  const endDate = new Date(end);
+  while (d <= endDate) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
 exports.calculatePayroll = async (req, res) => {
-  const { startDate, endDate, totalWorkingDays } = req.body;
+  const { startDate, endDate } = req.body;
   const tenantId = req.tenantId;
 
   if (req.user.role !== 'tenant_admin') {
@@ -12,7 +23,13 @@ exports.calculatePayroll = async (req, res) => {
   }
 
   try {
-    // Fetch all active employees under this tenant
+    const workingDays = countWeekdays(startDate, endDate);
+    const standardHours = workingDays * 8;
+
+    if (standardHours === 0) {
+      return res.status(400).json({ error: 'Pay period contains no working days.' });
+    }
+
     const [employees] = await db.execute(
       'SELECT id, base_salary, first_name, last_name FROM employees WHERE tenant_id = ?',
       [tenantId]
@@ -20,55 +37,82 @@ exports.calculatePayroll = async (req, res) => {
 
     const payrollRuns = [];
 
-    for (let emp of employees) {
-      // Find total approved Unpaid leaves within this date window
-      const [leaves] = await db.execute(
-        `SELECT SUM(DATEDIFF(end_date, start_date) + 1) as days
-                 FROM leaves
-                 WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND leave_type = 'Unpaid'
-                 AND start_date >= ? AND end_date <= ?`,
+    for (const emp of employees) {
+      const baseSalary = emp.base_salary;
+      const hourlyRate = Math.round(baseSalary / standardHours);
+
+      const [attendance] = await db.execute(
+        `SELECT COALESCE(SUM(total_hours), 0) as total_hours
+         FROM attendance
+         WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND total_hours > 0`,
         [tenantId, emp.id, startDate, endDate]
       );
+      const actualHours = parseFloat(attendance[0].total_hours) || 0;
 
-      const unpaidDays = leaves[0].days || 0;
-      const baseSalary = emp.base_salary;
+      const [absences] = await db.execute(
+        `SELECT COUNT(*) as days
+         FROM attendance
+         WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND total_hours = 0`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      const absentDays = Number(absences[0].days) || 0;
 
-      // Strict integer currency operations (cents precision)
-      const dailyRate = baseSalary / totalWorkingDays;
-      const deductions = Math.round(dailyRate * unpaidDays);
-      const netSalary = baseSalary - deductions;
+      const [leaves] = await db.execute(
+        `SELECT COALESCE(SUM(DATEDIFF(end_date, start_date) + 1), 0) as days
+         FROM leaves
+         WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND leave_type = 'Unpaid'
+         AND start_date >= ? AND end_date <= ?`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      const unpaidLeaveDays = Number(leaves[0].days) || 0;
+
+      const deductionHours = (absentDays + unpaidLeaveDays) * 8;
+      const grossSalary = Math.round(hourlyRate * actualHours);
+      const deductions = Math.round(hourlyRate * deductionHours);
+      const netSalary = Math.max(0, grossSalary - deductions);
 
       const payrollId = uuidv4();
 
-      // Insert or replace on duplicate configuration tracking
       await db.execute(
-        `INSERT INTO payroll (id, tenant_id, employee_id, pay_period_start, pay_period_end, gross_salary, deductions, net_salary, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-                 ON DUPLICATE KEY UPDATE gross_salary=VALUES(gross_salary), deductions=VALUES(deductions), net_salary=VALUES(net_salary)`,
-        [payrollId, tenantId, emp.id, startDate, endDate, baseSalary, deductions, netSalary]
+        `INSERT INTO payroll (id, tenant_id, employee_id, pay_period_start, pay_period_end,
+          hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, net_salary, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+         ON DUPLICATE KEY UPDATE
+          hourly_rate=VALUES(hourly_rate), total_hours_worked=VALUES(total_hours_worked),
+          standard_hours=VALUES(standard_hours), gross_salary=VALUES(gross_salary),
+          deductions=VALUES(deductions), net_salary=VALUES(net_salary)`,
+        [payrollId, tenantId, emp.id, startDate, endDate,
+          hourlyRate, actualHours, standardHours, grossSalary, deductions, netSalary]
       );
 
       payrollRuns.push({
         employeeName: `${emp.first_name} ${emp.last_name}`,
-        gross: (baseSalary / 100).toFixed(2),
+        hourlyRate: (hourlyRate / 100).toFixed(2),
+        hoursWorked: actualHours,
+        standardHours,
+        gross: (grossSalary / 100).toFixed(2),
         deductions: (deductions / 100).toFixed(2),
-        net: (netSalary / 100).toFixed(2)
+        net: (netSalary / 100).toFixed(2),
       });
     }
 
-    res.json({ message: 'Payroll system calculation pass completed.', runs: payrollRuns });
+    res.json({
+      message: `Payroll calculated for ${workingDays} working days (${standardHours} standard hours).`,
+      workingDays,
+      standardHours,
+      runs: payrollRuns
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Payroll calculation sweep encountered an exception.' });
+    res.status(500).json({ error: 'Payroll calculation failed.' });
   }
 };
 
-// 2. GET TENANT PAYROLL RECORDS
 exports.getPayrollHistory = async (req, res) => {
   const tenantId = req.tenantId;
   const queryTarget = req.user.role === 'tenant_admin'
-    ? 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ?'
-    : 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ? AND p.employee_id = ?';
+    ? 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ? ORDER BY p.created_at DESC'
+    : 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ? AND p.employee_id = ? ORDER BY p.created_at DESC';
 
   const params = req.user.role === 'tenant_admin' ? [tenantId] : [tenantId, req.user.id];
 
@@ -76,11 +120,10 @@ exports.getPayrollHistory = async (req, res) => {
     const [rows] = await db.execute(queryTarget, params);
     res.json(rows);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to query historical ledger logs.' });
+    res.status(500).json({ error: 'Failed to fetch payroll history.' });
   }
 };
 
-// 3. STREAM DOWNLOADABLE PAYSLIP PDF
 exports.downloadPayslip = async (req, res) => {
   const { payrollId } = req.params;
   const tenantId = req.tenantId;
@@ -88,45 +131,57 @@ exports.downloadPayslip = async (req, res) => {
   try {
     const [records] = await db.execute(
       `SELECT p.*, e.first_name, e.last_name, e.email, t.company_name
-             FROM payroll p
-             JOIN employees e ON p.employee_id = e.id
-             JOIN tenants t ON p.tenant_id = t.id
-             WHERE p.id = ? AND p.tenant_id = ?`,
+       FROM payroll p
+       JOIN employees e ON p.employee_id = e.id
+       JOIN tenants t ON p.tenant_id = t.id
+       WHERE p.id = ? AND p.tenant_id = ?`,
       [payrollId, tenantId]
     );
 
-    if (records.length === 0) return res.status(404).json({ error: 'Payslip record context not found.' });
+    if (records.length === 0) return res.status(404).json({ error: 'Payslip not found.' });
     const data = records[0];
 
-    // Security check: Standard employees can only view their own slips
     if (req.user.role === 'employee' && req.user.id !== data.employee_id) {
-      return res.status(403).json({ error: 'Unauthorized access allocation denied.' });
+      return res.status(403).json({ error: 'Unauthorized access.' });
     }
+
+    const startDate = new Date(data.pay_period_start).toISOString().split('T')[0];
+    const endDate = new Date(data.pay_period_end).toISOString().split('T')[0];
 
     const doc = new PDFDocument({ margin: 50 });
 
-    // Direct buffer streaming architecture header settings
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=payslip_${payrollId}.pdf`);
     doc.pipe(res);
 
-    // PDF Styling Generation Pass
     doc.fontSize(20).text(data.company_name.toUpperCase(), { align: 'center' });
-    doc.fontSize(10).text('OFFICIAL WORKSPACE EARNINGS STATEMENT', { align: 'center' }).moveDown(2);
+    doc.fontSize(10).text('PAYSLIP - HOURLY BASIS', { align: 'center' }).moveDown(2);
 
-    doc.text(`Employee Name: ${data.first_name} ${data.last_name}`);
-    doc.text(`Email Address: ${data.email}`);
-    doc.text(`Pay Cycle Window: ${data.pay_period_start} to ${data.pay_period_end}`).moveDown(2);
+    doc.text(`Employee: ${data.first_name} ${data.last_name}`);
+    doc.text(`Email: ${data.email}`);
+    doc.text(`Period: ${startDate} to ${endDate}`).moveDown(2);
 
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
 
-    doc.fontSize(14).text(`Gross Base Earnings: $${(data.gross_salary / 100).toFixed(2)}`);
-    doc.text(`Absence Deductions: -$${(data.deductions / 100).toFixed(2)}`, { color: 'red' });
-    doc.fontSize(16).text(`NET AMOUNT DISTRIBUTED: $${(data.net_salary / 100).toFixed(2)}`, { underline: true });
+    const hr = (data.hourly_rate / 100).toFixed(2);
+    const stdHrs = data.standard_hours || 0;
+    const wrkHrs = data.total_hours_worked || 0;
+
+    doc.fontSize(11).text(`Hourly Rate: Rs.${hr}`);
+    doc.text(`Standard Hours: ${stdHrs} hrs  (${stdHrs / 8} days × 8 hrs)`);
+    doc.text(`Hours Worked: ${wrkHrs} hrs`).moveDown(1);
+
+    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
+
+    doc.fontSize(14).text(`Gross Earnings (${wrkHrs} hrs × Rs.${hr}): Rs.${(data.gross_salary / 100).toFixed(2)}`);
+    doc.text(`Deductions: -Rs.${(data.deductions / 100).toFixed(2)}`, { color: 'red' });
+    doc.fontSize(16).text(`NET PAY: Rs.${(data.net_salary / 100).toFixed(2)}`, { underline: true });
 
     doc.end();
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'PDF layout pipeline compiler fault.' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate payslip PDF.' });
+    }
   }
 };

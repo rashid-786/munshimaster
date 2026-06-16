@@ -10,7 +10,7 @@ const navItems = [
 ];
 
 export default function EmpLayout() {
-  const { user, logout } = useAuth();
+  const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -22,7 +22,9 @@ export default function EmpLayout() {
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="h-16 flex items-center px-4 border-b border-gray-200">
-        <span className="font-bold text-lg text-indigo-600">HRIS</span>
+        <button onClick={() => navigate('/employee/profile')} className="font-bold text-lg text-indigo-600 hover:text-indigo-500 truncate">
+          {tenant?.name || 'HRIS'}
+        </button>
       </div>
 
       <nav className="flex-1 py-4 px-2 space-y-1">
@@ -82,7 +84,7 @@ export default function EmpLayout() {
               <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm">
                 {user.firstName?.[0]}{user.lastName?.[0]}
               </div>
-              <span className="text-sm text-gray-600 hidden sm:block">{user.firstName} {user.lastName}</span>
+              <span className="text-sm text-gray-600 hidden sm:block">Welcome, {user.firstName} {user.lastName}</span>
             </div>
           )}
         </header>
