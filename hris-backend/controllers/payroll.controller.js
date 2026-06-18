@@ -69,20 +69,60 @@ exports.calculatePayroll = async (req, res) => {
       const deductionHours = (absentDays + unpaidLeaveDays) * 8;
       const grossSalary = Math.round(hourlyRate * actualHours);
       const deductions = Math.round(hourlyRate * deductionHours);
-      const netSalary = Math.max(0, grossSalary - deductions);
+      let netSalary = Math.max(0, grossSalary - deductions);
+
+      let advanceDeduction = 0;
+      const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
+      const tenantSettings = tenantRows[0]?.settings
+        ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
+        : {};
+      const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 10) / 100;
+
+      const [advances] = await db.execute(
+        `SELECT id, remaining_balance FROM employee_advances
+         WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND remaining_balance > 0
+         ORDER BY created_at ASC`,
+        [tenantId, emp.id]
+      );
+
+      if (advances.length > 0) {
+        const totalRemaining = advances.reduce((sum, a) => sum + a.remaining_balance, 0);
+        const maxAdvanceDeduction = Math.round(netSalary * advanceDeductionPct);
+        let toDeduct = Math.min(totalRemaining, maxAdvanceDeduction);
+
+        for (const adv of advances) {
+          if (toDeduct <= 0) break;
+          const deductFromThis = Math.min(adv.remaining_balance, toDeduct);
+          await db.execute(
+            'UPDATE employee_advances SET remaining_balance = remaining_balance - ? WHERE id = ?',
+            [deductFromThis, adv.id]
+          );
+          toDeduct -= deductFromThis;
+          advanceDeduction += deductFromThis;
+
+          await db.execute(
+            `UPDATE employee_advances SET status = 'fully_paid'
+             WHERE id = ? AND remaining_balance <= 0`,
+            [adv.id]
+          );
+        }
+
+        netSalary = Math.max(0, netSalary - advanceDeduction);
+      }
 
       const payrollId = uuidv4();
 
       await db.execute(
         `INSERT INTO payroll (id, tenant_id, employee_id, pay_period_start, pay_period_end,
-          hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, net_salary, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+          hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, advance_deduction, net_salary, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
          ON DUPLICATE KEY UPDATE
           hourly_rate=VALUES(hourly_rate), total_hours_worked=VALUES(total_hours_worked),
           standard_hours=VALUES(standard_hours), gross_salary=VALUES(gross_salary),
-          deductions=VALUES(deductions), net_salary=VALUES(net_salary)`,
+          deductions=VALUES(deductions), advance_deduction=VALUES(advance_deduction),
+          net_salary=VALUES(net_salary)`,
         [payrollId, tenantId, emp.id, startDate, endDate,
-          hourlyRate, actualHours, standardHours, grossSalary, deductions, netSalary]
+          hourlyRate, actualHours, standardHours, grossSalary, deductions, advanceDeduction, netSalary]
       );
 
       payrollRuns.push({
@@ -92,6 +132,7 @@ exports.calculatePayroll = async (req, res) => {
         standardHours,
         gross: (grossSalary / 100).toFixed(2),
         deductions: (deductions / 100).toFixed(2),
+        advanceDeduction: (advanceDeduction / 100).toFixed(2),
         net: (netSalary / 100).toFixed(2),
       });
     }
@@ -173,8 +214,13 @@ exports.downloadPayslip = async (req, res) => {
 
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
 
+    const advDed = data.advance_deduction || 0;
+
     doc.fontSize(14).text(`Gross Earnings (${wrkHrs} hrs × Rs.${hr}): Rs.${(data.gross_salary / 100).toFixed(2)}`);
-    doc.text(`Deductions: -Rs.${(data.deductions / 100).toFixed(2)}`, { color: 'red' });
+    doc.text(`Absence Deductions: -Rs.${(data.deductions / 100).toFixed(2)}`, { color: 'red' });
+    if (advDed > 0) {
+      doc.text(`Advance Deduction: -Rs.${(advDed / 100).toFixed(2)}`, { color: 'red' });
+    }
     doc.fontSize(16).text(`NET PAY: Rs.${(data.net_salary / 100).toFixed(2)}`, { underline: true });
 
     doc.end();

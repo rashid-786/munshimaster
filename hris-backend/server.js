@@ -13,6 +13,10 @@ const invoiceRoutes = require('./routes/invoice.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const profileRoutes = require('./routes/profile.routes');
 const superRoutes = require('./routes/super.routes');
+const advanceRoutes = require('./routes/advance.routes');
+const balanceRoutes = require('./routes/balance.routes');
+const reportRoutes = require('./routes/report.routes');
+const kiranaRoutes = require('./routes/kirana.routes');
 const db = require('./config/db');
 require('dotenv').config();
 
@@ -43,6 +47,10 @@ app.use('/api/v1/core/purchase-orders', purchaseRoutes);
 app.use('/api/v1/core/invoices', invoiceRoutes);
 app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
+app.use('/api/v1/core/advances', advanceRoutes);
+app.use('/api/v1/core/balance', balanceRoutes);
+app.use('/api/v1/core/reports', reportRoutes);
+app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 

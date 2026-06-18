@@ -7,6 +7,7 @@ const navItems = [
   { to: '/employee/attendance', label: 'Attendance', icon: '⏰' },
   { to: '/employee/leaves', label: 'Leave Requests', icon: '📋' },
   { to: '/employee/payslips', label: 'Payslips', icon: '💰' },
+  { to: '/employee/advances', label: 'Advance Request', icon: '💵' },
 ];
 
 export default function EmpLayout() {

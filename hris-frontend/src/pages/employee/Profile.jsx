@@ -90,6 +90,7 @@ const Profile = () => {
                     <div className="flex items-center gap-4 mt-1 text-sm">
                       <span className="text-green-600">Gross: {formatINR(slip.gross_salary)}</span>
                       <span className="text-red-500">Deductions: -{formatINR(slip.deductions)}</span>
+                      {slip.advance_deduction > 0 && <span className="text-orange-500">Adv: -{formatINR(slip.advance_deduction)}</span>}
                       <span className="text-gray-900 font-bold">Net: {formatINR(slip.net_salary)}</span>
                     </div>
                   </div>

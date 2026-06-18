@@ -9,6 +9,7 @@ const Settings = () => {
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [weekendDays, setWeekendDays] = useState([0]);
   const [taxRate, setTaxRate] = useState(18);
+  const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [message, setMessage] = useState('');
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -20,6 +21,7 @@ const Settings = () => {
       if (res.settings?.primaryColor) setPrimaryColor(res.settings.primaryColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
+      if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
     }).catch(() => {});
   }, []);
 
@@ -32,7 +34,7 @@ const Settings = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      const res = await hrService.updateTenantSettings({ companyName, settings: { primaryColor, weekendDays, taxRate } });
+      const res = await hrService.updateTenantSettings({ companyName, settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct } });
       setMessage(res.message);
       applyTheme(primaryColor);
       localStorage.setItem('tenant_name', companyName);
@@ -95,6 +97,11 @@ const Settings = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>
             <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
+            <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+            <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
           </div>
           <button type="submit" className="btn-primary">Save Changes</button>
         </form>

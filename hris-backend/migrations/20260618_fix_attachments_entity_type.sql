@@ -1,0 +1,1 @@
+ALTER TABLE attachments MODIFY COLUMN entity_type VARCHAR(50) NOT NULL;

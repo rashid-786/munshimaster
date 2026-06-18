@@ -48,6 +48,7 @@ const PayrollConsole = () => {
                   <th className="table-header">Std Hrs</th>
                   <th className="table-header">Gross</th>
                   <th className="table-header">Deductions</th>
+                  <th className="table-header">Adv. Ded.</th>
                   <th className="table-header">Net</th>
                 </tr>
               </thead>
@@ -60,6 +61,7 @@ const PayrollConsole = () => {
                     <td className="table-cell">{r.standardHours}h</td>
                     <td className="table-cell">{formatINR(Math.round(parseFloat(r.gross) * 100))}</td>
                     <td className="table-cell text-red-600">{formatINR(Math.round(parseFloat(r.deductions) * 100))}</td>
+                    <td className="table-cell text-orange-600">{r.advanceDeduction && parseFloat(r.advanceDeduction) > 0 ? formatINR(Math.round(parseFloat(r.advanceDeduction) * 100)) : '-'}</td>
                     <td className="table-cell font-bold text-emerald-600">{formatINR(Math.round(parseFloat(r.net) * 100))}</td>
                   </tr>
                 ))}
@@ -103,6 +105,7 @@ const PayrollConsole = () => {
                 <th className="table-header">Hrs</th>
                 <th className="table-header">Gross</th>
                 <th className="table-header">Deductions</th>
+                <th className="table-header">Adv. Ded.</th>
                 <th className="table-header">Net</th>
                 <th className="table-header">Status</th>
               </tr>
@@ -116,12 +119,13 @@ const PayrollConsole = () => {
                   <td className="table-cell">{slip.total_hours_worked}h / {slip.standard_hours}h</td>
                   <td className="table-cell">{formatINR(slip.gross_salary)}</td>
                   <td className="table-cell text-red-600">{formatINR(slip.deductions)}</td>
+                  <td className="table-cell text-orange-600">{slip.advance_deduction ? formatINR(slip.advance_deduction) : '-'}</td>
                   <td className="table-cell font-bold text-emerald-600">{formatINR(slip.net_salary)}</td>
                   <td className="table-cell"><span className="badge-success">Paid</span></td>
                 </tr>
               ))}
               {history.length === 0 && (
-                <tr><td colSpan={8} className="table-cell text-center text-gray-400 py-8">No payroll history</td></tr>
+                <tr><td colSpan={9} className="table-cell text-center text-gray-400 py-8">No payroll history</td></tr>
               )}
             </tbody>
           </table>

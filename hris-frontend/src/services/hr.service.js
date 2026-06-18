@@ -255,6 +255,95 @@ export const hrService = {
     return response.data;
   },
 
+  // Advances
+  getAdvances: async () => {
+    const response = await api.get('/core/advances');
+    return response.data;
+  },
+  createAdvance: async (data) => {
+    const response = await api.post('/core/advances', data);
+    return response.data;
+  },
+  approveAdvance: async (id) => {
+    const response = await api.patch(`/core/advances/${id}/approve`);
+    return response.data;
+  },
+  rejectAdvance: async (id) => {
+    const response = await api.patch(`/core/advances/${id}/reject`);
+    return response.data;
+  },
+
+  // Kirana Store
+  kirana: {
+    getParties: async (params) => { const r = await api.get('/core/kirana/parties', { params }); return r.data; },
+    createParty: async (data) => { const r = await api.post('/core/kirana/parties', data); return r.data; },
+    getPartyDetails: async (id) => { const r = await api.get(`/core/kirana/parties/${id}`); return r.data; },
+    updateParty: async (id, data) => { const r = await api.put(`/core/kirana/parties/${id}`, data); return r.data; },
+    deleteParty: async (id) => { const r = await api.delete(`/core/kirana/parties/${id}`); return r.data; },
+    createTransaction: async (data) => { const r = await api.post('/core/kirana/transactions', data); return r.data; },
+    deleteTransaction: async (id) => { const r = await api.delete(`/core/kirana/transactions/${id}`); return r.data; },
+    getSummary: async (params) => { const r = await api.get('/core/kirana/summary', { params }); return r.data; },
+    getStaff: async () => { const r = await api.get('/core/kirana/staff'); return r.data; },
+    createStaff: async (data) => { const r = await api.post('/core/kirana/staff', data); return r.data; },
+    updateStaff: async (id, data) => { const r = await api.put(`/core/kirana/staff/${id}`, data); return r.data; },
+    deleteStaff: async (id) => { const r = await api.delete(`/core/kirana/staff/${id}`); return r.data; },
+    getCashbook: async (params) => { const r = await api.get('/core/kirana/cashbook', { params }); return r.data; },
+    createCashEntry: async (data) => { const r = await api.post('/core/kirana/cashbook', data); return r.data; },
+    updateCashEntry: async (id, data) => { const r = await api.put(`/core/kirana/cashbook/${id}`, data); return r.data; },
+    deleteCashEntry: async (id) => { const r = await api.delete(`/core/kirana/cashbook/${id}`); return r.data; },
+    getReport: async (params) => { const r = await api.get('/core/kirana/reports', { params }); return r.data; },
+    downloadReportPDF: async (type, params) => {
+      const response = await api.get('/core/reports/download/pdf', { params: { ...params, type }, responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const link = document.createElement('a'); link.href = window.URL.createObjectURL(blob); link.download = `${type}_report.pdf`; link.click();
+    },
+    downloadReportExcel: async (type, params) => {
+      const response = await api.get('/core/reports/download/excel', { params: { ...params, type }, responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const link = document.createElement('a'); link.href = window.URL.createObjectURL(blob); link.download = `${type}_report.xlsx`; link.click();
+    },
+  },
+
+  // Reports
+  getReportData: async (params) => {
+    const response = await api.get('/core/reports', { params });
+    return response.data;
+  },
+  downloadReportPDF: async (type, params) => {
+    const response = await api.get('/core/reports/download/pdf', { params: { ...params, type }, responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${type}_report.pdf`;
+    link.click();
+  },
+  downloadReportExcel: async (type, params) => {
+    const response = await api.get('/core/reports/download/excel', { params: { ...params, type }, responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${type}_report.xlsx`;
+    link.click();
+  },
+
+  // Balance Sheet
+  getBalanceEntries: async (params) => {
+    const response = await api.get('/core/balance', { params });
+    return response.data;
+  },
+  createBalanceEntry: async (data) => {
+    const response = await api.post('/core/balance', data);
+    return response.data;
+  },
+  updateBalanceEntry: async (id, data) => {
+    const response = await api.put(`/core/balance/${id}`, data);
+    return response.data;
+  },
+  deleteBalanceEntry: async (id) => {
+    const response = await api.delete(`/core/balance/${id}`);
+    return response.data;
+  },
+
   // Profile
   changePassword: async (data) => {
     const response = await api.post('/core/profile/change-password', data);
