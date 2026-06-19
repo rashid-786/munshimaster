@@ -13,6 +13,7 @@ const Settings = () => {
   const [companyName, setCompanyName] = useState('');
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [weekendDays, setWeekendDays] = useState([0]);
   const [taxRate, setTaxRate] = useState(18);
@@ -47,7 +48,7 @@ const Settings = () => {
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups } }));
       if (firstName || lastName) {
-        const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email: user?.email || '', phone: user?.phone || '' });
+        const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email, phone: user?.phone || '' });
         if (profileRes?.user) updateUser(profileRes.user);
       }
       setMessage(res.message || 'Settings saved.');
@@ -86,18 +87,6 @@ const Settings = () => {
         {message && <div className="mx-6 mt-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{message}</div>}
         <form onSubmit={handleSave} className="p-6 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="input-field" placeholder="Your Company Name" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className="input-field" placeholder="First name" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className="input-field" placeholder="Last name" />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
             <div className="flex items-center gap-4">
               <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-12 h-10 rounded border border-gray-300 cursor-pointer" />
@@ -119,6 +108,29 @@ const Settings = () => {
               </div>
             </div>
           )}
+          <div className="border-b border-gray-200 pb-4">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">Personal Info</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="input-field" placeholder="Your Company Name" required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className="input-field" placeholder="First name" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className="input-field" placeholder="Last name" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="input-field" placeholder="Email address" />
+              </div>
+            </div>
+          </div>
           {planRank >= 1 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>

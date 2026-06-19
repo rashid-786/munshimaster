@@ -34,6 +34,7 @@ const KiranaStore = () => {
   const [detail, setDetail] = useState(null);
   const [showPartyForm, setShowPartyForm] = useState(false);
   const [partyForm, setPartyForm] = useState({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' });
+  const [editingParty, setEditingParty] = useState(null);
   const [txForm, setTxForm] = useState({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
   const [message, setMessage] = useState('');
   const [modal, setModal] = useState(null);
@@ -52,7 +53,7 @@ const KiranaStore = () => {
   const [cashEnd, setCashEnd] = useState('');
   const [showCashForm, setShowCashForm] = useState(false);
   const [editingCash, setEditingCash] = useState(null);
-  const [cashForm, setCashForm] = useState({ type: 'IN', category: '', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+  const [cashForm, setCashForm] = useState({ type: 'IN', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
   const [cashAttachments, setCashAttachments] = useState({});
   const [cashUploadFiles, setCashUploadFiles] = useState([]);
 
@@ -127,13 +128,33 @@ const KiranaStore = () => {
     e.preventDefault();
     setSaving(true);
     try {
-      await hrService.kirana.createParty({ type: partyForm.partyType || partyType, ...partyForm });
+      if (editingParty) {
+        await hrService.kirana.updateParty(editingParty.id, partyForm);
+      } else {
+        await hrService.kirana.createParty({ type: partyForm.partyType || partyType, ...partyForm });
+      }
       setShowPartyForm(false);
+      setEditingParty(null);
       setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' });
       fetchParties();
       fetchSummary();
     } catch (err) { setMessage(err.response?.data?.error || 'Failed.'); }
     setSaving(false);
+  };
+
+  const openEditParty = (party) => {
+    setEditingParty(party);
+    setPartyForm({
+      partyType: party.type,
+      name: party.name,
+      phone: party.phone || '',
+      address: party.address || '',
+      amount: '',
+      direction: 'to_receive',
+      entryDate: new Date().toISOString().split('T')[0],
+      note: '',
+    });
+    setShowPartyForm(true);
   };
 
   const handleAddTx = async (e) => {
@@ -202,7 +223,7 @@ const KiranaStore = () => {
       setShowCashForm(false);
       setEditingCash(null);
       setCashUploadFiles([]);
-      setCashForm({ type: 'IN', category: '', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+      setCashForm({ type: 'IN', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
       fetchCashbook();
     } catch (err) { setMessage(err.response?.data?.error || 'Failed.'); }
     setSaving(false);
@@ -212,7 +233,6 @@ const KiranaStore = () => {
     setEditingCash(entry);
     setCashForm({
       type: entry.type,
-      category: entry.category || '',
       amount: (entry.amount / 100).toFixed(2),
       note: entry.note || '',
       entryDate: entry.entry_date ? entry.entry_date.split('T')[0] : '',
@@ -303,6 +323,16 @@ const KiranaStore = () => {
         </span>
       </span>
     )},
+    { key: 'actions', label: 'Actions', render: (_, p) => (
+      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
+        <button onClick={() => openEditParty(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        </button>
+        <button onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </button>
+      </div>
+    )},
   ];
 
   const staffColumns = [
@@ -317,9 +347,13 @@ const KiranaStore = () => {
     { key: 'salary', label: 'Salary', render: (v) => v ? formatINR(v) : '-' },
     { key: 'joined_at', label: 'Joined', render: (v) => <span className="text-gray-500">{v ? v.split('T')[0] : '-'}</span> },
     { key: 'actions', label: 'Actions', render: (_, s) => (
-      <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-        <button onClick={() => openEditStaff(s)} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
-        <button onClick={() => setModal({ action: 'deleteStaff', id: s.id })} className="text-sm text-red-600 hover:text-red-800">Delete</button>
+      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
+        <button onClick={() => openEditStaff(s)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        </button>
+        <button onClick={() => setModal({ action: 'deleteStaff', id: s.id })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </button>
       </div>
     )},
   ];
@@ -327,7 +361,6 @@ const KiranaStore = () => {
   const cashbookColumns = [
     { key: 'entry_date', label: 'Date', render: (v) => v ? v.split('T')[0] : '-' },
     { key: 'type', label: 'Type', render: (v) => <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span> },
-    { key: 'category', label: 'Category', render: (v) => v || '—' },
     { key: 'amount', label: 'Amount', render: (v, e) => (
       <span className={`font-semibold ${e.type === 'IN' ? 'text-emerald-600' : 'text-red-500'}`}>
         {e.type === 'IN' ? '+' : '-'}{formatINR(v)}
@@ -346,7 +379,7 @@ const KiranaStore = () => {
       </div>
     )},
     { key: 'actions', label: 'Actions', render: (_, e) => (
-      <div className="flex gap-1.5 justify-end">
+      <div className="flex gap-1.5">
         <button onClick={(ev) => { ev.stopPropagation(); openEditCash(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
         </button>
@@ -374,7 +407,6 @@ const KiranaStore = () => {
   const cashReportColumns = [
     { key: 'entry_date', label: 'Date', render: (v) => v ? v.split('T')[0] : '-' },
     { key: 'type', label: 'Type', render: (v) => <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span> },
-    { key: 'category', label: 'Category', render: (v) => v || '-' },
     { key: 'amount', label: 'Amount', render: (v, r) => (
       <span className={`font-semibold ${r.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
         {r.type === 'IN' ? '+' : '-'}{formatINR(v)}
@@ -400,15 +432,15 @@ const KiranaStore = () => {
 
           <div className="p-6 space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="card text-center">
+              <div className="stat-card text-center">
                 <p className="text-xs text-gray-500">Total Given</p>
                 <p className="text-lg font-bold text-orange-600">{formatINR(totalGiven)}</p>
               </div>
-              <div className="card text-center">
+              <div className="stat-card text-center">
                 <p className="text-xs text-gray-500">Total Received</p>
                 <p className="text-lg font-bold text-green-600">{formatINR(totalReceived)}</p>
               </div>
-              <div className="card text-center">
+              <div className="stat-card text-center">
                 <p className="text-xs text-gray-500">Balance</p>
                 <p className={`text-lg font-bold ${balance <= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {balance <= 0 ? `You will get ${formatINR(Math.abs(balance))}` : `You will give ${formatINR(balance)}`}
@@ -418,29 +450,29 @@ const KiranaStore = () => {
 
             <div className="card">
               <div className="card-header"><h4 className="font-semibold text-gray-900">Add Transaction</h4></div>
-              <form onSubmit={handleAddTx} className="p-4 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <form onSubmit={handleAddTx} className="p-5 space-y-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-                    <select value={txForm.type} onChange={e => setTxForm({ ...txForm, type: e.target.value })} className="input-field text-sm" required>
-                      <option value="given">Given (Credit)</option>
-                      <option value="received">Received (Payment)</option>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
+                    <select value={txForm.type} onChange={e => setTxForm({ ...txForm, type: e.target.value })} className="input-field" required>
+                      <option value="given">Given</option>
+                      <option value="received">Received</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Amount</label>
-                    <input type="number" min="0.01" step="0.01" value={txForm.amount} onChange={e => setTxForm({ ...txForm, amount: e.target.value })} className="input-field text-sm" required />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (Rs.)</label>
+                    <input type="number" min="0.01" step="0.01" value={txForm.amount} onChange={e => setTxForm({ ...txForm, amount: e.target.value })} className="input-field" required />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
-                    <input type="date" value={txForm.entryDate} onChange={e => setTxForm({ ...txForm, entryDate: e.target.value })} className="input-field text-sm" required />
-                  </div>
-                  <div className="flex items-end">
-                    <button type="submit" disabled={saving} className="btn-primary text-sm w-full">{saving ? '...' : 'Add'}</button>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
+                    <input type="date" value={txForm.entryDate} onChange={e => setTxForm({ ...txForm, entryDate: e.target.value })} className="input-field" required />
                   </div>
                 </div>
                 <div>
-                  <input type="text" value={txForm.note} onChange={e => setTxForm({ ...txForm, note: e.target.value })} className="input-field text-sm" placeholder="Note (optional)" />
+                  <textarea value={txForm.note} onChange={e => setTxForm({ ...txForm, note: e.target.value })} className="input-field" rows={2} placeholder="Note (optional)" />
+                </div>
+                <div className="flex justify-end">
+                  <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Adding...' : 'Add Transaction'}</button>
                 </div>
               </form>
             </div>
@@ -459,7 +491,9 @@ const KiranaStore = () => {
                         </p>
                         <p className="text-xs text-gray-400">{tx.entry_date ? tx.entry_date.split('T')[0] : ''} {tx.note ? `- ${tx.note}` : ''}</p>
                       </div>
-                      <button onClick={() => setModal({ action: 'deleteTx', id: tx.id })} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                      <button onClick={() => setModal({ action: 'deleteTx', id: tx.id })} className="btn-ghost !py-1 !px-1.5 text-xs !text-red-400 hover:!text-red-600 hover:!bg-red-50" title="Delete">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
                     </div>
                   ))
                 )}
@@ -517,7 +551,7 @@ const KiranaStore = () => {
               </span>
               <input type="text" placeholder={`Search ${partyType}...`} value={search} onChange={e => setSearch(e.target.value)} className="input-field pl-9 max-w-[200px]" />
             </div>
-            <button onClick={() => { setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' }); setShowPartyForm(true); }} className="btn-primary">
+            <button onClick={() => { setEditingParty(null); setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' }); setShowPartyForm(true); }} className="btn-primary">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Add
             </button>
@@ -539,7 +573,7 @@ const KiranaStore = () => {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setShowPartyForm(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Add {partyForm.partyType === 'buyer' ? 'Buyer' : partyForm.partyType === 'seller' ? 'Seller' : 'Party'}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{editingParty ? 'Edit' : 'Add'} {partyForm.partyType === 'buyer' ? 'Buyer' : partyForm.partyType === 'seller' ? 'Seller' : 'Party'}</h3>
               <button onClick={() => setShowPartyForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <form onSubmit={handleAddParty} className="p-6 space-y-4">
@@ -652,7 +686,7 @@ const KiranaStore = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Cashbook</h3>
-        <button onClick={() => { setEditingCash(null); setCashForm({ type: 'IN', category: '', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] }); setCashUploadFiles([]); setShowCashForm(true); }} className="btn-primary">
+        <button onClick={() => { setEditingCash(null); setCashForm({ type: 'IN', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] }); setCashUploadFiles([]); setShowCashForm(true); }} className="btn-primary">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Add Entry
         </button>
@@ -688,7 +722,7 @@ const KiranaStore = () => {
         keyField="id"
         onRowClick={handleCashRowClick}
         mobilePrimary="amount"
-        mobileSecondary="category"
+        mobileSecondary="amount"
         emptyMessage={<><p className="text-base font-medium mb-1">No entries found</p><p className="text-sm">Click &ldquo;Add Entry&rdquo; to record your first cash transaction.</p></>}
         header={
           <div className="flex items-center gap-3 flex-wrap">
@@ -710,7 +744,6 @@ const KiranaStore = () => {
             <form onSubmit={handleAddCash} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label><select value={cashForm.type} onChange={e => setCashForm({ ...cashForm, type: e.target.value })} className="input-field"><option value="IN">IN</option><option value="OUT">OUT</option></select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Category</label><input type="text" value={cashForm.category} onChange={e => setCashForm({ ...cashForm, category: e.target.value })} className="input-field" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Amount</label><input type="number" min="0.01" step="0.01" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} className="input-field" required /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Date</label><input type="date" value={cashForm.entryDate} onChange={e => setCashForm({ ...cashForm, entryDate: e.target.value })} className="input-field" required /></div>
               </div>
@@ -942,8 +975,8 @@ const KiranaStore = () => {
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
                   <select value={mobileTxForm.type} onChange={e => setMobileTxForm({ ...mobileTxForm, type: e.target.value })} className="input-field text-sm" required>
-                    <option value="given">Given (Credit)</option>
-                    <option value="received">Received (Payment)</option>
+                    <option value="given">Given</option>
+                    <option value="received">Received</option>
                   </select>
                 </div>
                 <div>
@@ -1015,7 +1048,6 @@ const KiranaStore = () => {
         >
           <DetailRow label="Date" value={selectedCash.entry_date ? selectedCash.entry_date.split('T')[0] : '-'} />
           <DetailRow label="Type" value={selectedCash.type} />
-          <DetailRow label="Category" value={selectedCash.category || '—'} />
           <DetailRow label="Amount" value={`${selectedCash.type === 'IN' ? '+' : '-'}${formatINR(selectedCash.amount)}`} />
           <DetailRow label="Note" value={selectedCash.note || '—'} />
           <div>
@@ -1048,7 +1080,6 @@ const KiranaStore = () => {
             <>
               <DetailRow label="Date" value={selectedReport.entry_date ? selectedReport.entry_date.split('T')[0] : '-'} />
               <DetailRow label="Type" value={selectedReport.type} />
-              <DetailRow label="Category" value={selectedReport.category || '—'} />
               <DetailRow label="Amount" value={`${selectedReport.type === 'IN' ? '+' : '-'}${formatINR(selectedReport.amount)}`} />
               <DetailRow label="Note" value={selectedReport.note || '—'} />
             </>
@@ -1058,10 +1089,12 @@ const KiranaStore = () => {
 
       {modal && (
         <ConfirmModal
-          message="Are you sure you want to delete this?"
+          title={modal.action === 'deleteParty' ? `Delete ${modal.name}?` : undefined}
+          message={modal.action === 'deleteParty' ? `Permanently delete ${modal.name}? All transactions will be removed.` : 'Are you sure you want to delete this?'}
           onConfirm={() => {
             if (modal.action === 'deleteTx') handleDeleteTx(modal.id);
             else if (modal.action === 'mobileDeleteTx') handleMobileDeleteTx(modal.id);
+            else if (modal.action === 'deleteParty') hrService.kirana.deleteParty(modal.id).then(() => { fetchParties(); fetchSummary(); setModal(null); });
             else if (modal.action === 'deleteStaff') hrService.kirana.deleteStaff(modal.id).then(() => { fetchStaff(); setModal(null); });
             else if (modal.action === 'deleteCash') handleDeleteCash(modal.id);
             else setModal(null);

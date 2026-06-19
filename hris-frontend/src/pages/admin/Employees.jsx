@@ -28,8 +28,6 @@ const Employees = () => {
   const [search, setSearch] = useState('');
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', baseSalary: '' });
-  const [editId, setEditId] = useState(null);
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: '', baseSalary: '' });
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
@@ -71,27 +69,6 @@ const Employees = () => {
     }
   };
 
-  const startEdit = (emp) => {
-    setEditId(emp.id);
-    setEditForm({
-      firstName: emp.first_name,
-      lastName: emp.last_name,
-      email: emp.email,
-      phone: emp.phone || '',
-      role: emp.role,
-      baseSalary: (emp.base_salary / 100).toFixed(2)
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditId(null);
-    setEditForm({ firstName: '', lastName: '', email: '', phone: '', role: '', baseSalary: '' });
-  };
-
-  const handleEditChange = (e) => {
-    setEditForm({ ...editForm, [e.target.name]: e.target.value });
-  };
-
   const handleDeactivate = (id, name) => {
     setModal({
       id, name, variant: 'warning',
@@ -125,20 +102,6 @@ const Employees = () => {
         finally { setModalLoading(false); }
       },
     });
-  };
-
-  const saveEdit = async (id) => {
-    try {
-      await hrService.updateEmployee(id, {
-        firstName: editForm.firstName, lastName: editForm.lastName,
-        email: editForm.email, phone: editForm.phone,
-        role: editForm.role, baseSalary: editForm.baseSalary
-      });
-      setEditId(null);
-      fetchRoster();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update employee.');
-    }
   };
 
   const mobileEdit = (emp) => {
@@ -194,7 +157,7 @@ const Employees = () => {
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
     { key: 'actions', label: 'Actions', render: (_, emp) => (
       <div className="flex gap-1.5 justify-end">
-        <button onClick={(e) => { e.stopPropagation(); startEdit(emp); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
+        <button onClick={(e) => { e.stopPropagation(); mobileEdit(emp); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
         {isAdmin && emp.status === 'active' && (
           <button onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
         )}
@@ -327,82 +290,43 @@ const Employees = () => {
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map(emp => (
                     <tr key={emp.id} className={`table-row-hover ${emp.status === 'deactivated' ? 'opacity-60' : ''}`}>
-                      {editId === emp.id ? (
-                        <>
-                          <td className="table-cell min-w-[200px]">
-                            <div className="flex gap-2">
-                              <input type="text" name="firstName" value={editForm.firstName} onChange={handleEditChange} placeholder="First" className="input-field !py-1.5 text-sm w-1/2" />
-                              <input type="text" name="lastName" value={editForm.lastName} onChange={handleEditChange} placeholder="Last" className="input-field !py-1.5 text-sm w-1/2" />
-                            </div>
-                          </td>
-                          <td className="table-cell">
-                            <input type="email" name="email" value={editForm.email} onChange={handleEditChange} className="input-field !py-1.5 text-sm max-w-[180px]" />
-                          </td>
-                          <td className="table-cell">
-                            <input type="tel" name="phone" value={editForm.phone} onChange={handleEditChange} className="input-field !py-1.5 text-sm max-w-[140px]" />
-                          </td>
-                          <td className="table-cell">
-                            <select name="role" value={editForm.role} onChange={handleEditChange} className="input-field !py-1.5 text-sm max-w-[130px]">
-                              <option value="employee">Employee</option>
-                              <option value="tenant_admin">Admin</option>
-                            </select>
-                          </td>
-                          <td className="table-cell">
-                            <input type="number" name="baseSalary" value={editForm.baseSalary} onChange={handleEditChange} className="input-field !py-1.5 text-sm max-w-[140px]" />
-                          </td>
-                          <td className="table-cell">
-                            <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
-                              {emp.status === 'deactivated' ? 'Deactivated' : 'Active'}
-                            </span>
-                          </td>
-                          <td className="table-cell text-right">
-                            <div className="flex gap-1.5 justify-end">
-                              <button onClick={() => saveEdit(emp.id)} className="btn-success !py-1.5 !px-3 text-xs">{Icons.save} Save</button>
-                              <button onClick={cancelEdit} className="btn-secondary !py-1.5 !px-3 text-xs">{Icons.x} Cancel</button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="table-cell">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
-                                {emp.first_name?.[0]}{emp.last_name?.[0]}
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="table-cell text-gray-500">{emp.email}</td>
-                          <td className="table-cell text-gray-500">{formatPhone(emp.phone) || '—'}</td>
-                          <td className="table-cell">
-                            <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
-                              {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                            </span>
-                          </td>
-                          <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
-                          <td className="table-cell">
-                            <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
-                              {emp.status === 'deactivated' ? 'Deactivated' : 'Active'}
-                            </span>
-                          </td>
-                          <td className="table-cell text-right">
-                            <div className="flex gap-1.5 justify-end">
-                              <button onClick={() => startEdit(emp)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
-                              {isAdmin && emp.status === 'active' && (
-                                <button onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
-                              )}
-                              {isAdmin && emp.status === 'deactivated' && (
-                                <button onClick={() => handleActivate(emp.id)} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
-                              )}
-                              {isAdmin && (
-                                <button onClick={() => handleDelete(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
-                              )}
-                            </div>
-                          </td>
-                        </>
-                      )}
+                      <td className="table-cell">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
+                            {emp.first_name?.[0]}{emp.last_name?.[0]}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="table-cell text-gray-500">{emp.email}</td>
+                      <td className="table-cell text-gray-500">{formatPhone(emp.phone) || '—'}</td>
+                      <td className="table-cell">
+                        <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
+                          {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
+                        </span>
+                      </td>
+                      <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
+                      <td className="table-cell">
+                        <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
+                          {emp.status === 'deactivated' ? 'Deactivated' : 'Active'}
+                        </span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <div className="flex gap-1.5 justify-end">
+                          <button onClick={() => mobileEdit(emp)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
+                          {isAdmin && emp.status === 'active' && (
+                            <button onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
+                          )}
+                          {isAdmin && emp.status === 'deactivated' && (
+                            <button onClick={() => handleActivate(emp.id)} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
+                          )}
+                          {isAdmin && (
+                            <button onClick={() => handleDelete(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -6,6 +7,18 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshTenant = async () => {
+    try {
+      const { data } = await api.get('/core/tenant/settings');
+      const current = JSON.parse(localStorage.getItem('tenant_data') || '{}');
+      const updated = { ...current, name: data.companyName, subscriptionPlan: data.subscriptionPlan, settings: data.settings };
+      setTenant(updated);
+      localStorage.setItem('tenant_data', JSON.stringify(updated));
+    } catch {
+      // silent — retry on next page visit
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
@@ -34,6 +47,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  useEffect(() => {
+    if (user && user.role !== 'super_admin') {
+      refreshTenant();
+    }
+  }, [user]);
+
   const login = (userData, token, tenantData) => {
     setUser(userData);
     localStorage.setItem('auth_token', token);
@@ -60,7 +79,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, login, updateUser, logout, loading }}>
+    <AuthContext.Provider value={{ user, tenant, login, updateUser, logout, loading, refreshTenant }}>
       {!loading && children}
     </AuthContext.Provider>
   );

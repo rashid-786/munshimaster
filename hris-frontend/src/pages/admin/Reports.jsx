@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
-import { formatPhone } from '../../utils/currency';
+import { formatPhone, formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -204,21 +204,38 @@ const Reports = () => {
       </div>
 
       {summary && (
-        <div className="card px-4 py-3 sm:py-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-green-50 border border-green-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
-              <p className="text-xs sm:text-sm text-green-600 font-medium">Total Income</p>
-              <p className="text-base sm:text-xl font-bold text-green-700 mt-0.5">Rs.{(summary.income / 100).toFixed(2)}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="stat-card flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
             </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
-              <p className="text-xs sm:text-sm text-red-600 font-medium">Total Expense</p>
-              <p className="text-base sm:text-xl font-bold text-red-700 mt-0.5">Rs.{(summary.expense / 100).toFixed(2)}</p>
+            <div>
+              <p className="text-sm text-gray-500">Total Income</p>
+              <p className="text-2xl font-bold text-emerald-600">{formatINR(summary.income)}</p>
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
-              <p className="text-xs sm:text-sm text-blue-600 font-medium">Balance</p>
-              <p className={`text-base sm:text-xl font-bold mt-0.5 ${summary.income >= summary.expense ? 'text-blue-700' : 'text-red-700'}`}>
-                Rs.{((summary.income - summary.expense) / 100).toFixed(2)}
-              </p>
+          </div>
+          <div className="stat-card flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Expense</p>
+              <p className="text-2xl font-bold text-red-500">{formatINR(summary.expense)}</p>
+            </div>
+          </div>
+          <div className="stat-card flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${summary.income >= summary.expense ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500'}`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Balance</p>
+              <p className={`text-2xl font-bold ${summary.income >= summary.expense ? 'text-blue-600' : 'text-red-500'}`}>{formatINR(summary.income - summary.expense)}</p>
             </div>
           </div>
         </div>

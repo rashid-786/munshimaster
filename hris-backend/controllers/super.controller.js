@@ -4,6 +4,10 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
 exports.seedSuperAdmin = async (req, res) => {
+  const ua = (req.headers['user-agent'] || '').toLowerCase();
+  if (ua.includes('mozilla') || ua.includes('chrome') || ua.includes('safari') || ua.includes('edge')) {
+    return res.status(403).json({ error: 'This endpoint is not accessible from a browser. Use curl or Postman.' });
+  }
   const { email, password, name } = req.body;
 
   try {
@@ -136,7 +140,7 @@ exports.getTenants = async (req, res) => {
 
   try {
     let query = `
-      SELECT t.id, t.company_name, t.subdomain, t.settings, t.created_at,
+      SELECT t.id, t.company_name, t.subdomain, t.subscription_plan, t.settings, t.created_at,
              (SELECT COUNT(*) FROM employees e WHERE e.tenant_id = t.id) as employee_count,
              (SELECT e.email FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_email,
              (SELECT e.id FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_id
@@ -215,7 +219,7 @@ exports.getTenantDetail = async (req, res) => {
 
 exports.updateTenant = async (req, res) => {
   const { id } = req.params;
-  const { companyName, settings, isActive } = req.body;
+  const { companyName, subscriptionPlan, settings, isActive } = req.body;
 
   try {
     const updates = [];
@@ -224,6 +228,10 @@ exports.updateTenant = async (req, res) => {
     if (companyName !== undefined) {
       updates.push('company_name = ?');
       params.push(companyName);
+    }
+    if (subscriptionPlan !== undefined) {
+      updates.push('subscription_plan = ?');
+      params.push(subscriptionPlan);
     }
     if (settings !== undefined) {
       updates.push('settings = ?');
