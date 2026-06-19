@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatPhone } from '../../utils/currency';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const TABS = [
   { key: 'customers', label: 'Customers' },
@@ -8,35 +11,85 @@ const TABS = [
   { key: 'balance', label: 'Balance Sheet' },
 ];
 
-const SORT_OPTIONS = {
-  customers: [{ value: 'name', label: 'Name' }, { value: 'email', label: 'Email' }, { value: 'created_at', label: 'Date Created' }],
-  suppliers: [{ value: 'name', label: 'Name' }, { value: 'email', label: 'Email' }, { value: 'created_at', label: 'Date Created' }],
-  balance: [{ value: 'entry_date', label: 'Date' }, { value: 'amount', label: 'Amount' }, { value: 'type', label: 'Type' }, { value: 'payment_method', label: 'Payment Method' }],
-};
+const PERIODS = [
+  { value: '', label: 'Custom' },
+  { value: 'this_year', label: 'This Year' },
+  { value: 'this_quarter', label: 'This Quarter' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'yesterday', label: 'Yesterday' },
+];
 
-const Columns = {
-  customers: ['Name', 'Email', 'Phone', 'Address', 'GSTIN', 'Created At'],
-  suppliers: ['Name', 'Email', 'Phone', 'Address', 'GSTIN', 'Created At'],
-  balance: ['Date', 'Type', 'Method', 'Amount', 'Description', 'Added By'],
+const fmtDate = (d) => d.toISOString().split('T')[0];
+
+const calcPeriod = (period) => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+
+  switch (period) {
+    case 'this_year':
+      return { start: `${y}-01-01`, end: `${y}-12-31` };
+    case 'this_quarter': {
+      const qStart = Math.floor(m / 3) * 3;
+      const qEnd = qStart + 2;
+      const endDate = new Date(y, qEnd + 1, 0);
+      return { start: `${y}-${String(qStart + 1).padStart(2, '0')}-01`, end: fmtDate(endDate) };
+    }
+    case 'this_month': {
+      const endDate = new Date(y, m + 1, 0);
+      return { start: `${y}-${String(m + 1).padStart(2, '0')}-01`, end: fmtDate(endDate) };
+    }
+    case 'last_month': {
+      const startDate = new Date(y, m - 1, 1);
+      const endDate = new Date(y, m, 0);
+      return { start: fmtDate(startDate), end: fmtDate(endDate) };
+    }
+    case 'yesterday': {
+      const yd = new Date(now);
+      yd.setDate(yd.getDate() - 1);
+      const ys = fmtDate(yd);
+      return { start: ys, end: ys };
+    }
+    default:
+      return { start: '', end: '' };
+  }
 };
 
 const Reports = () => {
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState('customers');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [period, setPeriod] = useState('this_month');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [sortBy, setSortBy] = useState('');
-  const [sortOrder, setSortOrder] = useState('desc');
   const [entryType, setEntryType] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [downloading, setDownloading] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState(null);
+
+  const handlePeriod = (value) => {
+    setPeriod(value);
+    if (value) {
+      const { start, end } = calcPeriod(value);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  };
+
+  useEffect(() => {
+    const { start, end } = calcPeriod('this_month');
+    setStartDate(start);
+    setEndDate(end);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { type: tab, sortBy: sortBy || undefined, sortOrder };
+      const params = { type: tab };
       if (search) params.search = search;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
@@ -48,14 +101,14 @@ const Reports = () => {
       setData(res);
     } catch {}
     setLoading(false);
-  }, [tab, search, startDate, endDate, sortBy, sortOrder, entryType, paymentMethod]);
+  }, [tab, search, startDate, endDate, entryType, paymentMethod]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleDownload = async (format) => {
     setDownloading(format);
     try {
-      const params = { sortBy: sortBy || undefined, sortOrder };
+      const params = {};
       if (search) params.search = search;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
@@ -74,9 +127,55 @@ const Reports = () => {
     setDownloading('');
   };
 
+  const getColumns = () => {
+    if (tab === 'customers' || tab === 'suppliers') {
+      return [
+        { key: 'name', label: 'Name', render: (v) => <span className="font-medium">{v || '-'}</span> },
+        { key: 'email', label: 'Email', render: (v) => v || '-' },
+        { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '-' },
+        { key: 'address', label: 'Address', className: 'whitespace-normal', render: (v) => <span className="text-gray-500">{v || '-'}</span> },
+        { key: 'gstin', label: 'GSTIN', render: (v) => v || '-' },
+        { key: 'created_at', label: 'Created At', render: (v) => <span className="text-gray-500">{v ? v.split('T')[0] : '-'}</span> },
+      ];
+    }
+    return [
+      { key: 'entry_date', label: 'Date', render: (v) => <span className="text-gray-500">{v ? v.split('T')[0] : '-'}</span> },
+      { key: 'type', label: 'Type', render: (v) => <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span> },
+      { key: 'payment_method', label: 'Method', render: (v) => <span className="capitalize">{v}</span> },
+      { key: 'amount', label: 'Amount', render: (v, r) => (
+        <span className={`font-semibold ${r.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+          {r.type === 'IN' ? '+' : '-'}Rs.{(v / 100).toFixed(2)}
+        </span>
+      )},
+      { key: 'description', label: 'Description', className: 'whitespace-normal', render: (v) => <span className="text-gray-500">{v || '-'}</span> },
+      { key: 'added_by', label: 'Added By', render: (_, r) => <span className="text-gray-500">{r.first_name ? `${r.first_name} ${r.last_name}` : '-'}</span> },
+    ];
+  };
+
+  const getMobilePrimary = () => {
+    if (tab === 'customers' || tab === 'suppliers') return 'name';
+    return 'entry_date';
+  };
+
+  const getMobileSecondary = () => {
+    if (tab === 'customers' || tab === 'suppliers') return 'email';
+    return 'type';
+  };
+
+  const columns = getColumns();
+
+  const summary = tab === 'balance' && data.length > 0
+    ? data.reduce((acc, r) => {
+        const amt = Number(r.amount) || 0;
+        if (r.type === 'IN') acc.income += amt;
+        else if (r.type === 'OUT') acc.expense += amt;
+        return acc;
+      }, { income: 0, expense: 0 })
+    : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h2 className="text-xl font-semibold text-gray-900">Reports</h2>
         <div className="flex gap-2">
           <button onClick={() => handleDownload('pdf')} disabled={!!downloading} className="btn-primary text-sm">
@@ -93,7 +192,7 @@ const Reports = () => {
           {TABS.map(t => (
             <button
               key={t.key}
-              onClick={() => { setTab(t.key); setSearch(''); setEntryType(''); setPaymentMethod(''); }}
+              onClick={() => { setTab(t.key); setSearch(''); setEntryType(''); setPaymentMethod(''); setSelectedRecord(null); }}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
@@ -104,97 +203,133 @@ const Reports = () => {
         </div>
       </div>
 
-      <div className="card">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            {tab !== 'balance' && (
-              <input type="text" placeholder="Search by name, email, phone..." value={search} onChange={e => setSearch(e.target.value)} className="input-field max-w-xs text-sm" />
-            )}
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">From:</span>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-field max-w-[140px]" />
-              <span className="text-gray-500">To:</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-field max-w-[140px]" />
+      {summary && (
+        <div className="card px-4 py-3 sm:py-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-green-50 border border-green-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
+              <p className="text-xs sm:text-sm text-green-600 font-medium">Total Income</p>
+              <p className="text-base sm:text-xl font-bold text-green-700 mt-0.5">Rs.{(summary.income / 100).toFixed(2)}</p>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Sort:</span>
-              <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="input-field max-w-[140px]">
-                <option value="">Default</option>
-                {(SORT_OPTIONS[tab] || []).map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="input-field max-w-[100px]">
-                <option value="desc">Desc</option>
-                <option value="asc">Asc</option>
-              </select>
+            <div className="bg-red-50 border border-red-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
+              <p className="text-xs sm:text-sm text-red-600 font-medium">Total Expense</p>
+              <p className="text-base sm:text-xl font-bold text-red-700 mt-0.5">Rs.{(summary.expense / 100).toFixed(2)}</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl py-3 sm:py-4 flex flex-col items-center justify-center">
+              <p className="text-xs sm:text-sm text-blue-600 font-medium">Balance</p>
+              <p className={`text-base sm:text-xl font-bold mt-0.5 ${summary.income >= summary.expense ? 'text-blue-700' : 'text-red-700'}`}>
+                Rs.{((summary.income - summary.expense) / 100).toFixed(2)}
+              </p>
             </div>
           </div>
+        </div>
+      )}
 
-          {tab === 'balance' && (
-            <div className="flex gap-3 items-center text-sm">
-              <span className="text-gray-500">Filter:</span>
-              <select value={entryType} onChange={e => setEntryType(e.target.value)} className="input-field max-w-[130px]">
-                <option value="">All Types</option>
-                <option value="IN">IN (Income)</option>
-                <option value="OUT">OUT (Expense)</option>
-              </select>
-              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="input-field max-w-[130px]">
-                <option value="">All Methods</option>
-                <option value="cash">Cash</option>
-                <option value="online">Online</option>
+      <ResponsiveTable
+        columns={columns}
+        data={data}
+        keyField="id"
+        mobilePrimary={getMobilePrimary()}
+        mobileSecondary={getMobileSecondary()}
+        onRowClick={(r) => setSelectedRecord(r)}
+        emptyMessage="No data found"
+        loading={loading}
+        header={
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {tab !== 'balance' && (
+              <div className="w-full sm:w-auto">
+                <input type="text" placeholder="Search by name, email, phone..." value={search} onChange={e => setSearch(e.target.value)} className="input-field w-full sm:max-w-[180px] text-sm" />
+              </div>
+            )}
+            <div className="w-full sm:w-auto flex items-center gap-2">
+              <span className="text-gray-500 shrink-0">Period:</span>
+              <select value={period} onChange={e => handlePeriod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[150px]">
+                {PERIODS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
               </select>
             </div>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {(Columns[tab] || []).map(col => (
-                  <th key={col} className="table-header">{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {loading ? (
-                <tr><td colSpan={Columns[tab]?.length || 6} className="table-cell text-center text-gray-400 py-8">Loading...</td></tr>
-              ) : data.length === 0 ? (
-                <tr><td colSpan={Columns[tab]?.length || 6} className="table-cell text-center text-gray-400 py-8">No data found</td></tr>
-              ) : (
-                data.map((row, i) => (
-                  <tr key={row.id || i} className="hover:bg-gray-50 transition-colors">
-                    {tab === 'customers' || tab === 'suppliers' ? (
-                      <>
-                        <td className="table-cell font-medium">{row.name || '-'}</td>
-                        <td className="table-cell">{row.email || '-'}</td>
-                        <td className="table-cell">{formatPhone(row.phone) || '-'}</td>
-                        <td className="table-cell text-gray-500 max-w-[200px] truncate">{row.address || '-'}</td>
-                        <td className="table-cell">{row.gstin || '-'}</td>
-                        <td className="table-cell text-gray-500">{row.created_at ? row.created_at.split('T')[0] : '-'}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="table-cell text-gray-500">{row.entry_date ? row.entry_date.split('T')[0] : '-'}</td>
-                        <td className="table-cell"><span className={row.type === 'IN' ? 'badge-success' : 'badge-danger'}>{row.type}</span></td>
-                        <td className="table-cell capitalize">{row.payment_method}</td>
-                        <td className={`table-cell font-semibold ${row.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                          {row.type === 'IN' ? '+' : '-'}Rs.{(row.amount / 100).toFixed(2)}
-                        </td>
-                        <td className="table-cell text-gray-500 max-w-[200px] truncate">{row.description || '-'}</td>
-                        <td className="table-cell text-gray-500">{row.first_name ? `${row.first_name} ${row.last_name}` : '-'}</td>
-                      </>
-                    )}
-                  </tr>
-                ))
+            <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
+              <span className="text-gray-500 shrink-0">From:</span>
+              <input type="date" value={startDate} onChange={e => { setPeriod(''); setStartDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+              <span className="text-gray-500 shrink-0">To:</span>
+              <input type="date" value={endDate} onChange={e => { setPeriod(''); setEndDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+              {(startDate || endDate) && (
+                <button onClick={() => { setPeriod('this_month'); const { start, end } = calcPeriod('this_month'); setStartDate(start); setEndDate(end); }} className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0 whitespace-nowrap">Clear</button>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+            {tab === 'balance' && (
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
+                <select value={entryType} onChange={e => setEntryType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+                  <option value="">All Types</option>
+                  <option value="IN">IN (Income)</option>
+                  <option value="OUT">OUT (Expense)</option>
+                </select>
+                <span className="text-gray-500 shrink-0 hidden sm:inline">Method:</span>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+                  <option value="">All Methods</option>
+                  <option value="cash">Cash</option>
+                  <option value="online">Online</option>
+                </select>
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      {isMobile && (
+        <BottomSheet
+          open={!!selectedRecord}
+          onClose={() => setSelectedRecord(null)}
+          title={
+            selectedRecord
+              ? (selectedRecord.name || (selectedRecord.entry_date ? selectedRecord.entry_date.split('T')[0] : 'Details'))
+              : 'Details'
+          }
+          actions={null}
+        >
+          {selectedRecord && (
+            <div className="space-y-3">
+              {(tab === 'customers' || tab === 'suppliers') ? (
+                <>
+                  <DetailRow label="Name" value={selectedRecord.name} />
+                  <DetailRow label="Email" value={selectedRecord.email} />
+                  <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
+                  <DetailRow label="Address" value={selectedRecord.address} />
+                  <DetailRow label="GSTIN" value={selectedRecord.gstin} />
+                  <DetailRow label="Created At" value={selectedRecord.created_at ? selectedRecord.created_at.split('T')[0] : '-'} />
+                </>
+              ) : (
+                <>
+                  <DetailRow label="Date" value={selectedRecord.entry_date ? selectedRecord.entry_date.split('T')[0] : '-'} />
+                  <DetailRow label="Type">
+                    <span className={selectedRecord.type === 'IN' ? 'badge-success' : 'badge-danger'}>{selectedRecord.type}</span>
+                  </DetailRow>
+                  <DetailRow label="Method" value={selectedRecord.payment_method} />
+                  <DetailRow label="Amount">
+                    <span className={`font-semibold ${selectedRecord.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                      {selectedRecord.type === 'IN' ? '+' : '-'}Rs.{(selectedRecord.amount / 100).toFixed(2)}
+                    </span>
+                  </DetailRow>
+                  <DetailRow label="Description" value={selectedRecord.description || '-'} />
+                  <DetailRow label="Added By" value={selectedRecord.first_name ? `${selectedRecord.first_name} ${selectedRecord.last_name}` : '-'} />
+                </>
+              )}
+            </div>
+          )}
+        </BottomSheet>
+      )}
     </div>
   );
 };
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default Reports;

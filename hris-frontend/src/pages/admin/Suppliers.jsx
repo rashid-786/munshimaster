@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import ConfirmModal from '../../components/ConfirmModal';
 import { formatPhone } from '../../utils/currency';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', payment_terms: '', notes: '' };
 
 const Suppliers = () => {
+  const isMobile = useIsMobile();
   const [suppliers, setSuppliers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -17,6 +21,7 @@ const Suppliers = () => {
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
   const limit = 15;
 
   const fetch = useCallback(async () => {
@@ -29,7 +34,7 @@ const Suppliers = () => {
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setShowForm(true); };
 
-  const openEdit = (s) => { setEditing(s.id); setForm(s); setShowForm(true); };
+  const openEdit = (s) => { setEditing(s.id); setForm(s); setShowForm(true); setSelectedRecord(null); };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -99,6 +104,27 @@ const Suppliers = () => {
 
   const totalPages = Math.ceil(total / limit);
 
+  const columns = [
+    { key: 'name', label: 'Name', render: (v) => <span className="font-medium">{v}</span> },
+    { key: 'contact_person', label: 'Contact', render: (v) => <span className="text-gray-500">{v || '—'}</span> },
+    { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
+    { key: 'email', label: 'Email', render: (v) => v || '—' },
+    { key: 'city', label: 'City', render: (v) => v || '—' },
+    { key: 'gstin', label: 'GSTIN', render: (v) => <span className="text-xs font-mono">{v || '—'}</span> },
+    { key: 'status', label: 'Status', render: (v) => <span className={v === 'active' ? 'badge-success' : 'badge-danger'}>{v}</span> },
+    { key: 'actions', label: 'Actions', render: (_, s) => (
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+        {s.status === 'active' ? (
+          <button onClick={(e) => { e.stopPropagation(); handleDeactivate(s.id, s.name); }} className="btn-warning !py-1 !px-3 text-xs">Deactivate</button>
+        ) : (
+          <button onClick={(e) => { e.stopPropagation(); handleActivate(s.id); }} className="btn-success !py-1 !px-3 text-xs">Activate</button>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id, s.name); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+      </div>
+    )},
+  ];
+
   return (
     <div className="space-y-4">
       {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
@@ -111,69 +137,23 @@ const Suppliers = () => {
         <button onClick={openCreate} className="btn-primary">+ Add Supplier</button>
       </div>
 
-      <div className="card">
-        <div className="p-4 border-b border-gray-100">
+      <ResponsiveTable
+        columns={columns}
+        data={suppliers}
+        keyField="id"
+        mobilePrimary="name"
+        mobileSecondary="status"
+        onRowClick={(s) => setSelectedRecord(s)}
+        emptyMessage="No suppliers found"
+        header={
           <input type="text" placeholder="Search by name, contact, email or phone..."
             value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="input-field max-w-md" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header">Name</th>
-                <th className="table-header">Contact</th>
-                <th className="table-header">Phone</th>
-                <th className="table-header">Email</th>
-                <th className="table-header">City</th>
-                <th className="table-header">GSTIN</th>
-                <th className="table-header">Status</th>
-                <th className="table-header text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {suppliers.map(s => (
-                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="table-cell font-medium">{s.name}</td>
-                  <td className="table-cell text-gray-500">{s.contact_person || '—'}</td>
-                  <td className="table-cell">{formatPhone(s.phone) || '—'}</td>
-                  <td className="table-cell">{s.email || '—'}</td>
-                  <td className="table-cell">{s.city || '—'}</td>
-                  <td className="table-cell text-xs font-mono">{s.gstin || '—'}</td>
-                  <td className="table-cell">
-                    <span className={s.status === 'active' ? 'badge-success' : 'badge-danger'}>{s.status}</span>
-                  </td>
-                  <td className="table-cell text-right">
-                    <div className="flex gap-1.5 justify-end">
-                      <button onClick={() => openEdit(s)} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-                      {s.status === 'active' ? (
-                        <button onClick={() => handleDeactivate(s.id, s.name)} className="btn-warning !py-1 !px-3 text-xs">Deactivate</button>
-                      ) : (
-                        <button onClick={() => handleActivate(s.id)} className="btn-success !py-1 !px-3 text-xs">Activate</button>
-                      )}
-                      <button onClick={() => handleDelete(s.id, s.name)} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {suppliers.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">No suppliers found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
-            <span className="text-sm text-gray-500">{total} total</span>
-            <div className="flex gap-2">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-secondary text-xs px-3 py-1">Prev</button>
-              <span className="text-sm text-gray-600 self-center">Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="btn-secondary text-xs px-3 py-1">Next</button>
-            </div>
-          </div>
-        )}
-      </div>
+            className="input-field" />
+        }
+        total={total} page={page} totalPages={totalPages}
+        onPrevPage={() => setPage(p => p - 1)}
+        onNextPage={() => setPage(p => p + 1)}
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -260,8 +240,75 @@ const Suppliers = () => {
         onConfirm={modal?.onConfirm || (() => {})}
         onCancel={() => setModal(null)}
       />
+
+      {isMobile && (
+        <BottomSheet
+          open={!!selectedRecord}
+          onClose={() => setSelectedRecord(null)}
+          title={selectedRecord?.name || 'Supplier Details'}
+          actions={
+            <>
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
+                className="flex-1 btn-primary justify-center"
+              >
+                Edit
+              </button>
+              {selectedRecord?.status === 'active' ? (
+                <button
+                  onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, r.name); }}
+                  className="flex-1 btn-warning justify-center"
+                >
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }}
+                  className="flex-1 btn-success justify-center"
+                >
+                  Activate
+                </button>
+              )}
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, r.name); }}
+                className="flex-1 btn-danger justify-center"
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          {selectedRecord && (
+            <div className="space-y-3">
+              <DetailRow label="Name" value={selectedRecord.name} />
+              <DetailRow label="Contact Person" value={selectedRecord.contact_person} />
+              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
+              <DetailRow label="Email" value={selectedRecord.email} />
+              <DetailRow label="City" value={selectedRecord.city} />
+              <DetailRow label="State" value={selectedRecord.state} />
+              <DetailRow label="Pincode" value={selectedRecord.pincode} />
+              <DetailRow label="GSTIN" value={selectedRecord.gstin} />
+              <DetailRow label="Status">
+                <span className={selectedRecord.status === 'active' ? 'badge-success' : 'badge-danger'}>{selectedRecord.status}</span>
+              </DetailRow>
+              <DetailRow label="Payment Terms" value={selectedRecord.payment_terms} />
+              <DetailRow label="Address" value={selectedRecord.address} />
+              <DetailRow label="Notes" value={selectedRecord.notes} />
+            </div>
+          )}
+        </BottomSheet>
+      )}
     </div>
   );
 };
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default Suppliers;

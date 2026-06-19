@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const PayrollConsole = () => {
+  const isMobile = useIsMobile();
   const [payPeriod, setPayPeriod] = useState({ startDate: '', endDate: '' });
   const [history, setHistory] = useState([]);
   const [message, setMessage] = useState('');
   const [payrun, setPayrun] = useState(null);
+  const [selectedPayrun, setSelectedPayrun] = useState(null);
+  const [selectedHistory, setSelectedHistory] = useState(null);
 
   useEffect(() => {
     hrService.getPayrollHistory().then(setHistory).catch(() => {});
@@ -24,6 +30,31 @@ const PayrollConsole = () => {
     }
   };
 
+  const payrunColumns = [
+    { key: 'employeeName', label: 'Employee', render: (v) => <span className="font-medium">{v}</span> },
+    { key: 'hourlyRate', label: 'Rate', render: (v) => <>₹{v}/hr</> },
+    { key: 'hoursWorked', label: 'Worked', render: (v) => <>{v}h</> },
+    { key: 'standardHours', label: 'Std Hrs', render: (v) => <>{v}h</> },
+    { key: 'gross', label: 'Gross', render: (v) => formatINR(Math.round(parseFloat(v) * 100)) },
+    { key: 'deductions', label: 'Deductions', render: (v) => <span className="text-red-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> },
+    { key: 'advanceDeduction', label: 'Adv. Ded.', render: (v) => v && parseFloat(v) > 0 ? <span className="text-orange-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> : <span>-</span> },
+    { key: 'net', label: 'Net', render: (v) => <span className="font-bold text-emerald-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> },
+  ];
+
+  const historyColumns = [
+    { key: 'employee_name', label: 'Employee', render: (_, r) => <span className="font-medium">{r.first_name} {r.last_name}</span> },
+    { key: 'period', label: 'Period', render: (_, r) => <span className="text-gray-500">{(r.pay_period_start || '').split('T')[0]} to {(r.pay_period_end || '').split('T')[0]}</span> },
+    { key: 'hourly_rate', label: 'Rate', render: (v) => <>₹{(v / 100).toFixed(2)}/hr</> },
+    { key: 'hours', label: 'Hrs', render: (_, r) => <>{r.total_hours_worked}h / {r.standard_hours}h</> },
+    { key: 'gross_salary', label: 'Gross', render: (v) => formatINR(v) },
+    { key: 'deductions', label: 'Deductions', render: (v) => <span className="text-red-600">{formatINR(v)}</span> },
+    { key: 'advance_deduction', label: 'Adv. Ded.', render: (v) => v ? <span className="text-orange-600">{formatINR(v)}</span> : <span>-</span> },
+    { key: 'net_salary', label: 'Net', render: (v) => <span className="font-bold text-emerald-600">{formatINR(v)}</span> },
+    { key: 'status', label: 'Status', render: () => <span className="badge-success">Paid</span> },
+  ];
+
+  const payrunData = payrun?.runs?.map((r, i) => ({ ...r, _key: String(i) })) || [];
+
   return (
     <div className="space-y-6">
       {message && (
@@ -34,40 +65,17 @@ const PayrollConsole = () => {
       )}
 
       {payrun && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-semibold text-gray-900">Payroll Results</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="table-header">Employee</th>
-                  <th className="table-header">Rate</th>
-                  <th className="table-header">Worked</th>
-                  <th className="table-header">Std Hrs</th>
-                  <th className="table-header">Gross</th>
-                  <th className="table-header">Deductions</th>
-                  <th className="table-header">Adv. Ded.</th>
-                  <th className="table-header">Net</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {payrun.runs?.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50 transition-colors">
-                    <td className="table-cell font-medium">{r.employeeName}</td>
-                    <td className="table-cell">₹{r.hourlyRate}/hr</td>
-                    <td className="table-cell">{r.hoursWorked}h</td>
-                    <td className="table-cell">{r.standardHours}h</td>
-                    <td className="table-cell">{formatINR(Math.round(parseFloat(r.gross) * 100))}</td>
-                    <td className="table-cell text-red-600">{formatINR(Math.round(parseFloat(r.deductions) * 100))}</td>
-                    <td className="table-cell text-orange-600">{r.advanceDeduction && parseFloat(r.advanceDeduction) > 0 ? formatINR(Math.round(parseFloat(r.advanceDeduction) * 100)) : '-'}</td>
-                    <td className="table-cell font-bold text-emerald-600">{formatINR(Math.round(parseFloat(r.net) * 100))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Payroll Results</h3>
+          <ResponsiveTable
+            columns={payrunColumns}
+            data={payrunData}
+            keyField="_key"
+            mobilePrimary="employeeName"
+            mobileSecondary="net"
+            onRowClick={(r) => setSelectedPayrun(r)}
+            emptyMessage="No results"
+          />
         </div>
       )}
 
@@ -91,48 +99,90 @@ const PayrollConsole = () => {
         </form>
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <h3 className="text-lg font-semibold text-gray-900">Payroll History</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header">Employee</th>
-                <th className="table-header">Period</th>
-                <th className="table-header">Rate</th>
-                <th className="table-header">Hrs</th>
-                <th className="table-header">Gross</th>
-                <th className="table-header">Deductions</th>
-                <th className="table-header">Adv. Ded.</th>
-                <th className="table-header">Net</th>
-                <th className="table-header">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {history.map(slip => (
-                <tr key={slip.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="table-cell font-medium">{slip.first_name} {slip.last_name}</td>
-                  <td className="table-cell text-gray-500">{(slip.pay_period_start || '').split('T')[0]} to {(slip.pay_period_end || '').split('T')[0]}</td>
-                  <td className="table-cell">₹{(slip.hourly_rate / 100).toFixed(2)}/hr</td>
-                  <td className="table-cell">{slip.total_hours_worked}h / {slip.standard_hours}h</td>
-                  <td className="table-cell">{formatINR(slip.gross_salary)}</td>
-                  <td className="table-cell text-red-600">{formatINR(slip.deductions)}</td>
-                  <td className="table-cell text-orange-600">{slip.advance_deduction ? formatINR(slip.advance_deduction) : '-'}</td>
-                  <td className="table-cell font-bold text-emerald-600">{formatINR(slip.net_salary)}</td>
-                  <td className="table-cell"><span className="badge-success">Paid</span></td>
-                </tr>
-              ))}
-              {history.length === 0 && (
-                <tr><td colSpan={9} className="table-cell text-center text-gray-400 py-8">No payroll history</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Payroll History</h3>
+        <ResponsiveTable
+          columns={historyColumns}
+          data={history}
+          keyField="id"
+          mobilePrimary="employee_name"
+          mobileSecondary="net_salary"
+          onRowClick={(r) => setSelectedHistory(r)}
+          emptyMessage="No payroll history"
+        />
       </div>
+
+      {isMobile && (
+        <BottomSheet
+          open={!!selectedPayrun}
+          onClose={() => setSelectedPayrun(null)}
+          title={selectedPayrun?.employeeName || 'Payroll Details'}
+          actions={null}
+        >
+          {selectedPayrun && (
+            <div className="space-y-3">
+              <DetailRow label="Employee" value={selectedPayrun.employeeName} />
+              <DetailRow label="Hourly Rate" value={`₹${selectedPayrun.hourlyRate}/hr`} />
+              <DetailRow label="Hours Worked" value={`${selectedPayrun.hoursWorked}h`} />
+              <DetailRow label="Standard Hours" value={`${selectedPayrun.standardHours}h`} />
+              <DetailRow label="Gross" value={formatINR(Math.round(parseFloat(selectedPayrun.gross) * 100))} />
+              <DetailRow label="Deductions">
+                <span className="text-red-600">{formatINR(Math.round(parseFloat(selectedPayrun.deductions) * 100))}</span>
+              </DetailRow>
+              <DetailRow label="Adv. Deduction">
+                {selectedPayrun.advanceDeduction && parseFloat(selectedPayrun.advanceDeduction) > 0 ? (
+                  <span className="text-orange-600">{formatINR(Math.round(parseFloat(selectedPayrun.advanceDeduction) * 100))}</span>
+                ) : '—'}
+              </DetailRow>
+              <DetailRow label="Net">
+                <span className="font-bold text-emerald-600">{formatINR(Math.round(parseFloat(selectedPayrun.net) * 100))}</span>
+              </DetailRow>
+            </div>
+          )}
+        </BottomSheet>
+      )}
+
+      {isMobile && (
+        <BottomSheet
+          open={!!selectedHistory}
+          onClose={() => setSelectedHistory(null)}
+          title={selectedHistory ? `${selectedHistory.first_name} ${selectedHistory.last_name}` : 'Payroll Details'}
+          actions={null}
+        >
+          {selectedHistory && (
+            <div className="space-y-3">
+              <DetailRow label="Employee" value={`${selectedHistory.first_name} ${selectedHistory.last_name}`} />
+              <DetailRow label="Period" value={`${(selectedHistory.pay_period_start || '').split('T')[0]} to ${(selectedHistory.pay_period_end || '').split('T')[0]}`} />
+              <DetailRow label="Rate" value={`₹${(selectedHistory.hourly_rate / 100).toFixed(2)}/hr`} />
+              <DetailRow label="Hours" value={`${selectedHistory.total_hours_worked}h / ${selectedHistory.standard_hours}h`} />
+              <DetailRow label="Gross" value={formatINR(selectedHistory.gross_salary)} />
+              <DetailRow label="Deductions">
+                <span className="text-red-600">{formatINR(selectedHistory.deductions)}</span>
+              </DetailRow>
+              <DetailRow label="Adv. Deduction">
+                {selectedHistory.advance_deduction ? <span className="text-orange-600">{formatINR(selectedHistory.advance_deduction)}</span> : '—'}
+              </DetailRow>
+              <DetailRow label="Net">
+                <span className="font-bold text-emerald-600">{formatINR(selectedHistory.net_salary)}</span>
+              </DetailRow>
+              <DetailRow label="Status">
+                <span className="badge-success">Paid</span>
+              </DetailRow>
+            </div>
+          )}
+        </BottomSheet>
+      )}
     </div>
   );
 };
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default PayrollConsole;

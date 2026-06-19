@@ -72,6 +72,7 @@ const pageTitles = {
   '/admin/balance': 'My Business',
   '/admin/reports': 'My Business',
   '/admin/settings': 'Settings',
+  '/admin/ledger': 'My Ledger Book',
   '/admin/ledger/buyers': 'My Ledger Book',
   '/admin/ledger/sellers': 'My Ledger Book',
   '/admin/ledger/staff': 'My Ledger Book',
@@ -116,6 +117,9 @@ export default function AdminLayout() {
 
   useEffect(() => {
     hrService.getProfileCompletion().then(setProfileCompletion).catch(() => {});
+  }, [location.pathname]);
+
+  useEffect(() => {
     hrService.getTenantSettings().then(res => {
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       localStorage.setItem('hidden_groups', JSON.stringify(res.settings?.hiddenGroups || {}));
@@ -123,7 +127,7 @@ export default function AdminLayout() {
       const cached = localStorage.getItem('hidden_groups');
       if (cached) setHiddenGroups(JSON.parse(cached));
     });
-  }, [location.pathname]);
+  }, []);
 
   const toggleGroup = (label) => setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }));
   const handleLogout = () => { logout(); navigate('/login'); };
@@ -175,23 +179,25 @@ export default function AdminLayout() {
                   )}
                 </button>
                 {!isLocked && (
-                  <div className={`overflow-hidden transition-all duration-200 ${openGroups[group.label] ? 'max-h-96 opacity-100 mt-0.5' : 'max-h-0 opacity-0'}`}>
-                    <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-0.5">
-                      {group.items.map((item) => {
-                        const isActive = location.pathname === item.to;
-                        return (
-                          <NavLink
-                            key={item.to}
-                            to={item.to}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`block relative px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                              isActive ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {item.label}
-                          </NavLink>
-                        );
-                      })}
+                  <div className={`grid transition-all duration-300 ease-in-out ${openGroups[group.label] ? 'grid-rows-[1fr] opacity-100 mt-0.5' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden min-h-0">
+                      <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-0.5">
+                        {group.items.map((item) => {
+                          const isActive = location.pathname === item.to;
+                          return (
+                            <NavLink
+                              key={item.to}
+                              to={item.to}
+                              onClick={() => setSidebarOpen(false)}
+                              className={`block relative px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                                isActive ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              {item.label}
+                            </NavLink>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -245,10 +251,8 @@ export default function AdminLayout() {
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden animate-fade-in">
           <div className="fixed inset-0 bg-black/30" onClick={() => setSidebarOpen(false)} />
-          <div className="fixed inset-y-0 left-0 w-64 z-50 shadow-2xl animate-slide-up">
-            <div onClick={() => setSidebarOpen(false)}>
-              {sidebar}
-            </div>
+          <div className="fixed inset-y-0 left-0 w-64 z-50 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            {sidebar}
           </div>
         </div>
       )}

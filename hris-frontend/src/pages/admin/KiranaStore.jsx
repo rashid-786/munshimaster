@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR, formatPhone } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const INNER_TABS = [
   { key: 'buyers', label: 'Buyers' },
@@ -12,9 +15,17 @@ const INNER_TABS = [
   { key: 'reports', label: 'Reports' },
 ];
 
+const DetailRow = ({ label, value }) => (
+  <div className="flex items-center justify-between py-1.5">
+    <span className="text-sm text-gray-500">{label}</span>
+    <span className="text-sm font-medium text-gray-900 text-right ml-2">{value || '—'}</span>
+  </div>
+);
+
 const KiranaStore = () => {
   const { tab: urlTab } = useParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState(urlTab || 'buyers');
   const [partyType, setPartyType] = useState(urlTab === 'sellers' ? 'seller' : 'buyer');
   const [parties, setParties] = useState([]);
@@ -44,6 +55,13 @@ const KiranaStore = () => {
   const [cashForm, setCashForm] = useState({ type: 'IN', category: '', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
   const [cashAttachments, setCashAttachments] = useState({});
   const [cashUploadFiles, setCashUploadFiles] = useState([]);
+
+  // Mobile state
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [mobileTxForm, setMobileTxForm] = useState({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [selectedCash, setSelectedCash] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
 
   const fetchParties = useCallback(async () => {
     try {
@@ -211,6 +229,160 @@ const KiranaStore = () => {
     setModal(null);
   };
 
+  // Mobile handlers
+  const handlePartyRowClick = async (party) => {
+    if (!isMobile) {
+      openDetail(party);
+      return;
+    }
+    try {
+      const data = await hrService.kirana.getPartyDetails(party.id);
+      setSelectedParty(data);
+      setMobileTxForm({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+    } catch {}
+  };
+
+  const handleMobileAddTx = async (e) => {
+    e.preventDefault();
+    if (!selectedParty) return;
+    setSaving(true);
+    try {
+      await hrService.kirana.createTransaction({ partyId: selectedParty.party.id, ...mobileTxForm });
+      setMobileTxForm({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+      const data = await hrService.kirana.getPartyDetails(selectedParty.party.id);
+      setSelectedParty(data);
+      fetchParties();
+      fetchSummary();
+    } catch (err) { setMessage(err.response?.data?.error || 'Failed.'); }
+    setSaving(false);
+  };
+
+  const handleMobileDeleteTx = async (id) => {
+    try {
+      await hrService.kirana.deleteTransaction(id);
+      if (selectedParty) {
+        const data = await hrService.kirana.getPartyDetails(selectedParty.party.id);
+        setSelectedParty(data);
+      }
+      fetchParties();
+      fetchSummary();
+    } catch {}
+    setModal(null);
+  };
+
+  const handleStaffRowClick = (s) => {
+    if (!isMobile) return;
+    setSelectedStaff(s);
+  };
+
+  const handleCashRowClick = (entry) => {
+    if (!isMobile) return;
+    setSelectedCash(entry);
+    if (!cashAttachments[entry.id]) loadCashAttachments(entry.id);
+  };
+
+  const handleReportRowClick = (r) => {
+    if (!isMobile) return;
+    setSelectedReport(r);
+  };
+
+  // Column definitions
+  const partyColumns = [
+    { key: 'name', label: 'Party', render: (v, p) => (
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">{p.name?.charAt(0)?.toUpperCase()}</div>
+        <span className="font-medium">{v}</span>
+      </div>
+    )},
+    { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
+    { key: 'balance', label: 'Balance', render: (_, p) => (
+      <span className={`font-semibold ${p.balance <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full ${p.balance <= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          {p.balance <= 0 ? `You will get ${formatINR(Math.abs(p.balance))}` : `You will give ${formatINR(p.balance)}`}
+        </span>
+      </span>
+    )},
+  ];
+
+  const staffColumns = [
+    { key: 'name', label: 'Name', render: (v, s) => (
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">{s.name?.charAt(0)?.toUpperCase()}</div>
+        <span className="font-medium">{v}</span>
+      </div>
+    )},
+    { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '-' },
+    { key: 'role', label: 'Role', render: (v) => v || '-' },
+    { key: 'salary', label: 'Salary', render: (v) => v ? formatINR(v) : '-' },
+    { key: 'joined_at', label: 'Joined', render: (v) => <span className="text-gray-500">{v ? v.split('T')[0] : '-'}</span> },
+    { key: 'actions', label: 'Actions', render: (_, s) => (
+      <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+        <button onClick={() => openEditStaff(s)} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
+        <button onClick={() => setModal({ action: 'deleteStaff', id: s.id })} className="text-sm text-red-600 hover:text-red-800">Delete</button>
+      </div>
+    )},
+  ];
+
+  const cashbookColumns = [
+    { key: 'entry_date', label: 'Date', render: (v) => v ? v.split('T')[0] : '-' },
+    { key: 'type', label: 'Type', render: (v) => <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span> },
+    { key: 'category', label: 'Category', render: (v) => v || '—' },
+    { key: 'amount', label: 'Amount', render: (v, e) => (
+      <span className={`font-semibold ${e.type === 'IN' ? 'text-emerald-600' : 'text-red-500'}`}>
+        {e.type === 'IN' ? '+' : '-'}{formatINR(v)}
+      </span>
+    )},
+    { key: 'note', label: 'Note', render: (v) => <span className="max-w-[200px] truncate inline-block">{v || '—'}</span> },
+    { key: 'attachments', label: 'Attachments', render: (_, e) => (
+      <div className="flex items-center gap-1 flex-wrap" onClick={ev => ev.stopPropagation()}>
+        {(cashAttachments[e.id] || []).map(att => (
+          <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
+            <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate max-w-[80px]">{att.original_name}</a>
+            <button onClick={async () => { await hrService.deleteAttachment(att.id); loadCashAttachments(e.id); }} className="text-red-400 hover:text-red-600">&times;</button>
+          </span>
+        ))}
+        <button onClick={(ev) => { ev.stopPropagation(); const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = async (ev2) => { await hrService.uploadFiles('kirana_cashbook', e.id, Array.from(ev2.target.files), () => {}); loadCashAttachments(e.id); }; inp.click(); }} className="btn-ghost !py-1 !px-2 text-xs font-medium">+File</button>
+      </div>
+    )},
+    { key: 'actions', label: 'Actions', render: (_, e) => (
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={(ev) => { ev.stopPropagation(); openEditCash(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        </button>
+        <button onClick={(ev) => { ev.stopPropagation(); setModal({ action: 'deleteCash', id: e.id }); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </button>
+      </div>
+    )},
+  ];
+
+  // Reports columns (dynamic)
+  const partyReportColumns = [
+    { key: 'type', label: 'Type', render: (v) => <span className="capitalize">{v}</span> },
+    { key: 'name', label: 'Name' },
+    { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '-' },
+    { key: 'totalReceived', label: 'Total Received', render: (v) => <span className="text-green-600">{formatINR(v || 0)}</span> },
+    { key: 'totalGiven', label: 'Total Given', render: (v) => <span className="text-orange-600">{formatINR(v || 0)}</span> },
+    { key: 'balance', label: 'Balance', render: (v, r) => (
+      <span className={`font-bold ${(r.balance || 0) <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+        {formatINR(Math.abs(v || 0))}
+      </span>
+    )},
+  ];
+
+  const cashReportColumns = [
+    { key: 'entry_date', label: 'Date', render: (v) => v ? v.split('T')[0] : '-' },
+    { key: 'type', label: 'Type', render: (v) => <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span> },
+    { key: 'category', label: 'Category', render: (v) => v || '-' },
+    { key: 'amount', label: 'Amount', render: (v, r) => (
+      <span className={`font-semibold ${r.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+        {r.type === 'IN' ? '+' : '-'}{formatINR(v)}
+      </span>
+    )},
+    { key: 'note', label: 'Note', className: 'whitespace-normal', render: (v) => v || '-' },
+  ];
+
   // Render party detail sidebar/modal
   const renderDetail = () => {
     if (!detail) return null;
@@ -305,7 +477,7 @@ const KiranaStore = () => {
     report: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
   };
 
-  // Tab content: Buyers / Sellers (default dashboard)
+  // Tab content: Buyers / Sellers
   const renderDashboard = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -352,44 +524,15 @@ const KiranaStore = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200">
-                <th className="table-header">Party</th>
-                <th className="table-header">Phone</th>
-                <th className="table-header">Balance</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {parties.map(p => (
-                <tr key={p.id} onClick={() => openDetail(p)} className="table-row-hover cursor-pointer">
-                  <td className="table-cell">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
-                        {p.name?.charAt(0)?.toUpperCase()}
-                      </div>
-                      <span className="font-medium text-gray-900">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="table-cell text-gray-500">{formatPhone(p.phone) || '—'}</td>
-                  <td className={`table-cell font-semibold ${p.balance <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${p.balance <= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                      {p.balance <= 0 ? `You will get ${formatINR(Math.abs(p.balance))}` : `You will give ${formatINR(p.balance)}`}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {parties.length === 0 && (
-                <tr><td colSpan={3} className="table-cell text-center text-gray-400 py-12">
-                  <p className="text-base font-medium mb-1">No {partyType}s found</p>
-                  <p className="text-sm">Click "Add" to create your first {partyType}.</p>
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveTable
+          columns={partyColumns}
+          data={parties}
+          keyField="id"
+          onRowClick={handlePartyRowClick}
+          mobilePrimary="name"
+          mobileSecondary="phone"
+          emptyMessage={<><p className="text-base font-medium mb-1">No {partyType}s found</p><p className="text-sm">Click &ldquo;Add&rdquo; to create your first {partyType}.</p></>}
+        />
       </div>
 
       {showPartyForm && (
@@ -449,7 +592,7 @@ const KiranaStore = () => {
         </div>
       )}
 
-      {renderDetail()}
+      {!isMobile && renderDetail()}
     </div>
   );
 
@@ -460,39 +603,16 @@ const KiranaStore = () => {
         <h3 className="text-lg font-semibold text-gray-900">Staff</h3>
         <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', phone: '', role: '', salary: '', joinedAt: '' }); setShowStaffForm(true); }} className="btn-primary text-sm">+ Add Staff</button>
       </div>
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header">Name</th>
-                <th className="table-header">Phone</th>
-                <th className="table-header">Role</th>
-                <th className="table-header">Salary</th>
-                <th className="table-header">Joined</th>
-                <th className="table-header">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {staff.map(s => (
-                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="table-cell font-medium">{s.name}</td>
-                  <td className="table-cell">{formatPhone(s.phone) || '-'}</td>
-                  <td className="table-cell">{s.role || '-'}</td>
-                  <td className="table-cell">{s.salary ? formatINR(s.salary) : '-'}</td>
-                  <td className="table-cell text-gray-500">{s.joined_at ? s.joined_at.split('T')[0] : '-'}</td>
-                  <td className="table-cell">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditStaff(s)} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
-                      <button onClick={() => setModal({ action: 'deleteStaff', id: s.id })} className="text-sm text-red-600 hover:text-red-800">Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {staff.length === 0 && <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No staff added</td></tr>}
-            </tbody>
-          </table>
-        </div>
+      <div>
+        <ResponsiveTable
+          columns={staffColumns}
+          data={staff}
+          keyField="id"
+          onRowClick={handleStaffRowClick}
+          mobilePrimary="name"
+          mobileSecondary="role"
+          emptyMessage="No staff added"
+        />
       </div>
 
       {showStaffForm && (
@@ -562,70 +682,26 @@ const KiranaStore = () => {
         </div>
       </div>
 
-      <div className="card">
-        <div className="px-6 py-3 border-b border-gray-100 flex items-center gap-3">
-          <span className="text-sm text-gray-500">Filter by date:</span>
-          <input type="date" value={cashStart} onChange={e => setCashStart(e.target.value)} className="input-field max-w-[150px]" />
-          <span className="text-gray-400">—</span>
-          <input type="date" value={cashEnd} onChange={e => setCashEnd(e.target.value)} className="input-field max-w-[150px]" />
-          {(cashStart || cashEnd) && (
-            <button onClick={() => { setCashStart(''); setCashEnd(''); }} className="btn-ghost !py-1.5 !px-2.5 text-xs">Clear</button>
-          )}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200">
-                <th className="table-header">Date</th>
-                <th className="table-header">Type</th>
-                <th className="table-header">Category</th>
-                <th className="table-header">Amount</th>
-                <th className="table-header">Note</th>
-                <th className="table-header">Attachments</th>
-                <th className="table-header text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {cashEntries.map(e => (
-                <tr key={e.id} className="table-row-hover">
-                  <td className="table-cell text-gray-500">{e.entry_date ? e.entry_date.split('T')[0] : '-'}</td>
-                  <td className="table-cell"><span className={e.type === 'IN' ? 'badge-success' : 'badge-danger'}>{e.type}</span></td>
-                  <td className="table-cell text-gray-700">{e.category || '—'}</td>
-                  <td className={`table-cell font-semibold ${e.type === 'IN' ? 'text-emerald-600' : 'text-red-500'}`}>{e.type === 'IN' ? '+' : '-'}{formatINR(e.amount)}</td>
-                  <td className="table-cell text-gray-500 max-w-[200px] truncate">{e.note || '—'}</td>
-                  <td className="table-cell">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {(cashAttachments[e.id] || []).map(att => (
-                        <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
-                          <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate max-w-[80px]">{att.original_name}</a>
-                          <button onClick={async () => { await hrService.deleteAttachment(att.id); loadCashAttachments(e.id); }} className="text-red-400 hover:text-red-600">&times;</button>
-                        </span>
-                      ))}
-                      <button onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = async (ev) => { await hrService.uploadFiles('kirana_cashbook', e.id, Array.from(ev.target.files), () => {}); loadCashAttachments(e.id); }; inp.click(); }} className="btn-ghost !py-1 !px-2 text-xs font-medium">+File</button>
-                    </div>
-                  </td>
-                  <td className="table-cell text-right">
-                    <div className="flex gap-1.5 justify-end">
-                      <button onClick={() => openEditCash(e)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      </button>
-                      <button onClick={() => setModal({ action: 'deleteCash', id: e.id })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {cashEntries.length === 0 && (
-                <tr><td colSpan={7} className="table-cell text-center text-gray-400 py-12">
-                  <p className="text-base font-medium mb-1">No entries found</p>
-                  <p className="text-sm">Click "Add Entry" to record your first cash transaction.</p>
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <ResponsiveTable
+        columns={cashbookColumns}
+        data={cashEntries}
+        keyField="id"
+        onRowClick={handleCashRowClick}
+        mobilePrimary="amount"
+        mobileSecondary="category"
+        emptyMessage={<><p className="text-base font-medium mb-1">No entries found</p><p className="text-sm">Click &ldquo;Add Entry&rdquo; to record your first cash transaction.</p></>}
+        header={
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-gray-500">Filter by date:</span>
+            <input type="date" value={cashStart} onChange={e => setCashStart(e.target.value)} className="input-field max-w-[150px]" />
+            <span className="text-gray-400">—</span>
+            <input type="date" value={cashEnd} onChange={e => setCashEnd(e.target.value)} className="input-field max-w-[150px]" />
+            {(cashStart || cashEnd) && (
+              <button onClick={() => { setCashStart(''); setCashEnd(''); }} className="btn-ghost !py-1.5 !px-2.5 text-xs">Clear</button>
+            )}
+          </div>
+        }
+      />
 
       {showCashForm && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => { setShowCashForm(false); setEditingCash(null); }}>
@@ -661,10 +737,59 @@ const KiranaStore = () => {
   const [reportData, setReportData] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportDownloading, setReportDownloading] = useState('');
+  const [reportPeriod, setReportPeriod] = useState('this_month');
   const [reportStart, setReportStart] = useState('');
   const [reportEnd, setReportEnd] = useState('');
   const [reportEntryType, setReportEntryType] = useState('');
   const [reportPartyType, setReportPartyType] = useState('');
+
+  const fmtDate = (d) => d.toISOString().split('T')[0];
+
+  const handleReportPeriod = (value) => {
+    setReportPeriod(value);
+    if (!value) return;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    switch (value) {
+      case 'this_year':
+        setReportStart(`${y}-01-01`);
+        setReportEnd(`${y}-12-31`);
+        break;
+      case 'this_quarter': {
+        const qs = Math.floor(m / 3) * 3;
+        const qe = qs + 2;
+        const ed = new Date(y, qe + 1, 0);
+        setReportStart(`${y}-${String(qs + 1).padStart(2, '0')}-01`);
+        setReportEnd(fmtDate(ed));
+        break;
+      }
+      case 'this_month': {
+        const ed = new Date(y, m + 1, 0);
+        setReportStart(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+        setReportEnd(fmtDate(ed));
+        break;
+      }
+      case 'last_month': {
+        const sd = new Date(y, m - 1, 1);
+        const ed = new Date(y, m, 0);
+        setReportStart(fmtDate(sd));
+        setReportEnd(fmtDate(ed));
+        break;
+      }
+      case 'yesterday': {
+        const yd = new Date(now);
+        yd.setDate(yd.getDate() - 1);
+        setReportStart(fmtDate(yd));
+        setReportEnd(fmtDate(yd));
+        break;
+      }
+    }
+  };
+
+  useEffect(() => {
+    handleReportPeriod('this_month');
+  }, []);
 
   const reportParams = {
     type: reportTab === 'parties' ? 'kirana_party' : 'kirana_cashbook',
@@ -703,77 +828,59 @@ const KiranaStore = () => {
       </div>
 
       <div className="card">
-        <div className="p-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500">From:</span>
-            <input type="date" value={reportStart} onChange={e => setReportStart(e.target.value)} className="input-field max-w-[140px]" />
-            <span className="text-gray-500">To:</span>
-            <input type="date" value={reportEnd} onChange={e => setReportEnd(e.target.value)} className="input-field max-w-[140px]" />
+        <div className="border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-2 text-sm p-3">
+          <div className="w-full sm:w-auto flex items-center gap-2">
+            <span className="text-gray-500 shrink-0">Period:</span>
+            <select value={reportPeriod} onChange={e => handleReportPeriod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[150px]">
+              <option value="">Custom</option>
+              <option value="this_year">This Year</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="yesterday">Yesterday</option>
+            </select>
+          </div>
+          <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
+            <span className="text-gray-500 shrink-0">From:</span>
+            <input type="date" value={reportStart} onChange={e => { setReportPeriod(''); setReportStart(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+            <span className="text-gray-500 shrink-0">To:</span>
+            <input type="date" value={reportEnd} onChange={e => { setReportPeriod(''); setReportEnd(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+            {(reportStart || reportEnd || (reportTab === 'parties' ? reportPartyType : reportEntryType)) && (
+              <button onClick={() => { handleReportPeriod('this_month'); setReportEntryType(''); setReportPartyType(''); }} className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0 whitespace-nowrap">Clear</button>
+            )}
           </div>
           {reportTab === 'parties' ? (
-            <select value={reportPartyType} onChange={e => setReportPartyType(e.target.value)} className="input-field max-w-[120px]">
-              <option value="">All Parties</option>
-              <option value="buyer">Buyers</option>
-              <option value="seller">Sellers</option>
-            </select>
+            <div className="w-full sm:w-auto flex items-center gap-2">
+              <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
+              <select value={reportPartyType} onChange={e => setReportPartyType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+                <option value="">All Parties</option>
+                <option value="buyer">Buyers</option>
+                <option value="seller">Sellers</option>
+              </select>
+            </div>
           ) : (
-            <select value={reportEntryType} onChange={e => setReportEntryType(e.target.value)} className="input-field max-w-[120px]">
-              <option value="">All Types</option>
-              <option value="IN">IN</option>
-              <option value="OUT">OUT</option>
-            </select>
-          )}
-          {(reportStart || reportEnd || reportEntryType || reportPartyType) && (
-            <button onClick={() => { setReportStart(''); setReportEnd(''); setReportEntryType(''); setReportPartyType(''); }} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+            <div className="w-full sm:w-auto flex items-center gap-2">
+              <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
+              <select value={reportEntryType} onChange={e => setReportEntryType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+                <option value="">All Types</option>
+                <option value="IN">IN</option>
+                <option value="OUT">OUT</option>
+              </select>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {reportTab === 'parties' ? (
-                  <><th className="table-header">Type</th><th className="table-header">Name</th><th className="table-header">Phone</th><th className="table-header">Total Received</th><th className="table-header">Total Given</th><th className="table-header">Balance</th></>
-                ) : (
-                  <><th className="table-header">Date</th><th className="table-header">Type</th><th className="table-header">Category</th><th className="table-header">Amount</th><th className="table-header">Note</th></>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {reportLoading ? (
-                <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">Loading...</td></tr>
-              ) : reportData.length === 0 ? (
-                <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No data found</td></tr>
-              ) : reportTab === 'parties' ? (
-                reportData.map((r, i) => (
-                  <tr key={r.id || i} className="hover:bg-gray-50 transition-colors">
-                    <td className="table-cell capitalize">{r.type}</td>
-                    <td className="table-cell font-medium">{r.name}</td>
-                    <td className="table-cell">{formatPhone(r.phone) || '-'}</td>
-                    <td className="table-cell text-green-600">{formatINR(r.totalReceived || 0)}</td>
-                    <td className="table-cell text-orange-600">{formatINR(r.totalGiven || 0)}</td>
-                    <td className={`table-cell font-bold ${(r.balance || 0) <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatINR(Math.abs(r.balance || 0))}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                reportData.map((r, i) => (
-                  <tr key={r.id || i} className="hover:bg-gray-50 transition-colors">
-                    <td className="table-cell text-gray-500">{r.entry_date ? r.entry_date.split('T')[0] : '-'}</td>
-                    <td className="table-cell"><span className={r.type === 'IN' ? 'badge-success' : 'badge-danger'}>{r.type}</span></td>
-                    <td className="table-cell">{r.category || '-'}</td>
-                    <td className={`table-cell font-semibold ${r.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>{r.type === 'IN' ? '+' : '-'}{formatINR(r.amount)}</td>
-                    <td className="table-cell text-gray-500">{r.note || '-'}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <ResponsiveTable
+        columns={reportTab === 'parties' ? partyReportColumns : cashReportColumns}
+        data={reportData}
+        keyField="id"
+        onRowClick={handleReportRowClick}
+        mobilePrimary={reportTab === 'parties' ? 'name' : 'amount'}
+        mobileSecondary={reportTab === 'parties' ? 'balance' : 'entry_date'}
+        loading={reportLoading}
+        emptyMessage="No data found"
+      />
     </div>
   );
 
@@ -788,12 +895,12 @@ const KiranaStore = () => {
       )}
 
       <div className="border-b border-gray-200">
-        <div className="flex gap-0 -mb-px overflow-x-auto">
+        <div className="flex -mb-px">
           {INNER_TABS.map(t => (
             <button
               key={t.key}
               onClick={() => { navigate(`/admin/ledger/${t.key}`); if (t.key === 'buyers' || t.key === 'sellers') setPartyType(t.key === 'buyers' ? 'buyer' : 'seller'); }}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+              className={`px-2 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap transition-colors flex-1 sm:flex-none ${
                 tab === t.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -808,11 +915,153 @@ const KiranaStore = () => {
       {tab === 'cashbook' && renderCashbook()}
       {tab === 'reports' && renderReports()}
 
+      {/* Mobile BottomSheets */}
+      {isMobile && selectedParty && (
+        <BottomSheet open={true} onClose={() => setSelectedParty(null)} title={selectedParty.party.name}>
+          <p className="text-sm text-gray-500">{formatPhone(selectedParty.party.phone) || 'No phone'} &middot; {selectedParty.party.address || 'No address'}</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="card text-center p-2">
+              <p className="text-xs text-gray-500">Total Given</p>
+              <p className="text-sm font-bold text-orange-600">{formatINR(selectedParty.totalGiven)}</p>
+            </div>
+            <div className="card text-center p-2">
+              <p className="text-xs text-gray-500">Total Received</p>
+              <p className="text-sm font-bold text-green-600">{formatINR(selectedParty.totalReceived)}</p>
+            </div>
+            <div className="card text-center p-2">
+              <p className="text-xs text-gray-500">Balance</p>
+              <p className={`text-sm font-bold ${selectedParty.balance <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {selectedParty.balance <= 0 ? `You will get ${formatINR(Math.abs(selectedParty.balance))}` : `You will give ${formatINR(selectedParty.balance)}`}
+              </p>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h4 className="font-semibold text-gray-900">Add Transaction</h4></div>
+            <form onSubmit={handleMobileAddTx} className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                  <select value={mobileTxForm.type} onChange={e => setMobileTxForm({ ...mobileTxForm, type: e.target.value })} className="input-field text-sm" required>
+                    <option value="given">Given (Credit)</option>
+                    <option value="received">Received (Payment)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Amount</label>
+                  <input type="number" min="0.01" step="0.01" value={mobileTxForm.amount} onChange={e => setMobileTxForm({ ...mobileTxForm, amount: e.target.value })} className="input-field text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                  <input type="date" value={mobileTxForm.entryDate} onChange={e => setMobileTxForm({ ...mobileTxForm, entryDate: e.target.value })} className="input-field text-sm" required />
+                </div>
+                <div className="flex items-end">
+                  <button type="submit" disabled={saving} className="btn-primary text-sm w-full">{saving ? '...' : 'Add'}</button>
+                </div>
+              </div>
+              <div>
+                <input type="text" value={mobileTxForm.note} onChange={e => setMobileTxForm({ ...mobileTxForm, note: e.target.value })} className="input-field text-sm" placeholder="Note (optional)" />
+              </div>
+            </form>
+          </div>
+          <div className="card">
+            <div className="card-header"><h4 className="font-semibold text-gray-900">Transaction History</h4></div>
+            <div className="divide-y divide-gray-100">
+              {(selectedParty.transactions || []).length === 0 ? (
+                <p className="p-4 text-sm text-gray-400 text-center">No transactions</p>
+              ) : (
+                selectedParty.transactions.map(tx => (
+                  <div key={tx.id} className="p-3 flex items-center justify-between hover:bg-gray-50">
+                    <div className="flex-1">
+                      <p className={`text-sm font-semibold ${tx.type === 'received' ? 'text-green-600' : 'text-orange-600'}`}>
+                        {tx.type === 'received' ? 'Received' : 'Given'} &middot; {formatINR(tx.amount)}
+                      </p>
+                      <p className="text-xs text-gray-400">{tx.entry_date ? tx.entry_date.split('T')[0] : ''} {tx.note ? `- ${tx.note}` : ''}</p>
+                    </div>
+                    <button onClick={() => setModal({ action: 'mobileDeleteTx', id: tx.id })} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+
+      {isMobile && selectedStaff && (
+        <BottomSheet
+          open={true}
+          onClose={() => setSelectedStaff(null)}
+          title={selectedStaff.name}
+          actions={[
+            <button key="edit" onClick={() => { setSelectedStaff(null); openEditStaff(selectedStaff); }} className="btn-primary flex-1">Edit</button>,
+            <button key="delete" onClick={() => { setSelectedStaff(null); setModal({ action: 'deleteStaff', id: selectedStaff.id }); }} className="btn-secondary flex-1 !text-red-600 !border-red-200">Delete</button>,
+          ]}
+        >
+          <DetailRow label="Phone" value={formatPhone(selectedStaff.phone)} />
+          <DetailRow label="Role" value={selectedStaff.role || '—'} />
+          <DetailRow label="Salary" value={selectedStaff.salary ? formatINR(selectedStaff.salary) : '—'} />
+          <DetailRow label="Joined" value={selectedStaff.joined_at ? selectedStaff.joined_at.split('T')[0] : '—'} />
+        </BottomSheet>
+      )}
+
+      {isMobile && selectedCash && (
+        <BottomSheet
+          open={true}
+          onClose={() => setSelectedCash(null)}
+          title="Entry Details"
+          actions={[
+            <button key="edit" onClick={() => { setSelectedCash(null); openEditCash(selectedCash); }} className="btn-primary flex-1">Edit</button>,
+            <button key="delete" onClick={() => { setSelectedCash(null); setModal({ action: 'deleteCash', id: selectedCash.id }); }} className="btn-secondary flex-1 !text-red-600 !border-red-200">Delete</button>,
+          ]}
+        >
+          <DetailRow label="Date" value={selectedCash.entry_date ? selectedCash.entry_date.split('T')[0] : '-'} />
+          <DetailRow label="Type" value={selectedCash.type} />
+          <DetailRow label="Category" value={selectedCash.category || '—'} />
+          <DetailRow label="Amount" value={`${selectedCash.type === 'IN' ? '+' : '-'}${formatINR(selectedCash.amount)}`} />
+          <DetailRow label="Note" value={selectedCash.note || '—'} />
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments</h4>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(cashAttachments[selectedCash.id] || []).map(att => (
+                <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-2 py-1">
+                  <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{att.original_name}</a>
+                  <button onClick={async () => { await hrService.deleteAttachment(att.id); loadCashAttachments(selectedCash.id); }} className="text-red-400 hover:text-red-600 ml-1">&times;</button>
+                </span>
+              ))}
+              <button onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = async (ev) => { await hrService.uploadFiles('kirana_cashbook', selectedCash.id, Array.from(ev.target.files), () => {}); loadCashAttachments(selectedCash.id); }; inp.click(); }} className="btn-ghost !py-1 !px-2 text-xs font-medium">+File</button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+
+      {isMobile && selectedReport && (
+        <BottomSheet open={true} onClose={() => setSelectedReport(null)} title="Details">
+          {reportTab === 'parties' ? (
+            <>
+              <DetailRow label="Type" value={selectedReport.type} />
+              <DetailRow label="Name" value={selectedReport.name} />
+              <DetailRow label="Phone" value={formatPhone(selectedReport.phone)} />
+              <DetailRow label="Total Received" value={formatINR(selectedReport.totalReceived || 0)} />
+              <DetailRow label="Total Given" value={formatINR(selectedReport.totalGiven || 0)} />
+              <DetailRow label="Balance" value={formatINR(Math.abs(selectedReport.balance || 0))} />
+            </>
+          ) : (
+            <>
+              <DetailRow label="Date" value={selectedReport.entry_date ? selectedReport.entry_date.split('T')[0] : '-'} />
+              <DetailRow label="Type" value={selectedReport.type} />
+              <DetailRow label="Category" value={selectedReport.category || '—'} />
+              <DetailRow label="Amount" value={`${selectedReport.type === 'IN' ? '+' : '-'}${formatINR(selectedReport.amount)}`} />
+              <DetailRow label="Note" value={selectedReport.note || '—'} />
+            </>
+          )}
+        </BottomSheet>
+      )}
+
       {modal && (
         <ConfirmModal
           message="Are you sure you want to delete this?"
           onConfirm={() => {
             if (modal.action === 'deleteTx') handleDeleteTx(modal.id);
+            else if (modal.action === 'mobileDeleteTx') handleMobileDeleteTx(modal.id);
             else if (modal.action === 'deleteStaff') hrService.kirana.deleteStaff(modal.id).then(() => { fetchStaff(); setModal(null); });
             else if (modal.action === 'deleteCash') handleDeleteCash(modal.id);
             else setModal(null);

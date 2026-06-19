@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '' };
 const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '' };
@@ -10,6 +13,22 @@ const statusBadge = {
   draft: 'badge-info', sent: 'badge-warning', paid: 'badge-success',
   overdue: 'badge-danger', cancelled: 'badge-danger',
 };
+
+const columns = [
+  { key: 'invoice_number', label: 'Invoice #', render: (v) => <span className="font-medium text-indigo-600">{v}</span> },
+  { key: 'customer_name', label: 'Customer', render: (v) => v },
+  { key: 'date', label: 'Date', render: (_, r) => <span className="text-gray-500">{r.invoice_date?.split('T')[0]}</span> },
+  { key: 'due_date', label: 'Due Date', render: (_, r) => <span className="text-gray-500">{r.due_date?.split('T')[0] || '—'}</span> },
+  { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
+  { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
+  { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
+  { key: 'actions', label: 'Actions', render: (_, r) => (
+    <div className="flex gap-1.5 justify-end">
+      <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+      <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+    </div>
+  )},
+];
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -31,6 +50,10 @@ const Invoices = () => {
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [mobileDetail, setMobileDetail] = useState(null);
+  const [mobileAttachments, setMobileAttachments] = useState([]);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const isMobile = useIsMobile();
   const limit = 15;
 
   const fetch = useCallback(async () => {
@@ -50,6 +73,7 @@ const Invoices = () => {
     setEditing(null);
     setForm(emptyForm);
     setDetail(null);
+    setMobileDetail(null);
     setAttachmentFiles([]);
     setShowForm(true);
   };
@@ -57,6 +81,7 @@ const Invoices = () => {
   const openEdit = async (inv) => {
     setEditing(inv.id);
     setDetail(null);
+    setMobileDetail(null);
     setAttachmentFiles([]);
     try {
       const full = await hrService.getInvoice(inv.id);
@@ -142,6 +167,7 @@ const Invoices = () => {
     try {
       await hrService.updateInvoiceStatus(id, status);
       if (detail?.id === id) setDetail(prev => prev ? { ...prev, status } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, status } : null);
       fetch();
     } catch (err) { setError(err.response?.data?.error || 'Status update failed.'); }
   };
@@ -158,6 +184,7 @@ const Invoices = () => {
         try {
           await hrService.deleteInvoice(id);
           if (detail?.id === id) setDetail(null);
+          if (mobileDetail?.id === id) setMobileDetail(null);
           setModal(null);
           fetch();
         } catch (err) {
@@ -185,81 +212,48 @@ const Invoices = () => {
         <button onClick={openCreate} className="btn-primary">+ New Invoice</button>
       </div>
 
-      <div className="card">
-        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3">
-          <input type="text" placeholder="Search by invoice number or customer..."
-            value={search} onChange={e => { setSearch(e.target.value); setPage(1); setDetail(null); }}
-            className="input-field max-w-md" />
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); setDetail(null); }}
-            className="input-field max-w-[160px]">
-            <option value="">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
-
-        <div className="overflow-x-auto">
-            <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header">Invoice #</th>
-                <th className="table-header">Customer</th>
-                <th className="table-header">Date</th>
-                <th className="table-header">Due Date</th>
-                <th className="table-header text-right">Amount</th>
-                <th className="table-header">Status</th>
-                <th className="table-header text-center">Attachments</th>
-                <th className="table-header text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {invoices.map(inv => (
-                <tr key={inv.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${detail?.id === inv.id ? 'bg-indigo-50/50' : ''}`}
-                    onClick={() => viewDetail(inv)}>
-                  <td className="table-cell font-medium text-indigo-600">{inv.invoice_number}</td>
-                  <td className="table-cell">{inv.customer_name}</td>
-                  <td className="table-cell text-gray-500">{inv.invoice_date?.split('T')[0]}</td>
-                  <td className="table-cell text-gray-500">{inv.due_date?.split('T')[0] || '—'}</td>
-                  <td className="table-cell text-right font-medium">{formatINR(inv.total_amount)}</td>
-                  <td className="table-cell"><span className={statusBadge[inv.status]}>{inv.status}</span></td>
-                  <td className="table-cell text-center">
-                    {(inv.attachment_count || 0) > 0 && (
-                      <span className="text-indigo-600 hover:text-indigo-800 cursor-pointer" title={`${inv.attachment_count} attachment${inv.attachment_count > 1 ? 's' : ''}`}>
-                        📎 {inv.attachment_count}
-                      </span>
-                    )}
-                  </td>
-                  <td className="table-cell text-right" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-1.5 justify-end">
-                      <button onClick={() => openEdit(inv)} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-                      <button onClick={() => handleDelete(inv.id)} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {invoices.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">No invoices found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
-            <span className="text-sm text-gray-500">{total} total</span>
-            <div className="flex gap-2">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-secondary text-xs px-3 py-1">Prev</button>
-              <span className="text-sm text-gray-600 self-center">Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="btn-secondary text-xs px-3 py-1">Next</button>
-            </div>
+      <ResponsiveTable
+        columns={columns}
+        data={invoices}
+        keyField="id"
+        onRowClick={async (inv) => {
+          setSelectedRecord(inv);
+          if (isMobile) {
+            try {
+              const full = await hrService.getInvoice(inv.id);
+              setMobileDetail(full);
+              const atts = await hrService.getAttachments('invoice', inv.id);
+              setMobileAttachments(atts);
+            } catch { setError('Failed to load invoice details.'); }
+          } else {
+            viewDetail(inv);
+          }
+        }}
+        emptyMessage="No invoices found"
+        total={total}
+        page={page}
+        totalPages={totalPages}
+        onPrevPage={() => setPage(p => Math.max(1, p - 1))}
+        onNextPage={() => setPage(p => Math.min(totalPages, p + 1))}
+        header={
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input type="text" placeholder="Search by invoice number or customer..."
+              value={search} onChange={e => { setSearch(e.target.value); setPage(1); setDetail(null); setMobileDetail(null); }}
+              className="input-field max-w-md" />
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); setDetail(null); setMobileDetail(null); }}
+              className="input-field max-w-[160px]">
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
           </div>
-        )}
-      </div>
+        }
+      />
 
-      {detail && (
+      {!isMobile && detail && (
         <div className="card">
           <div className="card-header flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -360,6 +354,103 @@ const Invoices = () => {
           </div>
         </div>
       )}
+
+      <BottomSheet
+        open={!!mobileDetail}
+        onClose={() => setMobileDetail(null)}
+        title={mobileDetail?.invoice_number || 'Invoice Detail'}
+        actions={
+          <>
+            <button onClick={() => { if (mobileDetail) hrService.downloadInvoicePDF(mobileDetail.id); }}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1">PDF</button>
+            {mobileDetail?.status === 'draft' && (
+              <button onClick={() => handleStatus(mobileDetail.id, 'sent')} className="btn-primary text-xs px-3 py-1.5 flex-1">Sent</button>
+            )}
+            {(mobileDetail?.status === 'sent' || mobileDetail?.status === 'overdue') && (
+              <button onClick={() => handleStatus(mobileDetail.id, 'paid')} className="btn-primary text-xs px-3 py-1.5 flex-1">Paid</button>
+            )}
+            {mobileDetail?.status !== 'cancelled' && (
+              <button onClick={() => handleStatus(mobileDetail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5 flex-1">Cancel</button>
+            )}
+            <button onClick={() => { if (mobileDetail) openEdit({ id: mobileDetail.id }); }}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1">Edit</button>
+            <button onClick={() => { if (mobileDetail) handleDelete(mobileDetail.id); }}
+              className="btn-danger text-xs px-3 py-1.5 flex-1">Del</button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <DetailRow label="Customer" value={mobileDetail?.customer_name} />
+          {mobileDetail?.customer_gstin && <DetailRow label="GST" value={mobileDetail.customer_gstin} />}
+          {mobileDetail?.customer_email && <DetailRow label="Email" value={mobileDetail.customer_email} />}
+          {mobileDetail?.customer_phone && <DetailRow label="Phone" value={mobileDetail.customer_phone} />}
+          <DetailRow label="Invoice Date" value={mobileDetail?.invoice_date?.split('T')[0]} />
+          <DetailRow label="Due Date" value={mobileDetail?.due_date?.split('T')[0] || '—'} />
+          <DetailRow label="Status">
+            <span className={statusBadge[mobileDetail?.status]}>{mobileDetail?.status}</span>
+          </DetailRow>
+
+          <div>
+            <p className="text-xs text-gray-500 font-medium mb-1">Items</p>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-2 py-1.5 text-left text-gray-500 font-medium">#</th>
+                    <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Description</th>
+                    <th className="px-2 py-1.5 text-right text-gray-500 font-medium">Qty</th>
+                    <th className="px-2 py-1.5 text-right text-gray-500 font-medium">Rate</th>
+                    <th className="px-2 py-1.5 text-right text-gray-500 font-medium">Amt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {mobileDetail?.items?.map((item, i) => (
+                    <tr key={item.id || i}>
+                      <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
+                      <td className="px-2 py-1.5 text-gray-900">{item.description}</td>
+                      <td className="px-2 py-1.5 text-right text-gray-700">{item.quantity}</td>
+                      <td className="px-2 py-1.5 text-right text-gray-700">{formatINR(item.unit_price)}</td>
+                      <td className="px-2 py-1.5 text-right font-medium text-gray-900">{formatINR(item.total_price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <div className="w-full max-w-[200px] space-y-0.5">
+              <div className="flex justify-between text-xs text-gray-600"><span>Subtotal</span><span>{formatINR(mobileDetail?.subtotal)}</span></div>
+              <div className="flex justify-between text-xs text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(mobileDetail?.tax_amount)}</span></div>
+              <div className="flex justify-between text-sm font-bold text-gray-900 border-t pt-0.5"><span>Total</span><span>{formatINR(mobileDetail?.total_amount)}</span></div>
+            </div>
+          </div>
+
+          {mobileDetail?.notes && (
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Notes</p>
+              <p className="text-sm text-gray-700 mt-0.5">{mobileDetail.notes}</p>
+            </div>
+          )}
+
+          {mobileAttachments.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-1">Attachments</p>
+              <div className="space-y-1">
+                {mobileAttachments.map(att => (
+                  <div key={att.id} className="flex items-center gap-2 text-sm">
+                    <a href={`${import.meta.env.VITE_API_BASE_URL || ''}/uploads/${att.stored_name}`} target="_blank" rel="noopener noreferrer"
+                      className="text-indigo-600 hover:text-indigo-800 underline truncate max-w-[180px]">{att.original_name}</a>
+                    <span className="text-xs text-gray-400 shrink-0">({(att.file_size / 1024).toFixed(1)} KB)</span>
+                    <button onClick={() => hrService.deleteAttachment(att.id).then(() => setMobileAttachments(prev => prev.filter(a => a.id !== att.id)))}
+                      className="text-red-400 hover:text-red-600 text-xs ml-auto">&times;</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </BottomSheet>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -497,5 +588,14 @@ const Invoices = () => {
     </div>
   );
 };
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default Invoices;

@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
+import ResponsiveTable from '../../components/ResponsiveTable';
+import BottomSheet from '../../components/BottomSheet';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const emptyForm = { type: 'IN', paymentMethod: 'cash', amount: '', description: '', entryDate: new Date().toISOString().split('T')[0] };
 
 const BalanceSheet = () => {
+  const isMobile = useIsMobile();
   const [entries, setEntries] = useState([]);
   const [summary, setSummary] = useState({ totalIn: 0, totalOut: 0, balance: 0 });
   const [startDate, setStartDate] = useState('');
@@ -19,6 +23,7 @@ const BalanceSheet = () => {
   const [attachments, setAttachments] = useState({});
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   const fetch = useCallback(async () => {
     try {
@@ -66,6 +71,7 @@ const BalanceSheet = () => {
     setUploadFiles([]);
     setError('');
     setShowForm(true);
+    setSelectedRecord(null);
   };
 
   const handleSave = async (e) => {
@@ -127,6 +133,45 @@ const BalanceSheet = () => {
     input.click();
   };
 
+  const entryAttachments = selectedRecord ? attachments[selectedRecord.id] || [] : [];
+
+  const columns = [
+    { key: 'entry_date', label: 'Date', render: (v) => <span className="text-gray-500 whitespace-nowrap">{v ? v.split('T')[0] : '-'}</span> },
+    { key: 'type', label: 'Type', render: (v) => (
+      <span className={v === 'IN' ? 'badge-success' : 'badge-danger'}>{v}</span>
+    )},
+    { key: 'payment_method', label: 'Method', render: (v) => <span className="text-gray-600 capitalize">{v}</span> },
+    { key: 'amount', label: 'Amount', render: (v, r) => (
+      <span className={`font-semibold ${r.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+        {r.type === 'IN' ? '+' : '-'}{formatINR(v)}
+      </span>
+    )},
+    { key: 'description', label: 'Description', render: (v) => <span className="text-gray-500 max-w-[250px] truncate block">{v || '-'}</span> },
+    { key: 'attachments_cell', label: 'Attachments', render: (_, r) => {
+      const entryAtts = attachments[r.id] || [];
+      return (
+        <div className="flex items-center gap-1 flex-wrap">
+          {entryAtts.map(att => (
+            <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
+              <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate max-w-[80px]">
+                {att.original_name}
+              </a>
+              <button onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(r.id, att.id); }} className="text-red-400 hover:text-red-600">&times;</button>
+            </span>
+          ))}
+          <button onClick={(e) => { e.stopPropagation(); handleFileChange(r.id); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">+File</button>
+        </div>
+      );
+    }},
+    { key: 'added_by', label: 'Added By', render: (_, r) => <span className="text-gray-500 text-sm">{r.first_name} {r.last_name}</span> },
+    { key: 'actions', label: 'Actions', render: (_, r) => (
+      <div className="flex gap-2">
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
+        <button onClick={(e) => { e.stopPropagation(); setModal({ id: r.id }); }} className="text-sm text-red-600 hover:text-red-800">Delete</button>
+      </div>
+    )},
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -156,76 +201,28 @@ const BalanceSheet = () => {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-header flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-gray-900">Transactions</h3>
-          <div className="flex gap-2 items-center">
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-field max-w-[150px]" placeholder="Start" />
-            <span className="text-gray-400">to</span>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-field max-w-[150px]" placeholder="End" />
-            {(startDate || endDate) && (
-              <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-sm text-gray-500 hover:text-gray-700">Clear</button>
-            )}
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="table-header">Date</th>
-                <th className="table-header">Type</th>
-                <th className="table-header">Method</th>
-                <th className="table-header">Amount</th>
-                <th className="table-header">Description</th>
-                <th className="table-header">Attachments</th>
-                <th className="table-header">Added By</th>
-                <th className="table-header">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {entries.map(entry => (
-                <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="table-cell text-gray-500 whitespace-nowrap">{entry.entry_date ? entry.entry_date.split('T')[0] : '-'}</td>
-                  <td className="table-cell">
-                    <span className={entry.type === 'IN' ? 'badge-success' : 'badge-danger'}>
-                      {entry.type}
-                    </span>
-                  </td>
-                  <td className="table-cell text-gray-600 capitalize">{entry.payment_method}</td>
-                  <td className={`table-cell font-semibold ${entry.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                    {entry.type === 'IN' ? '+' : '-'}{formatINR(entry.amount)}
-                  </td>
-                  <td className="table-cell text-gray-500 max-w-[250px] truncate">{entry.description || '-'}</td>
-                  <td className="table-cell">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {(attachments[entry.id] || []).map(att => (
-                        <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
-                          <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate max-w-[80px]">
-                            {att.original_name}
-                          </a>
-                          <button onClick={() => handleDeleteAttachment(entry.id, att.id)} className="text-red-400 hover:text-red-600">&times;</button>
-                        </span>
-                      ))}
-                      <button onClick={() => handleFileChange(entry.id)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">+File</button>
-                    </div>
-                  </td>
-                  <td className="table-cell text-gray-500 text-sm">{entry.first_name} {entry.last_name}</td>
-                  <td className="table-cell">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(entry)} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
-                      <button onClick={() => setModal({ id: entry.id })} className="text-sm text-red-600 hover:text-red-800">Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {entries.length === 0 && (
-                <tr><td colSpan={8} className="table-cell text-center text-gray-400 py-8">No transactions found</td></tr>
+      <ResponsiveTable
+        columns={columns}
+        data={entries}
+        keyField="id"
+        mobilePrimary="entry_date"
+        mobileSecondary="type"
+        onRowClick={(r) => setSelectedRecord(r)}
+        emptyMessage="No transactions found"
+        header={
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Transactions</h3>
+            <div className="flex gap-2 items-center">
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-field max-w-[150px]" placeholder="Start" />
+              <span className="text-gray-400">to</span>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-field max-w-[150px]" placeholder="End" />
+              {(startDate || endDate) && (
+                <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-sm text-gray-500 hover:text-gray-700">Clear</button>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          </div>
+        }
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowForm(false)}>
@@ -286,13 +283,78 @@ const BalanceSheet = () => {
 
       {modal && (
         <ConfirmModal
+          open
           message="Are you sure you want to delete this entry?"
           onConfirm={() => handleDelete(modal.id)}
           onCancel={() => setModal(null)}
         />
       )}
+
+      {isMobile && (
+        <BottomSheet
+          open={!!selectedRecord}
+          onClose={() => setSelectedRecord(null)}
+          title={selectedRecord ? `${selectedRecord.type === 'IN' ? '+' : '-'}${formatINR(selectedRecord.amount)}` : 'Transaction Details'}
+          actions={
+            <>
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
+                className="flex-1 btn-primary justify-center"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); setModal({ id: r.id }); }}
+                className="flex-1 btn-danger justify-center"
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          {selectedRecord && (
+            <div className="space-y-3">
+              <DetailRow label="Date" value={selectedRecord.entry_date ? selectedRecord.entry_date.split('T')[0] : '-'} />
+              <DetailRow label="Type">
+                <span className={selectedRecord.type === 'IN' ? 'badge-success' : 'badge-danger'}>{selectedRecord.type}</span>
+              </DetailRow>
+              <DetailRow label="Method" value={selectedRecord.payment_method} />
+              <DetailRow label="Amount">
+                <span className={`font-semibold ${selectedRecord.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                  {selectedRecord.type === 'IN' ? '+' : '-'}{formatINR(selectedRecord.amount)}
+                </span>
+              </DetailRow>
+              <DetailRow label="Description" value={selectedRecord.description || '-'} />
+              <DetailRow label="Added By" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
+              <DetailRow label="Attachments">
+                <div className="flex flex-col gap-1">
+                  {entryAttachments.length === 0 && <span className="text-gray-400">—</span>}
+                  {entryAttachments.map(att => (
+                    <span key={att.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-1.5 py-0.5">
+                      <a href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate max-w-[180px]">
+                        {att.original_name}
+                      </a>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(selectedRecord.id, att.id); }} className="text-red-400 hover:text-red-600">&times;</button>
+                    </span>
+                  ))}
+                  <button onClick={(e) => { e.stopPropagation(); handleFileChange(selectedRecord.id); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium self-start mt-1">+ Add File</button>
+                </div>
+              </DetailRow>
+            </div>
+          )}
+        </BottomSheet>
+      )}
     </div>
   );
 };
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default BalanceSheet;
