@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
-import { formatINR } from '../../utils/currency';
+import { formatINR, formatPhone } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const INNER_TABS = [
@@ -221,7 +221,7 @@ const KiranaStore = () => {
           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">{party.name}</h3>
-              <p className="text-sm text-gray-500">{party.phone || 'No phone'} &middot; {party.address || 'No address'}</p>
+              <p className="text-sm text-gray-500">{formatPhone(party.phone) || 'No phone'} &middot; {party.address || 'No address'}</p>
             </div>
             <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
           </div>
@@ -372,7 +372,7 @@ const KiranaStore = () => {
                       <span className="font-medium text-gray-900">{p.name}</span>
                     </div>
                   </td>
-                  <td className="table-cell text-gray-500">{p.phone || '—'}</td>
+                  <td className="table-cell text-gray-500">{formatPhone(p.phone) || '—'}</td>
                   <td className={`table-cell font-semibold ${p.balance <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                     <span className="inline-flex items-center gap-1.5">
                       <span className={`w-2 h-2 rounded-full ${p.balance <= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
@@ -477,7 +477,7 @@ const KiranaStore = () => {
               {staff.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                   <td className="table-cell font-medium">{s.name}</td>
-                  <td className="table-cell">{s.phone || '-'}</td>
+                  <td className="table-cell">{formatPhone(s.phone) || '-'}</td>
                   <td className="table-cell">{s.role || '-'}</td>
                   <td className="table-cell">{s.salary ? formatINR(s.salary) : '-'}</td>
                   <td className="table-cell text-gray-500">{s.joined_at ? s.joined_at.split('T')[0] : '-'}</td>
@@ -751,7 +751,7 @@ const KiranaStore = () => {
                   <tr key={r.id || i} className="hover:bg-gray-50 transition-colors">
                     <td className="table-cell capitalize">{r.type}</td>
                     <td className="table-cell font-medium">{r.name}</td>
-                    <td className="table-cell">{r.phone || '-'}</td>
+                    <td className="table-cell">{formatPhone(r.phone) || '-'}</td>
                     <td className="table-cell text-green-600">{formatINR(r.totalReceived || 0)}</td>
                     <td className="table-cell text-orange-600">{formatINR(r.totalGiven || 0)}</td>
                     <td className={`table-cell font-bold ${(r.balance || 0) <= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -779,7 +779,6 @@ const KiranaStore = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">My Ledger Book</h2>
 
       {message && (
         <div className="p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm flex items-center justify-between">

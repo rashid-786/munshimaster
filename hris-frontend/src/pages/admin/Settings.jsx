@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { hrService } from '../../services/hr.service';
 import { applyTheme } from '../../utils/currency';
+import { useAuth } from '../../context/AuthContext';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
+
 const Settings = () => {
+  const { user, tenant, updateUser } = useAuth();
+  const planRank = PLAN_RANK[tenant?.subscriptionPlan] ?? 0;
   const [companyName, setCompanyName] = useState('');
+  const [firstName, setFirstName] = useState(user?.firstName || '');
+  const [lastName, setLastName] = useState(user?.lastName || '');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [weekendDays, setWeekendDays] = useState([0]);
   const [taxRate, setTaxRate] = useState(18);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
+  const [hiddenGroups, setHiddenGroups] = useState({});
   const [message, setMessage] = useState('');
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -22,6 +30,7 @@ const Settings = () => {
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
       if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
+      if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
     }).catch(() => {});
   }, []);
 
@@ -34,8 +43,14 @@ const Settings = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      const res = await hrService.updateTenantSettings({ companyName, settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct } });
-      setMessage(res.message);
+      const res = await hrService.updateTenantSettings({ companyName, settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups } });
+      localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
+      window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups } }));
+      if (firstName || lastName) {
+        const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email: user?.email || '', phone: user?.phone || '' });
+        if (profileRes?.user) updateUser(profileRes.user);
+      }
+      setMessage(res.message || 'Settings saved.');
       applyTheme(primaryColor);
       localStorage.setItem('tenant_name', companyName);
     } catch (err) {
@@ -75,34 +90,70 @@ const Settings = () => {
             <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="input-field" placeholder="Your Company Name" required />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className="input-field" placeholder="First name" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className="input-field" placeholder="Last name" />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
             <div className="flex items-center gap-4">
               <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-12 h-10 rounded border border-gray-300 cursor-pointer" />
               <code className="text-sm text-gray-500">{primaryColor}</code>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Weekend Days</label>
-            <div className="flex flex-wrap gap-2">
-              {DAY_NAMES.map((name, idx) => (
-                <label key={idx} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
-                  weekendDays.includes(idx) ? 'bg-red-100 border-red-300 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                }`}>
-                  <input type="checkbox" checked={weekendDays.includes(idx)} onChange={() => toggleWeekendDay(idx)} className="sr-only" />
-                  {name}
+          {planRank >= 2 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Weekend Days</label>
+              <div className="flex flex-wrap gap-2">
+                {DAY_NAMES.map((name, idx) => (
+                  <label key={idx} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
+                    weekendDays.includes(idx) ? 'bg-red-100 border-red-300 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}>
+                    <input type="checkbox" checked={weekendDays.includes(idx)} onChange={() => toggleWeekendDay(idx)} className="sr-only" />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {planRank >= 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>
+              <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+            </div>
+          )}
+          {planRank >= 2 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
+              <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+              <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
+            </div>
+          )}
+
+          <div className="border-t border-gray-200 pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Sidebar Sections</label>
+            <p className="text-xs text-gray-400 mb-3">Hide sections from the sidebar navigation.</p>
+            <div className="space-y-2">
+              {planRank >= 1 && (
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-gray-700">Hide My Ledger Book</span>
                 </label>
-              ))}
+              )}
+              {planRank >= 2 && (
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-gray-700">Hide My Business</span>
+                </label>
+              )}
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>
-            <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
-            <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
-            <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
-          </div>
+
           <button type="submit" className="btn-primary">Save Changes</button>
         </form>
       </div>

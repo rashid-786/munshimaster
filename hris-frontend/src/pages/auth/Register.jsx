@@ -1,117 +1,234 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { authService } from '../../services/auth.service';
+import { authService, getDefaultCountryCode } from '../../services/auth.service';
 
-const generateSubdomain = (name) =>
-  name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const STEPS = { PHONE: 0, OTP: 1, CREDENTIALS: 2 };
 
 const Register = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    companyName: '', firstName: '', lastName: '', email: '', phone: '', password: ''
-  });
+  const [step, setStep] = useState(STEPS.PHONE);
+  const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+965');
+  const [otpInput, setOtpInput] = useState(['', '', '', '', '', '']);
+  const [credentials, setCredentials] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const otpRefs = useRef([]);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  useEffect(() => {
+    getDefaultCountryCode().then(setCountryCode);
+  }, []);
+
+  const startCountdown = () => {
+    setCountdown(30);
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
+  const handleSendOtp = async (e) => {
+    e?.preventDefault();
+    if (!phone) { setError('Please enter your phone number.'); return; }
     setLoading(true);
-
-    if (!form.companyName || !form.firstName || !form.lastName || !form.email || !form.password) {
-      setLoading(false);
-      return setError('Please fill in all required fields.');
-    }
-
-    const subdomain = generateSubdomain(form.companyName);
-    if (!subdomain) {
-      setLoading(false);
-      return setError('Company name must include at least one letter or number.');
-    }
-
+    setError('');
     try {
-      await authService.register({
-        companyName: form.companyName,
-        subdomain,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        phone: form.phone,
-        password: form.password
-      });
-      setSuccess('Organization registered successfully! You can now sign in.');
-      setForm({ companyName: '', firstName: '', lastName: '', email: '', phone: '', password: '' });
-      setTimeout(() => navigate('/login'), 2500);
+      await authService.sendOtp(phone, 'registration');
+      setStep(STEPS.OTP);
+      startCountdown();
+      otpRefs.current[0]?.focus();
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.error || 'Failed to send OTP.');
     }
+    setLoading(false);
+  };
+
+  const handleOtpChange = (index, value) => {
+    if (value && !/^\d$/.test(value)) return;
+    const newOtp = [...otpInput];
+    newOtp[index] = value;
+    setOtpInput(newOtp);
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpInput[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    const otp = otpInput.join('');
+    if (otp.length !== 6) { setError('Please enter the full 6-digit OTP.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await authService.verifyOtp(phone, otp, 'registration');
+      const result = await authService.register(phone);
+      setCredentials(result.credentials);
+      setStep(STEPS.CREDENTIALS);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Verification failed.');
+    }
+    setLoading(false);
+  };
+
+  const handleResendOtp = () => {
+    if (countdown > 0) return;
+    handleSendOtp();
+  };
+
+  const handleContinue = () => {
+    navigate('/login', { state: { phone: credentials.phone, autoFill: true } });
   };
 
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-600">HRIS</h1>
-          <p className="text-gray-500 mt-1">Human Resource Information System</p>
+          <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">H</div>
+          <h1 className="text-2xl font-bold text-gray-900">Create your account</h1>
+          <p className="text-gray-500 mt-1">Start managing your business in minutes</p>
         </div>
-        <div className="card p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Register Your Organization</h2>
 
-          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
-          {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">{success}</div>}
+        <div className="card p-6 md:p-8">
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            {[0, 1, 2].map(i => (
+              <React.Fragment key={i}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                  step >= i ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'
+                }`}>
+                  {step > i ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  ) : i + 1}
+                </div>
+                {i < 2 && <div className={`w-12 h-0.5 rounded ${step > i ? 'bg-indigo-600' : 'bg-gray-200'}`} />}
+              </React.Fragment>
+            ))}
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Company Name <span className="text-red-500">*</span></label>
-              <input type="text" name="companyName" value={form.companyName} onChange={handleChange} required
-                className="input-field" placeholder="Acme Corp" />
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
+              <span>{error}</span>
+              <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-2">&times;</button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+          )}
+
+          {/* Step 1: Phone */}
+          {step === STEPS.PHONE && (
+            <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
-                <input type="text" name="firstName" value={form.firstName} onChange={handleChange} required
-                  className="input-field" placeholder="Raj" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium pointer-events-none">{countryCode}</span>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\s/g, '');
+                      if (val === '' || /^\d+$/.test(val)) setPhone(val);
+                    }}
+                    placeholder="5xxxxxxxx"
+                    className="input-field text-base pl-16"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">We'll send a one-time code to verify your number.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
-                <input type="text" name="lastName" value={form.lastName} onChange={handleChange} required
-                  className="input-field" placeholder="Sharma" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} required
-                className="input-field" placeholder="raj@acme.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-              <input type="text" name="phone" value={form.phone} onChange={handleChange}
-                className="input-field" placeholder="+91 98765 43210" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-red-500">*</span></label>
-              <input type="password" name="password" value={form.password} onChange={handleChange} required
-                className="input-field" placeholder="Set a strong password" />
-            </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5">
-              {loading ? 'Registering...' : 'Register'}
-            </button>
-          </form>
+              <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 text-base">
+                {loading ? 'Sending code...' : 'Send Verification Code'}
+              </button>
+            </form>
+          )}
 
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Already registered?{' '}
-            <Link to="/login" className="text-indigo-600 hover:text-indigo-500 font-medium">
-              Sign in
-            </Link>
-          </p>
+          {/* Step 2: OTP */}
+          {step === STEPS.OTP && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-1">Enter the code sent to</p>
+                <p className="text-sm font-semibold text-gray-900">{phone}</p>
+              </div>
+              <div className="flex justify-center gap-2">
+                {otpInput.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={el => otpRefs.current[i] = el}
+                    type="text"
+                    maxLength={1}
+                    value={digit}
+                    onChange={e => handleOtpChange(i, e.target.value)}
+                    onKeyDown={e => handleOtpKeyDown(i, e)}
+                    className="w-11 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                  />
+                ))}
+              </div>
+              <div className="text-center">
+                {countdown > 0 ? (
+                  <p className="text-xs text-gray-400">Resend code in {countdown}s</p>
+                ) : (
+                  <button type="button" onClick={handleResendOtp} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">Resend code</button>
+                )}
+              </div>
+              <button type="submit" disabled={loading || otpInput.join('').length !== 6} className="btn-primary w-full !py-2.5 text-base">
+                {loading ? 'Verifying...' : 'Verify & Create Account'}
+              </button>
+            </form>
+          )}
+
+          {/* Step 3: Credentials */}
+          {step === STEPS.CREDENTIALS && credentials && (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mx-auto mb-2">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h3 className="text-lg font-semibold text-emerald-800">Account Created!</h3>
+                <p className="text-sm text-emerald-600 mt-1">Save your credentials below.</p>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</label>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{credentials.phone}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Password</label>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-sm font-mono font-semibold text-gray-900 flex-1 break-all">{credentials.password}</p>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(credentials.password); }}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium shrink-0"
+                      title="Copy password"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
+                Please save this password. You'll need it to sign in. You can change it later in settings.
+              </p>
+
+              <button onClick={handleContinue} className="btn-primary w-full !py-2.5 text-base">
+                Continue to Sign In &rarr;
+              </button>
+            </div>
+          )}
+
+          {step < 2 && (
+            <p className="mt-6 text-center text-sm text-gray-500">
+              Already have an account?{' '}
+              <Link to="/login" className="text-indigo-600 hover:text-indigo-500 font-medium">Sign in</Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

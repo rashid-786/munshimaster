@@ -22,4 +22,7 @@ router.get('/tenants/:id/calendar', authenticateSuperAdmin, superController.getT
 router.get('/tenants/:id/payroll', authenticateSuperAdmin, superController.getTenantPayroll);
 router.get('/tenants/:id/leaves', authenticateSuperAdmin, superController.getTenantLeaves);
 
+router.get('/settings', authenticateSuperAdmin, superController.getSystemSettings);
+router.put('/settings', authenticateSuperAdmin, superController.updateSystemSettings);
+
 module.exports = router;

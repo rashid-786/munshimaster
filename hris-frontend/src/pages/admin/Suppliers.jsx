@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import ConfirmModal from '../../components/ConfirmModal';
+import { formatPhone } from '../../utils/currency';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', payment_terms: '', notes: '' };
 
@@ -135,7 +136,7 @@ const Suppliers = () => {
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                   <td className="table-cell font-medium">{s.name}</td>
                   <td className="table-cell text-gray-500">{s.contact_person || '—'}</td>
-                  <td className="table-cell">{s.phone || '—'}</td>
+                  <td className="table-cell">{formatPhone(s.phone) || '—'}</td>
                   <td className="table-cell">{s.email || '—'}</td>
                   <td className="table-cell">{s.city || '—'}</td>
                   <td className="table-cell text-xs font-mono">{s.gstin || '—'}</td>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
+import { formatPhone } from '../../utils/currency';
 
 const TABS = [
   { key: 'customers', label: 'Customers' },
@@ -168,7 +169,7 @@ const Reports = () => {
                       <>
                         <td className="table-cell font-medium">{row.name || '-'}</td>
                         <td className="table-cell">{row.email || '-'}</td>
-                        <td className="table-cell">{row.phone || '-'}</td>
+                        <td className="table-cell">{formatPhone(row.phone) || '-'}</td>
                         <td className="table-cell text-gray-500 max-w-[200px] truncate">{row.address || '-'}</td>
                         <td className="table-cell">{row.gstin || '-'}</td>
                         <td className="table-cell text-gray-500">{row.created_at ? row.created_at.split('T')[0] : '-'}</td>

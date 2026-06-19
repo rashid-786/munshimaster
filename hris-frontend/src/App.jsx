@@ -16,6 +16,7 @@ import Blogs from './pages/landing/Blogs';
 
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import PlanSelection from './pages/auth/PlanSelection';
 import Employees from './pages/admin/Employees';
 import EmployeeCalendar from './pages/admin/EmployeeCalendar';
 import LeaveApprovals from './pages/admin/LeaveApprovals';
@@ -41,6 +42,8 @@ import SuperDashboard from './pages/super/SuperDashboard';
 import TenantManagement from './pages/super/TenantManagement';
 import TenantDetail from './pages/super/TenantDetail';
 import AllEmployees from './pages/super/AllEmployees';
+import SuperSettings from './pages/super/SuperSettings';
+import PlanRoute from './components/PlanRoute';
 
 function App() {
   useEffect(() => {
@@ -66,6 +69,7 @@ function App() {
             <Route path="tenants" element={<TenantManagement />} />
             <Route path="tenants/:id" element={<TenantDetail />} />
             <Route path="employees" element={<AllEmployees />} />
+            <Route path="settings" element={<SuperSettings />} />
           </Route>
 
           <Route
@@ -76,19 +80,19 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="dashboard" element={<Employees />} />
-            <Route path="calendar" element={<EmployeeCalendar />} />
-            <Route path="leaves" element={<LeaveApprovals />} />
-            <Route path="payroll" element={<PayrollConsole />} />
-            <Route path="advances" element={<AdvancePayments />} />
-            <Route path="balance" element={<BalanceSheet />} />
-            <Route path="reports" element={<Reports />} />
+            <Route path="dashboard" element={<PlanRoute minPlan="enterprise"><Employees /></PlanRoute>} />
+            <Route path="calendar" element={<PlanRoute minPlan="enterprise"><EmployeeCalendar /></PlanRoute>} />
+            <Route path="leaves" element={<PlanRoute minPlan="enterprise"><LeaveApprovals /></PlanRoute>} />
+            <Route path="payroll" element={<PlanRoute minPlan="enterprise"><PayrollConsole /></PlanRoute>} />
+            <Route path="advances" element={<PlanRoute minPlan="enterprise"><AdvancePayments /></PlanRoute>} />
+            <Route path="balance" element={<PlanRoute minPlan="pro"><BalanceSheet /></PlanRoute>} />
+            <Route path="reports" element={<PlanRoute minPlan="pro"><Reports /></PlanRoute>} />
             <Route path="ledger" element={<KiranaStore />} />
             <Route path="ledger/:tab" element={<KiranaStore />} />
-            <Route path="suppliers" element={<Suppliers />} />
-            <Route path="customers" element={<Customers />} />
-            <Route path="purchase-orders" element={<PurchaseOrders />} />
-            <Route path="invoices" element={<Invoices />} />
+            <Route path="suppliers" element={<PlanRoute minPlan="pro"><Suppliers /></PlanRoute>} />
+            <Route path="customers" element={<PlanRoute minPlan="pro"><Customers /></PlanRoute>} />
+            <Route path="purchase-orders" element={<PlanRoute minPlan="pro"><PurchaseOrders /></PlanRoute>} />
+            <Route path="invoices" element={<PlanRoute minPlan="pro"><Invoices /></PlanRoute>} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
@@ -117,6 +121,7 @@ function App() {
             <Route path="/register" element={<Register />} />
           </Route>
 
+          <Route path="/select-plan" element={<ProtectedRoute allowedRoles={['tenant_admin']}><PlanSelection /></ProtectedRoute>} />
           <Route path="/unauthorized" element={<div className="min-h-screen flex items-center justify-center text-gray-500 text-xl">Unauthorized Access</div>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

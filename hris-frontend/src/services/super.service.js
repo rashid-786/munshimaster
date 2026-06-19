@@ -67,5 +67,15 @@ export const superService = {
   getTenantLeaves: async (id) => {
     const response = await api.get(`/super/tenants/${id}/leaves`);
     return response.data;
-  }
+  },
+
+  getSystemSettings: async () => {
+    const response = await api.get('/super/settings');
+    return response.data;
+  },
+
+  updateSystemSettings: async (default_country_code) => {
+    const response = await api.put('/super/settings', { default_country_code });
+    return response.data;
+  },
 };

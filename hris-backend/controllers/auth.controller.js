@@ -1,95 +1,151 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid'); // Install using: npm install uuid
+const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 
-// 1. REGISTER NEW TENANT (And their initial Admin user)
+async function getDefaultCountryCode() {
+  try {
+    const [rows] = await db.execute('SELECT default_country_code FROM system_settings WHERE id = 1');
+    return rows.length > 0 ? rows[0].default_country_code : '+965';
+  } catch {
+    return '+965';
+  }
+}
+
+function normalizePhone(phone, countryCode) {
+  if (!phone) return phone;
+  const digits = phone.replace(/\D/g, '');
+  if (phone.startsWith('+')) return phone;
+  if (digits.startsWith('00')) return '+' + digits.slice(2);
+  return countryCode + digits;
+}
+
+function generateSubdomain() {
+  return 't' + crypto.randomBytes(4).toString('hex');
+}
+
+function generatePassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+  let pwd = '';
+  for (let i = 0; i < 12; i++) {
+    pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pwd;
+}
+
+// 1. REGISTER (phone-only, after OTP verification)
 exports.registerTenant = async (req, res) => {
-  const { companyName, subdomain, firstName, lastName, email, phone, password } = req.body;
+  const countryCode = await getDefaultCountryCode();
+  const { phone } = req.body;
+  const normalizedPhone = normalizePhone(phone, countryCode);
+
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: 'Phone number is required.' });
+  }
+
+  // Ensure OTP was verified before registration
+  const [otpCheck] = await db.execute(
+    'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = 1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+    [normalizedPhone, 'registration']
+  );
+  if (otpCheck.length === 0) {
+    return res.status(400).json({ error: 'Please verify your phone number first via OTP.' });
+  }
+
+  const [existing] = await db.execute('SELECT id FROM tenants WHERE phone = ?', [normalizedPhone]);
+  if (existing.length > 0) {
+    return res.status(400).json({ error: 'This phone is already registered. Please sign in.' });
+  }
+
+  const tenantId = uuidv4();
+  const employeeId = uuidv4();
+  const subdomain = generateSubdomain();
+  const rawPassword = generatePassword();
+  const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
   try {
-    // Check if subdomain already exists
-    const [existingTenant] = await db.execute('SELECT id FROM tenants WHERE subdomain = ?', [subdomain]);
-    if (existingTenant.length > 0) {
-      return res.status(400).json({ error: 'This subdomain is already taken.' });
-    }
-
-    const tenantId = uuidv4();
-    const employeeId = uuidv4();
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Use a transaction to guarantee both tenant and admin employee are created together
     await db.query('START TRANSACTION');
 
-    // Insert Company Context
     await db.execute(
-      'INSERT INTO tenants (id, company_name, subdomain) VALUES (?, ?, ?)',
-      [tenantId, companyName, subdomain]
+      'INSERT INTO tenants (id, company_name, subdomain, subscription_plan, phone) VALUES (?, ?, ?, ?, ?)',
+      [tenantId, '', subdomain, 'free', normalizedPhone]
     );
 
-    // Insert Initial Tenant Admin Employee (Base salary initialized to 0 for setup)
     await db.execute(
       'INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, base_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, 'tenant_admin', 0]
+      [employeeId, tenantId, 'User', '', `${normalizedPhone}@placeholder.local`, normalizedPhone, hashedPassword, 'tenant_admin', 0]
     );
 
     await db.query('COMMIT');
-    res.status(201).json({ message: 'SaaS Tenant environment provisioned successfully!', tenantId });
 
+    res.status(201).json({
+      message: 'Account created successfully!',
+      tenant: { id: tenantId, subdomain },
+      credentials: { phone: normalizedPhone, password: rawPassword },
+      defaultCountryCode: countryCode,
+    });
   } catch (error) {
     await db.query('ROLLBACK');
     console.error(error);
-    res.status(500).json({ error: 'Database failure during tenant provisioning.' });
+    res.status(500).json({ error: 'Registration failed.' });
   }
 };
 
-// 2. LOGIN EMPLOYEE
+// 2. LOGIN (phone + password, subdomain optional)
 exports.loginEmployee = async (req, res) => {
   const { email, password, subdomain } = req.body;
 
-  if (!subdomain) {
-    return res.status(400).json({ error: 'Subdomain is required.' });
-  }
-
   if (!email) {
-    return res.status(400).json({ error: 'Email or phone is required.' });
+    return res.status(400).json({ error: 'Phone number is required.' });
   }
 
   try {
-    const [tenantRows] = await db.execute(
-      'SELECT id, company_name, settings FROM tenants WHERE subdomain = ?',
-      [subdomain]
-    );
+    let tenantId;
+    let tenant;
+    const countryCode = await getDefaultCountryCode();
 
-    if (tenantRows.length === 0) {
-      return res.status(401).json({ error: 'Invalid company ID or password.' });
+    if (subdomain) {
+      const [rows] = await db.execute(
+        'SELECT id, company_name, subdomain, subscription_plan, phone, settings FROM tenants WHERE subdomain = ?',
+        [subdomain]
+      );
+      if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials.' });
+      tenant = rows[0];
+      tenantId = tenant.id;
+    } else {
+      const isEmail = email.includes('@');
+      if (isEmail) return res.status(400).json({ error: 'Please provide your Company ID (Business ID).' });
+      const normalizedPhone = normalizePhone(email, countryCode);
+      const [rows] = await db.execute(
+        'SELECT id, company_name, subdomain, subscription_plan, phone, settings FROM tenants WHERE phone = ?',
+        [normalizedPhone]
+      );
+      if (rows.length === 0) return res.status(401).json({ error: 'No account found with this phone number.' });
+      tenant = rows[0];
+      tenantId = tenant.id;
     }
-
-    const tenant = tenantRows[0];
-    const tenantId = tenant.id;
 
     const isEmail = email.includes('@');
     const [users] = await db.execute(
       isEmail
         ? 'SELECT * FROM employees WHERE email = ? AND tenant_id = ?'
         : 'SELECT * FROM employees WHERE phone = ? AND tenant_id = ?',
-      [email, tenantId]
+      [isEmail ? email : normalizePhone(email, countryCode), tenantId]
     );
 
-    if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid email/phone or password.' });
-    }
+    if (users.length === 0) return res.status(401).json({ error: 'Invalid credentials.' });
 
     const user = users[0];
 
     if (user.status === 'deactivated') {
-      return res.status(403).json({ error: 'Your account has been deactivated. Contact your administrator.' });
+      return res.status(403).json({ error: 'Your account has been deactivated.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email/phone or password.' });
-    }
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials.' });
+
+    const defaultCountryCode = await getDefaultCountryCode();
 
     const parsedSettings = typeof tenant.settings === 'string'
       ? JSON.parse(tenant.settings)
@@ -109,24 +165,71 @@ exports.loginEmployee = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        name: `${user.first_name} ${user.last_name}`,
+        name: `${user.first_name} ${user.last_name}`.trim() || 'User',
         firstName: user.first_name,
         lastName: user.last_name,
       },
       tenant: {
         id: user.tenant_id,
         name: tenant.company_name,
+        subdomain: tenant.subdomain || subdomain,
+        subscriptionPlan: tenant.subscription_plan || 'free',
+        phone: tenant.phone || null,
         settings: parsedSettings || { primaryColor: '#0052cc' }
-      }
+      },
+      defaultCountryCode
     });
-
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Server authentication process encountered an error.' });
+    res.status(500).json({ error: 'Authentication failed.' });
   }
 };
 
-// 3. CHANGE PASSWORD
+// 3. FORGOT PASSWORD: Reset password via OTP
+exports.resetPassword = async (req, res) => {
+  const { phone, otp, new_password } = req.body;
+  const countryCode = await getDefaultCountryCode();
+  const normalizedPhone = normalizePhone(phone, countryCode);
+
+  if (!normalizedPhone || !otp || !new_password) {
+    return res.status(400).json({ error: 'Phone, OTP, and new password are required.' });
+  }
+
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const [otpRows] = await db.execute(
+      'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = 1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [normalizedPhone, 'password_reset', otp]
+    );
+
+    if (otpRows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired OTP. Please request a new one.' });
+    }
+
+    const [tenantRows] = await db.execute('SELECT id FROM tenants WHERE phone = ?', [normalizedPhone]);
+    if (tenantRows.length === 0) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    const tenantId = tenantRows[0].id;
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    await db.execute(
+      'UPDATE employees SET password_hash = ? WHERE tenant_id = ? AND phone = ? AND role = ?',
+      [hashedPassword, tenantId, normalizedPhone, 'tenant_admin']
+    );
+
+    res.json({ message: 'Password reset successfully. You can now sign in.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to reset password.' });
+  }
+};
+
+// 4. CHANGE PASSWORD
 exports.changePassword = async (req, res) => {
   const { current_password, new_password } = req.body;
   const employeeId = req.user.id;

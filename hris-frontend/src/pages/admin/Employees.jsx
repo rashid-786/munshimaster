@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { hrService } from '../../services/hr.service';
-import { formatINR } from '../../utils/currency';
+import { formatINR, formatPhone } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 
@@ -291,7 +291,7 @@ const Employees = () => {
                         </div>
                       </td>
                       <td className="table-cell text-gray-500">{emp.email}</td>
-                      <td className="table-cell text-gray-500">{emp.phone || '—'}</td>
+                      <td className="table-cell text-gray-500">{formatPhone(emp.phone) || '—'}</td>
                       <td className="table-cell">
                         <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
                           {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}

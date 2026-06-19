@@ -553,3 +553,39 @@ exports.updateSuperEmployee = async (req, res) => {
     res.status(500).json({ error: 'Failed to update employee.' });
   }
 };
+
+// System Settings
+exports.getSystemSettings = async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT default_country_code, updated_at FROM system_settings WHERE id = 1');
+    if (rows.length === 0) {
+      return res.json({ defaultCountryCode: '+965' });
+    }
+    res.json({
+      defaultCountryCode: rows[0].default_country_code,
+      updatedAt: rows[0].updated_at,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch system settings.' });
+  }
+};
+
+exports.updateSystemSettings = async (req, res) => {
+  const { default_country_code } = req.body;
+
+  if (!default_country_code) {
+    return res.status(400).json({ error: 'default_country_code is required.' });
+  }
+
+  try {
+    await db.execute(
+      'UPDATE system_settings SET default_country_code = ? WHERE id = 1',
+      [default_country_code]
+    );
+    res.json({ message: 'System settings updated.', defaultCountryCode: default_country_code });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update system settings.' });
+  }
+};

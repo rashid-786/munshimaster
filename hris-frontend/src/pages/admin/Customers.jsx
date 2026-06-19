@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
-import { formatINR, dollarsToCents } from '../../utils/currency';
+import { formatINR, dollarsToCents, formatPhone } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', credit_limit: '', payment_terms: '', notes: '' };
@@ -138,7 +138,7 @@ const Customers = () => {
                 <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                   <td className="table-cell font-medium">{c.name}</td>
                   <td className="table-cell text-gray-500">{c.contact_person || '—'}</td>
-                  <td className="table-cell">{c.phone || '—'}</td>
+                  <td className="table-cell">{formatPhone(c.phone) || '—'}</td>
                   <td className="table-cell">{c.email || '—'}</td>
                   <td className="table-cell">{c.city || '—'}</td>
                   <td className="table-cell text-xs font-mono">{c.gstin || '—'}</td>

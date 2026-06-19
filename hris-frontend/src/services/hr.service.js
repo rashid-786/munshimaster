@@ -353,4 +353,22 @@ export const hrService = {
     const response = await api.put('/core/profile', data);
     return response.data;
   },
+
+  // Subscription
+  getPlans: async () => {
+    const response = await api.get('/auth/plans');
+    return response.data;
+  },
+  getSubscription: async () => {
+    const response = await api.get('/core/subscription/plan');
+    return response.data;
+  },
+  selectPlan: async (plan, phone) => {
+    const response = await api.put('/core/subscription/plan', { plan, phone });
+    return response.data;
+  },
+  getProfileCompletion: async () => {
+    const response = await api.get('/core/subscription/profile-completion');
+    return response.data;
+  },
 };

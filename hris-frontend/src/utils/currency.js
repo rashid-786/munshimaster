@@ -46,6 +46,14 @@ export function generatePalette(hexColor) {
   };
 }
 
+export function formatPhone(phone) {
+  if (!phone) return '';
+  if (phone.startsWith('+')) return phone;
+  const countryCode = localStorage.getItem('default_country_code') || '+965';
+  const digits = phone.replace(/\D/g, '');
+  return `${countryCode} ${digits}`;
+}
+
 export function applyTheme(hexColor) {
   const palette = generatePalette(hexColor);
   const root = document.documentElement;
