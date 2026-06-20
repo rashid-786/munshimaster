@@ -17,12 +17,6 @@ router.delete('/transactions/:id', authenticateToken, ctrl.deleteTransaction);
 // Summary
 router.get('/summary', authenticateToken, ctrl.getSummary);
 
-// Staff
-router.post('/staff', authenticateToken, ctrl.createStaff);
-router.get('/staff', authenticateToken, ctrl.getStaff);
-router.put('/staff/:id', authenticateToken, ctrl.updateStaff);
-router.delete('/staff/:id', authenticateToken, ctrl.deleteStaff);
-
 // Cashbook
 router.post('/cashbook', authenticateToken, ctrl.createCashEntry);
 router.get('/cashbook', authenticateToken, ctrl.getCashbook);

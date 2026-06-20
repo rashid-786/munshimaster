@@ -160,58 +160,6 @@ exports.getSummary = async (req, res) => {
   }
 };
 
-// ── Staff ──
-
-exports.createStaff = async (req, res) => {
-  const { name, phone, role, salary, joinedAt } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name is required.' });
-  try {
-    const id = uuidv4();
-    const salaryCents = salary ? Math.round(parseFloat(salary) * 100) : null;
-    await db.execute(
-      'INSERT INTO kirana_staff (id, tenant_id, name, phone, role, salary, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, req.tenantId, name, phone || null, role || null, salaryCents, joinedAt || null]
-    );
-    res.status(201).json({ message: 'Staff added.', id });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add staff.' });
-  }
-};
-
-exports.getStaff = async (req, res) => {
-  try {
-    const [rows] = await db.execute('SELECT * FROM kirana_staff WHERE tenant_id = ? ORDER BY name ASC', [req.tenantId]);
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch staff.' });
-  }
-};
-
-exports.updateStaff = async (req, res) => {
-  const { id } = req.params;
-  const { name, phone, role, salary, joinedAt } = req.body;
-  try {
-    const salaryCents = salary ? Math.round(parseFloat(salary) * 100) : null;
-    await db.execute(
-      'UPDATE kirana_staff SET name=?, phone=?, role=?, salary=?, joined_at=? WHERE id=? AND tenant_id=?',
-      [name, phone || null, role || null, salaryCents, joinedAt || null, id, req.tenantId]
-    );
-    res.json({ message: 'Updated.' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update.' });
-  }
-};
-
-exports.deleteStaff = async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.execute('DELETE FROM kirana_staff WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
-    res.json({ message: 'Deleted.' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete.' });
-  }
-};
-
 // ── Cashbook ──
 
 exports.createCashEntry = async (req, res) => {

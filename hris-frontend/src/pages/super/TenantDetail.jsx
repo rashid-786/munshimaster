@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { superService } from '../../services/super.service';
 import { formatINR } from '../../utils/currency';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const TABS = ['Employees', 'Calendar', 'Leaves', 'Payroll', 'Settings'];
 
@@ -27,6 +28,7 @@ const TenantDetail = () => {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminMsg, setAdminMsg] = useState('');
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     superService.getTenantDetail(id)
@@ -151,7 +153,6 @@ const TenantDetail = () => {
       <div className="flex items-center justify-between">
         <div>
           <Link to="/super/tenants" className="text-sm text-indigo-600 hover:text-indigo-500 font-medium">&larr; Back to Tenants</Link>
-          <h2 className="text-2xl font-bold text-gray-900 mt-1">{tenant.company_name}</h2>
           <p className="text-sm text-gray-500">Subdomain: {tenant.subdomain} | ID: {tenant.id}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,108 +184,181 @@ const TenantDetail = () => {
       <div className="card">
         <div className="p-6">
           {activeTab === 'Employees' && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="table-header">Name</th>
-                    <th className="table-header">Email</th>
-                    <th className="table-header">Role</th>
-                    <th className="table-header">Base Salary</th>
-                    <th className="table-header">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {employees.map(emp => (
-                    <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="table-cell font-medium">{emp.first_name} {emp.last_name}</td>
-                      <td className="table-cell text-gray-500">{emp.email}</td>
-                      <td className="table-cell">
-                        <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
-                          {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                        </span>
-                      </td>
-                      <td className="table-cell font-medium">{formatINR(emp.base_salary)}</td>
-                      <td className="table-cell text-gray-500">
-                        {new Date(emp.created_at).toLocaleDateString()}
-                      </td>
+            isMobile ? (
+              <div className="divide-y divide-gray-100 -mx-6">
+                {employees.map(emp => (
+                  <div key={emp.id} className="px-6 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{emp.email}</p>
+                      </div>
+                      <span className={`badge shrink-0 ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
+                        {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      <span className="font-medium text-gray-700">{formatINR(emp.base_salary)}</span>
+                      <span>&middot;</span>
+                      <span>Joined {new Date(emp.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {employees.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No employees</div>}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="table-header">Name</th>
+                      <th className="table-header">Email</th>
+                      <th className="table-header">Role</th>
+                      <th className="table-header">Base Salary</th>
+                      <th className="table-header">Joined</th>
                     </tr>
-                  ))}
-                  {employees.length === 0 && (
-                    <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No employees</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {employees.map(emp => (
+                      <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="table-cell font-medium">{emp.first_name} {emp.last_name}</td>
+                        <td className="table-cell text-gray-500">{emp.email}</td>
+                        <td className="table-cell">
+                          <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
+                            {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
+                          </span>
+                        </td>
+                        <td className="table-cell font-medium">{formatINR(emp.base_salary)}</td>
+                        <td className="table-cell text-gray-500">
+                          {new Date(emp.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                    {employees.length === 0 && (
+                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No employees</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
 
           {activeTab === 'Calendar' && renderCalendar()}
 
           {activeTab === 'Leaves' && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="table-header">Employee</th>
-                    <th className="table-header">Type</th>
-                    <th className="table-header">From</th>
-                    <th className="table-header">To</th>
-                    <th className="table-header">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {leaves.map(l => (
-                    <tr key={l.id}>
-                      <td className="table-cell">{l.first_name} {l.last_name}</td>
-                      <td className="table-cell">{l.leave_type}</td>
-                      <td className="table-cell text-gray-500">{new Date(l.start_date).toLocaleDateString()}</td>
-                      <td className="table-cell text-gray-500">{new Date(l.end_date).toLocaleDateString()}</td>
-                      <td className="table-cell">
-                        <span className={`badge ${
-                          l.status === 'approved' ? 'badge-success' :
-                          l.status === 'rejected' ? 'badge-danger' : 'badge-warning'
-                        }`}>{l.status}</span>
-                      </td>
+            isMobile ? (
+              <div className="divide-y divide-gray-100 -mx-6">
+                {leaves.map(l => (
+                  <div key={l.id} className="px-6 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">{l.first_name} {l.last_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{l.leave_type}</p>
+                      </div>
+                      <span className={`badge shrink-0 ${
+                        l.status === 'approved' ? 'badge-success' :
+                        l.status === 'rejected' ? 'badge-danger' : 'badge-warning'
+                      }`}>{l.status}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      <span>{new Date(l.start_date).toLocaleDateString()} - {new Date(l.end_date).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {leaves.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No leaves</div>}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="table-header">Employee</th>
+                      <th className="table-header">Type</th>
+                      <th className="table-header">From</th>
+                      <th className="table-header">To</th>
+                      <th className="table-header">Status</th>
                     </tr>
-                  ))}
-                  {leaves.length === 0 && (
-                    <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No leaves</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {leaves.map(l => (
+                      <tr key={l.id}>
+                        <td className="table-cell">{l.first_name} {l.last_name}</td>
+                        <td className="table-cell">{l.leave_type}</td>
+                        <td className="table-cell text-gray-500">{new Date(l.start_date).toLocaleDateString()}</td>
+                        <td className="table-cell text-gray-500">{new Date(l.end_date).toLocaleDateString()}</td>
+                        <td className="table-cell">
+                          <span className={`badge ${
+                            l.status === 'approved' ? 'badge-success' :
+                            l.status === 'rejected' ? 'badge-danger' : 'badge-warning'
+                          }`}>{l.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                    {leaves.length === 0 && (
+                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No leaves</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
 
           {activeTab === 'Payroll' && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="table-header">Employee</th>
-                    <th className="table-header">Period</th>
-                    <th className="table-header">Gross</th>
-                    <th className="table-header">Deductions</th>
-                    <th className="table-header">Net</th>
-                    <th className="table-header">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {payroll.map(p => (
-                    <tr key={p.id}>
-                      <td className="table-cell">{p.first_name} {p.last_name}</td>
-                      <td className="table-cell text-gray-500">{new Date(p.pay_period_start).toLocaleDateString()} - {new Date(p.pay_period_end).toLocaleDateString()}</td>
-                      <td className="table-cell">{formatINR(p.gross_salary)}</td>
-                      <td className="table-cell text-red-600">-{formatINR(p.deductions)}</td>
-                      <td className="table-cell font-medium">{formatINR(p.net_salary)}</td>
-                      <td className="table-cell"><span className="badge badge-info">{p.status}</span></td>
+            isMobile ? (
+              <div className="divide-y divide-gray-100 -mx-6">
+                {payroll.map(p => (
+                  <div key={p.id} className="px-6 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">{p.first_name} {p.last_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {new Date(p.pay_period_start).toLocaleDateString()} - {new Date(p.pay_period_end).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span className="badge badge-info shrink-0">{p.status}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 text-xs">
+                      <div className="flex items-center gap-3 text-gray-500">
+                        <span>Gross: <span className="font-medium text-gray-700">{formatINR(p.gross_salary)}</span></span>
+                        <span className="text-red-600">-{formatINR(p.deductions)}</span>
+                      </div>
+                      <span className="font-semibold text-gray-900">{formatINR(p.net_salary)}</span>
+                    </div>
+                  </div>
+                ))}
+                {payroll.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No payroll records</div>}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="table-header">Employee</th>
+                      <th className="table-header">Period</th>
+                      <th className="table-header">Gross</th>
+                      <th className="table-header">Deductions</th>
+                      <th className="table-header">Net</th>
+                      <th className="table-header">Status</th>
                     </tr>
-                  ))}
-                  {payroll.length === 0 && (
-                    <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No payroll records</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {payroll.map(p => (
+                      <tr key={p.id}>
+                        <td className="table-cell">{p.first_name} {p.last_name}</td>
+                        <td className="table-cell text-gray-500">{new Date(p.pay_period_start).toLocaleDateString()} - {new Date(p.pay_period_end).toLocaleDateString()}</td>
+                        <td className="table-cell">{formatINR(p.gross_salary)}</td>
+                        <td className="table-cell text-red-600">-{formatINR(p.deductions)}</td>
+                        <td className="table-cell font-medium">{formatINR(p.net_salary)}</td>
+                        <td className="table-cell"><span className="badge badge-info">{p.status}</span></td>
+                      </tr>
+                    ))}
+                    {payroll.length === 0 && (
+                      <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No payroll records</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
 
           {activeTab === 'Settings' && (

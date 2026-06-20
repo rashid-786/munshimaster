@@ -13,7 +13,7 @@ exports.getPlans = (req, res) => {
         id: 'free',
         name: 'Free',
         price: 0,
-        features: ['My Ledger Book (Buyers, Sellers, Staff, Cashbook, Reports)'],
+        features: ['My Ledger Book (Buyers, Sellers, Cashbook, Reports)'],
       },
       {
         id: 'pro',

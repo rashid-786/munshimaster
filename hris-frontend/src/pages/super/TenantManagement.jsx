@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const TenantManagement = () => {
   const [tenants, setTenants] = useState([]);
@@ -14,6 +15,7 @@ const TenantManagement = () => {
     companyName: '', subdomain: '', firstName: '', lastName: '', email: '', phone: '', password: '', color: '#4f46e5'
   });
   const limit = 20;
+  const isMobile = useIsMobile();
 
   const fetchTenants = async () => {
     setLoading(true);
@@ -65,16 +67,6 @@ const TenantManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Tenant Management</h2>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">{total} tenant(s)</span>
-          <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-            {showForm ? 'Cancel' : '+ New Tenant'}
-          </button>
-        </div>
-      </div>
-
       {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
         <span>{error}</span>
         <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
@@ -130,19 +122,58 @@ const TenantManagement = () => {
 
       <div className="card">
         <div className="card-header">
-          <input
-            type="text"
-            placeholder="Search by company name or subdomain..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="input-field max-w-md"
-          />
+          <div className="flex items-center gap-3 w-full">
+            <input
+              type="text"
+              placeholder="Search by company name or subdomain..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              className="input-field max-w-md flex-1"
+            />
+            <button onClick={() => setShowForm(!showForm)} className="btn-primary shrink-0">
+              {showForm ? 'Cancel' : '+ New Tenant'}
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center h-48">
             <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
           </div>
+        ) : isMobile ? (
+          <>
+            <div className="divide-y divide-gray-100">
+              {tenants.map((tenant) => (
+                <div key={tenant.id} className="px-4 py-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-900 truncate flex-1">{tenant.company_name}</p>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <Link to={`/super/tenants/${tenant.id}`} className="btn-secondary !py-1 !px-2.5 text-xs">Manage</Link>
+                      <button onClick={() => handleDelete(tenant.id, tenant.company_name)} className="btn-danger !py-1 !px-2.5 text-xs">Delete</button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span>{tenant.subdomain}</span>
+                    <span>&middot;</span>
+                    <span>{tenant.employee_count} employees</span>
+                    <span>&middot;</span>
+                    <span>{new Date(tenant.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+              {tenants.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No tenants found</div>}
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                <span className="text-sm text-gray-500">{total} total</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-secondary !py-1 text-xs">Prev</button>
+                  <span className="text-sm text-gray-600 self-center">{page} / {totalPages}</span>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn-secondary !py-1 text-xs">Next</button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="overflow-x-auto">

@@ -10,7 +10,6 @@ import useIsMobile from '../../hooks/useIsMobile';
 const INNER_TABS = [
   { key: 'buyers', label: 'Buyers' },
   { key: 'sellers', label: 'Sellers' },
-  { key: 'staff', label: 'Staff' },
   { key: 'cashbook', label: 'Cashbook' },
   { key: 'reports', label: 'Reports' },
 ];
@@ -40,12 +39,6 @@ const KiranaStore = () => {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Staff
-  const [staff, setStaff] = useState([]);
-  const [showStaffForm, setShowStaffForm] = useState(false);
-  const [staffForm, setStaffForm] = useState({ name: '', phone: '', role: '', salary: '', joinedAt: '' });
-  const [editingStaff, setEditingStaff] = useState(null);
-
   // Cashbook
   const [cashEntries, setCashEntries] = useState([]);
   const [cashSummary, setCashSummary] = useState({ totalIn: 0, totalOut: 0, balance: 0 });
@@ -60,7 +53,6 @@ const KiranaStore = () => {
   // Mobile state
   const [selectedParty, setSelectedParty] = useState(null);
   const [mobileTxForm, setMobileTxForm] = useState({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
-  const [selectedStaff, setSelectedStaff] = useState(null);
   const [selectedCash, setSelectedCash] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
 
@@ -81,10 +73,6 @@ const KiranaStore = () => {
   }, []);
 
   useEffect(() => { fetchParties(); fetchSummary(); }, [fetchParties, fetchSummary]);
-
-  const fetchStaff = useCallback(async () => {
-    try { setStaff(await hrService.kirana.getStaff()); } catch {}
-  }, []);
 
   const loadCashAttachments = async (entryId) => {
     try {
@@ -113,9 +101,8 @@ const KiranaStore = () => {
   }, [urlTab]);
 
   useEffect(() => {
-    if (tab === 'staff') fetchStaff();
     if (tab === 'cashbook') fetchCashbook();
-  }, [tab, fetchStaff, fetchCashbook]);
+  }, [tab, fetchCashbook]);
 
   const openDetail = async (party) => {
     try {
@@ -181,30 +168,6 @@ const KiranaStore = () => {
       fetchSummary();
     } catch {}
     setModal(null);
-  };
-
-  // Staff handlers
-  const handleSaveStaff = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      if (editingStaff) {
-        await hrService.kirana.updateStaff(editingStaff.id, staffForm);
-      } else {
-        await hrService.kirana.createStaff(staffForm);
-      }
-      setShowStaffForm(false);
-      setEditingStaff(null);
-      setStaffForm({ name: '', phone: '', role: '', salary: '', joinedAt: '' });
-      fetchStaff();
-    } catch (err) { setMessage(err.response?.data?.error || 'Failed.'); }
-    setSaving(false);
-  };
-
-  const openEditStaff = (s) => {
-    setEditingStaff(s);
-    setStaffForm({ name: s.name, phone: s.phone || '', role: s.role || '', salary: s.salary ? (s.salary / 100).toFixed(2) : '', joinedAt: s.joined_at ? s.joined_at.split('T')[0] : '' });
-    setShowStaffForm(true);
   };
 
   // Cashbook handlers
@@ -290,11 +253,6 @@ const KiranaStore = () => {
     setModal(null);
   };
 
-  const handleStaffRowClick = (s) => {
-    if (!isMobile) return;
-    setSelectedStaff(s);
-  };
-
   const handleCashRowClick = (entry) => {
     if (!isMobile) return;
     setSelectedCash(entry);
@@ -329,29 +287,6 @@ const KiranaStore = () => {
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
         </button>
         <button onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-        </button>
-      </div>
-    )},
-  ];
-
-  const staffColumns = [
-    { key: 'name', label: 'Name', render: (v, s) => (
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">{s.name?.charAt(0)?.toUpperCase()}</div>
-        <span className="font-medium">{v}</span>
-      </div>
-    )},
-    { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '-' },
-    { key: 'role', label: 'Role', render: (v) => v || '-' },
-    { key: 'salary', label: 'Salary', render: (v) => v ? formatINR(v) : '-' },
-    { key: 'joined_at', label: 'Joined', render: (v) => <span className="text-gray-500">{v ? v.split('T')[0] : '-'}</span> },
-    { key: 'actions', label: 'Actions', render: (_, s) => (
-      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
-        <button onClick={() => openEditStaff(s)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-        </button>
-        <button onClick={() => setModal({ action: 'deleteStaff', id: s.id })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
         </button>
       </div>
@@ -630,51 +565,6 @@ const KiranaStore = () => {
     </div>
   );
 
-  // Tab content: Staff
-  const renderStaff = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Staff</h3>
-        <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', phone: '', role: '', salary: '', joinedAt: '' }); setShowStaffForm(true); }} className="btn-primary text-sm">+ Add Staff</button>
-      </div>
-      <div>
-        <ResponsiveTable
-          columns={staffColumns}
-          data={staff}
-          keyField="id"
-          onRowClick={handleStaffRowClick}
-          mobilePrimary="name"
-          mobileSecondary="role"
-          emptyMessage="No staff added"
-        />
-      </div>
-
-      {showStaffForm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setShowStaffForm(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">{editingStaff ? 'Edit Staff' : 'Add Staff'}</h3>
-              <button onClick={() => setShowStaffForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
-            <form onSubmit={handleSaveStaff} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Name</label><input type="text" value={staffForm.name} onChange={e => setStaffForm({ ...staffForm, name: e.target.value })} className="input-field" required /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone</label><input type="text" value={staffForm.phone} onChange={e => setStaffForm({ ...staffForm, phone: e.target.value })} className="input-field" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Role</label><input type="text" value={staffForm.role} onChange={e => setStaffForm({ ...staffForm, role: e.target.value })} className="input-field" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Salary (Rs.)</label><input type="number" min="0" step="0.01" value={staffForm.salary} onChange={e => setStaffForm({ ...staffForm, salary: e.target.value })} className="input-field" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Join Date</label><input type="date" value={staffForm.joinedAt} onChange={e => setStaffForm({ ...staffForm, joinedAt: e.target.value })} className="input-field" /></div>
-              </div>
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowStaffForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingStaff ? 'Update' : 'Add'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
   // Tab content: Cashbook
   const renderCashbook = () => {
     const cashIcons = {
@@ -944,7 +834,6 @@ const KiranaStore = () => {
       </div>
 
       {tab === 'buyers' || tab === 'sellers' ? renderDashboard() : null}
-      {tab === 'staff' && renderStaff()}
       {tab === 'cashbook' && renderCashbook()}
       {tab === 'reports' && renderReports()}
 
@@ -1019,23 +908,6 @@ const KiranaStore = () => {
         </BottomSheet>
       )}
 
-      {isMobile && selectedStaff && (
-        <BottomSheet
-          open={true}
-          onClose={() => setSelectedStaff(null)}
-          title={selectedStaff.name}
-          actions={[
-            <button key="edit" onClick={() => { setSelectedStaff(null); openEditStaff(selectedStaff); }} className="btn-primary flex-1">Edit</button>,
-            <button key="delete" onClick={() => { setSelectedStaff(null); setModal({ action: 'deleteStaff', id: selectedStaff.id }); }} className="btn-secondary flex-1 !text-red-600 !border-red-200">Delete</button>,
-          ]}
-        >
-          <DetailRow label="Phone" value={formatPhone(selectedStaff.phone)} />
-          <DetailRow label="Role" value={selectedStaff.role || '—'} />
-          <DetailRow label="Salary" value={selectedStaff.salary ? formatINR(selectedStaff.salary) : '—'} />
-          <DetailRow label="Joined" value={selectedStaff.joined_at ? selectedStaff.joined_at.split('T')[0] : '—'} />
-        </BottomSheet>
-      )}
-
       {isMobile && selectedCash && (
         <BottomSheet
           open={true}
@@ -1095,7 +967,6 @@ const KiranaStore = () => {
             if (modal.action === 'deleteTx') handleDeleteTx(modal.id);
             else if (modal.action === 'mobileDeleteTx') handleMobileDeleteTx(modal.id);
             else if (modal.action === 'deleteParty') hrService.kirana.deleteParty(modal.id).then(() => { fetchParties(); fetchSummary(); setModal(null); });
-            else if (modal.action === 'deleteStaff') hrService.kirana.deleteStaff(modal.id).then(() => { fetchStaff(); setModal(null); });
             else if (modal.action === 'deleteCash') handleDeleteCash(modal.id);
             else setModal(null);
           }}

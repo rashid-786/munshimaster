@@ -26,7 +26,6 @@ const NAV_GROUPS = [
     items: [
       { to: '/admin/ledger/buyers', label: 'Buyers' },
       { to: '/admin/ledger/sellers', label: 'Sellers' },
-      { to: '/admin/ledger/staff', label: 'Staff' },
       { to: '/admin/ledger/cashbook', label: 'Cashbook' },
       { to: '/admin/ledger/reports', label: 'Reports' },
     ],
@@ -75,7 +74,6 @@ const pageTitles = {
   '/admin/ledger': 'My Ledger Book',
   '/admin/ledger/buyers': 'My Ledger Book',
   '/admin/ledger/sellers': 'My Ledger Book',
-  '/admin/ledger/staff': 'My Ledger Book',
   '/admin/ledger/cashbook': 'My Ledger Book',
   '/admin/ledger/reports': 'My Ledger Book',
 };

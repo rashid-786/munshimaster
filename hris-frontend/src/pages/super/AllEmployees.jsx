@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
 import { formatINR } from '../../utils/currency';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const AllEmployees = () => {
   const [employees, setEmployees] = useState([]);
@@ -72,14 +73,58 @@ const AllEmployees = () => {
   };
 
   const totalPages = Math.ceil(total / limit);
+  const isMobile = useIsMobile();
+
+  const renderEmployeeCard = (emp) => {
+    const isEditing = editId === emp.id;
+    return (
+      <div key={emp.id} className="card px-4 py-3.5">
+        {isEditing ? (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <input type="text" value={editForm.firstName} onChange={e => setEditForm({...editForm, firstName: e.target.value})} className="input-field !py-1.5 text-sm flex-1" placeholder="First name" />
+              <input type="text" value={editForm.lastName} onChange={e => setEditForm({...editForm, lastName: e.target.value})} className="input-field !py-1.5 text-sm flex-1" placeholder="Last name" />
+            </div>
+            <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="input-field !py-1.5 text-sm" placeholder="Email" />
+            <div className="flex gap-2">
+              <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="input-field !py-1.5 text-sm flex-1">
+                <option value="employee">Employee</option>
+                <option value="tenant_admin">Admin</option>
+              </select>
+              <input type="number" value={editForm.baseSalary} onChange={e => setEditForm({...editForm, baseSalary: e.target.value})} className="input-field !py-1.5 text-sm w-28" placeholder="Salary" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => saveEdit(emp.id)} className="btn-success !py-1.5 text-xs flex-1">Save</button>
+              <button onClick={cancelEdit} className="btn-secondary !py-1.5 text-xs flex-1">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
+                <p className="text-xs text-gray-500 truncate mt-0.5">{emp.email}</p>
+              </div>
+              <span className={`badge shrink-0 ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
+                {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <Link to={`/super/tenants/${emp.tenant_id}`} className="text-indigo-600 hover:text-indigo-500 font-medium">{emp.company_name}</Link>
+                <span>&middot;</span>
+                <span className="font-medium text-gray-700">{formatINR(emp.base_salary)}</span>
+              </div>
+              <button onClick={() => startEdit(emp)} className="btn-secondary !py-1 !px-2.5 text-xs">Edit</button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">All Employees</h2>
-        <span className="text-sm text-gray-500">{total} employee(s)</span>
-      </div>
-
       {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
         <span>{error}</span>
         <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
@@ -112,6 +157,23 @@ const AllEmployees = () => {
           <div className="flex items-center justify-center h-48">
             <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
           </div>
+        ) : isMobile ? (
+          <>
+            <div className="space-y-3 p-4">
+              {employees.map(renderEmployeeCard)}
+              {employees.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No employees found</div>}
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                <span className="text-sm text-gray-500">{total} total</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-secondary !py-1 text-xs">Prev</button>
+                  <span className="text-sm text-gray-600 self-center">{page} / {totalPages}</span>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn-secondary !py-1 text-xs">Next</button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="overflow-x-auto">
