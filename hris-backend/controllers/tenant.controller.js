@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { log } = require('../utils/audit');
 
 exports.getTenantSettings = async (req, res) => {
   const tenantId = req.tenantId;
@@ -29,6 +30,7 @@ exports.updateTenantSettings = async (req, res) => {
       'UPDATE tenants SET company_name = ?, settings = ? WHERE id = ?',
       [companyName, settingsString, tenantId]
     );
+    await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'settings.updated', entityType: 'settings', entityId: tenantId, changes: { companyName, settings }, req });
     res.json({ message: 'Workspace personalization properties updated successfully!' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to rewrite system runtime properties configuration.' });

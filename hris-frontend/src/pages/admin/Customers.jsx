@@ -199,7 +199,7 @@ const Customers = () => {
                   </div>
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                    <textarea value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="input-field" rows={2} />
+                    <textarea value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} className="input-field" rows={2} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
@@ -228,7 +228,7 @@ const Customers = () => {
                   )}
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="input-field" rows={2} />
+                    <textarea value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} className="input-field" rows={2} />
                   </div>
                 </div>
               </div>

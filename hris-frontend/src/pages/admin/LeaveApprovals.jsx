@@ -3,22 +3,91 @@ import { useAuth } from '../../context/AuthContext';
 import { hrService } from '../../services/hr.service';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
+import ConfirmModal from '../../components/ConfirmModal';
+import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
+
+const LEAVE_TYPES = ['Annual', 'Sick', 'Casual', 'Unpaid'];
+
+const Icons = {
+  edit: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
+  trash: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+};
 
 const LeaveApprovals = () => {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const isAdmin = user?.role === 'tenant_admin';
   const [leaves, setLeaves] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [message, setMessage] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [showCreateLeave, setShowCreateLeave] = useState(false);
+  const [editingLeave, setEditingLeave] = useState(null);
+  const [leaveForm, setLeaveForm] = useState({ employeeId: '', leaveType: 'Annual', startDate: '', endDate: '', replacementEmployeeId: '' });
+  const [modal, setModal] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  const adhocEmployees = useMemo(() =>
+    employees.filter(e => e.job_type === 'adhoc' && e.status !== 'deactivated')
+      .map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })),
+    [employees]
+  );
 
   useEffect(() => {
     hrService.getLeaves().then(setLeaves).catch(() => {});
+    if (isAdmin) {
+      hrService.getEmployees().then(setEmployees).catch(() => {});
+    }
   }, []);
+
+  const handleCreateLeave = async (e) => {
+    e.preventDefault();
+    try {
+      const res = editingLeave
+        ? await hrService.updateLeave(editingLeave.id, { leaveType: leaveForm.leaveType, startDate: leaveForm.startDate, endDate: leaveForm.endDate })
+        : await hrService.adminCreateLeave(leaveForm);
+      setMessage(res.message);
+      setShowCreateLeave(false);
+      setEditingLeave(null);
+      setLeaveForm({ employeeId: '', leaveType: 'Annual', startDate: '', endDate: '', replacementEmployeeId: '' });
+      const updated = await hrService.getLeaves();
+      setLeaves(updated);
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to save leave.');
+    }
+  };
+
+  const handleEdit = (leave) => {
+    setEditingLeave(leave);
+    setLeaveForm({
+      employeeId: leave.employee_id || '',
+      leaveType: leave.leave_type,
+      startDate: leave.start_date,
+      endDate: leave.end_date,
+      replacementEmployeeId: '',
+    });
+    setShowCreateLeave(true);
+  };
+
+  const handleDelete = (id) => {
+    setModal({
+      id,
+      variant: 'danger',
+      title: 'Delete Leave',
+      message: 'Permanently delete this leave record? This cannot be undone.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setModalLoading(true);
+        try { await hrService.deleteLeave(id); setModal(null); setLeaves(await hrService.getLeaves()); }
+        catch (err) { setMessage(err.response?.data?.error || 'Failed to delete.'); setModal(null); }
+        finally { setModalLoading(false); }
+      },
+    });
+  };
 
   const monthOptions = useMemo(() => {
     const set = new Set();
@@ -67,14 +136,20 @@ const LeaveApprovals = () => {
     { key: 'end_date', label: 'End Date', render: (v) => <span className="text-gray-500">{new Date(v).toLocaleDateString()}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v}</span> },
     { key: 'actions', label: 'Actions', render: (_, r) => (
-      <div>
+      <div className="flex gap-1.5">
         {isAdmin && r.status === 'pending' ? (
-          <div className="flex gap-2">
+          <>
             <button onClick={(e) => { e.stopPropagation(); handleReview(r.id, 'approved'); }} className="btn-success text-xs !px-3 !py-1">Approve</button>
             <button onClick={(e) => { e.stopPropagation(); handleReview(r.id, 'rejected'); }} className="btn-danger text-xs !px-3 !py-1">Reject</button>
-          </div>
+          </>
         ) : (
-          <span className="text-gray-400 text-sm">{r.status === 'pending' ? 'Awaiting approval' : 'Done'}</span>
+          <span className="text-gray-400 text-sm self-center">{r.status === 'pending' ? 'Awaiting approval' : 'Done'}</span>
+        )}
+        {isAdmin && (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); handleEdit(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
+            <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
+          </>
         )}
       </div>
     )},
@@ -82,7 +157,15 @@ const LeaveApprovals = () => {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">{isAdmin ? 'Leave Applications' : 'My Leave Requests'}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-900">{isAdmin ? 'Leave Management' : 'My Leave Requests'}</h3>
+        {isAdmin && (
+          <button onClick={() => setShowCreateLeave(true)} className="btn-primary text-sm !px-4 !py-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Create Leave
+          </button>
+        )}
+      </div>
       {message && <div className="p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{message}</div>}
       <ResponsiveTable
         columns={columns}
@@ -156,6 +239,77 @@ const LeaveApprovals = () => {
           )}
         </BottomSheet>
       )}
+
+      {/* Admin: Create Leave Modal */}
+      {showCreateLeave && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setShowCreateLeave(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{editingLeave ? 'Edit Leave' : 'Create Leave'}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{editingLeave ? 'Update leave details.' : 'Approve leave for a staff member.'}</p>
+              </div>
+              <button onClick={() => { setShowCreateLeave(false); setEditingLeave(null); }} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
+            </div>
+            <form onSubmit={handleCreateLeave} className="p-6 space-y-4">
+              {!editingLeave && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+                  <SearchableSelect
+                    options={employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` }))}
+                    value={leaveForm.employeeId}
+                    onChange={(val) => setLeaveForm({ ...leaveForm, employeeId: val })}
+                    placeholder="Select employee..."
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Leave Type</label>
+                <select value={leaveForm.leaveType} onChange={e => setLeaveForm({ ...leaveForm, leaveType: e.target.value })} className="input-field">
+                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} required className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} required className="input-field" />
+                </div>
+              </div>
+              {!editingLeave && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Adhoc Replacement (optional)</label>
+                  <SearchableSelect
+                    options={adhocEmployees}
+                    value={leaveForm.replacementEmployeeId}
+                    onChange={(val) => setLeaveForm({ ...leaveForm, replacementEmployeeId: val })}
+                    placeholder="Assign adhoc staff to cover..."
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Automatically creates a replacement record for this leave period.</p>
+                </div>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => { setShowCreateLeave(false); setEditingLeave(null); }} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">{editingLeave ? 'Update Leave' : 'Create & Approve'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!modal}
+        title={modal?.title}
+        message={modal?.message}
+        confirmLabel={modal?.confirmLabel}
+        variant={modal?.variant}
+        loading={modalLoading}
+        onConfirm={modal?.onConfirm || (() => {})}
+        onCancel={() => setModal(null)}
+      />
     </div>
   );
 };

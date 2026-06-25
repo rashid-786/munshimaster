@@ -725,14 +725,13 @@ const KiranaStore = () => {
   useEffect(() => {
     if (tab !== 'reports') return;
     setReportLoading(true);
-    hrService.getReportData(reportParams).then(setReportData).catch(() => {}).finally(() => setReportLoading(false));
+    hrService.kirana.getKiranaReportData(reportParams).then(setReportData).catch(() => {}).finally(() => setReportLoading(false));
   }, [tab, reportTab, reportStart, reportEnd, reportEntryType, reportPartyType]);
 
   const handleReportDownload = async (fmt) => {
     setReportDownloading(fmt);
     try {
-      if (fmt === 'pdf') await hrService.kirana.downloadReportPDF(reportParams.type, reportParams);
-      else await hrService.kirana.downloadReportExcel(reportParams.type, reportParams);
+      if (fmt === 'excel') await hrService.kirana.downloadReportExcel(reportParams.type, reportParams);
     } catch {}
     setReportDownloading('');
   };
@@ -745,7 +744,6 @@ const KiranaStore = () => {
           <button onClick={() => setReportTab('cashbook')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${reportTab === 'cashbook' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>Cashbook</button>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => handleReportDownload('pdf')} disabled={!!reportDownloading} className="btn-primary text-sm">{reportDownloading === 'pdf' ? 'Generating...' : 'Download PDF'}</button>
           <button onClick={() => handleReportDownload('excel')} disabled={!!reportDownloading} className="btn-secondary text-sm">{reportDownloading === 'excel' ? 'Generating...' : 'Download Excel'}</button>
         </div>
       </div>

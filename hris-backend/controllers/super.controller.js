@@ -143,6 +143,7 @@ exports.getTenants = async (req, res) => {
       SELECT t.id, t.company_name, t.subdomain, t.subscription_plan, t.settings, t.created_at,
              (SELECT COUNT(*) FROM employees e WHERE e.tenant_id = t.id) as employee_count,
              (SELECT e.email FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_email,
+             (SELECT e.phone FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_phone,
              (SELECT e.id FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_id
       FROM tenants t
     `;
@@ -199,7 +200,7 @@ exports.getTenantDetail = async (req, res) => {
       ? JSON.parse(tenant.settings) : (tenant.settings || {});
 
     const [employees] = await db.execute(
-      `SELECT id, first_name, last_name, email, role, base_salary, created_at
+      `SELECT id, first_name, last_name, email, role, job_type, base_salary, profession, other_profession, created_at
        FROM employees WHERE tenant_id = ? ORDER BY created_at DESC`,
       [id]
     );

@@ -22,6 +22,8 @@ import EmployeeCalendar from './pages/admin/EmployeeCalendar';
 import LeaveApprovals from './pages/admin/LeaveApprovals';
 import PayrollConsole from './pages/admin/PayrollConsole';
 import AdvancePayments from './pages/admin/AdvancePayments';
+import Replacements from './pages/admin/Replacements';
+import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
 import Reports from './pages/admin/Reports';
 import KiranaStore from './pages/admin/KiranaStore';
@@ -85,6 +87,8 @@ function App() {
             <Route path="leaves" element={<PlanRoute minPlan="enterprise"><LeaveApprovals /></PlanRoute>} />
             <Route path="payroll" element={<PlanRoute minPlan="enterprise"><PayrollConsole /></PlanRoute>} />
             <Route path="advances" element={<PlanRoute minPlan="enterprise"><AdvancePayments /></PlanRoute>} />
+            <Route path="replacements" element={<PlanRoute minPlan="enterprise"><Replacements /></PlanRoute>} />
+            <Route path="audit-logs" element={<PlanRoute minPlan="enterprise"><AuditLogs /></PlanRoute>} />
             <Route path="balance" element={<PlanRoute minPlan="pro"><BalanceSheet /></PlanRoute>} />
             <Route path="reports" element={<PlanRoute minPlan="pro"><Reports /></PlanRoute>} />
             <Route path="ledger" element={<KiranaStore />} />

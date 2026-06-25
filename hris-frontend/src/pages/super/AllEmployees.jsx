@@ -104,6 +104,7 @@ const AllEmployees = () => {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{emp.email}</p>
+                {emp.phone && <p className="text-xs text-gray-400 mt-0.5">{emp.phone}</p>}
               </div>
               <span className={`badge shrink-0 ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
                 {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
@@ -182,6 +183,7 @@ const AllEmployees = () => {
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="table-header">Name</th>
                     <th className="table-header">Email</th>
+                    <th className="table-header">Phone</th>
                     <th className="table-header">Company</th>
                     <th className="table-header">Role</th>
                     <th className="table-header">Salary</th>
@@ -203,6 +205,7 @@ const AllEmployees = () => {
                           <td className="table-cell">
                             <input type="email" name="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="input-field !py-1 text-sm" />
                           </td>
+                          <td className="table-cell text-gray-500">{emp.phone || '-'}</td>
                           <td className="table-cell text-gray-500">{emp.company_name}</td>
                           <td className="table-cell">
                             <select name="role" value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="input-field !py-1 text-sm">
@@ -225,6 +228,7 @@ const AllEmployees = () => {
                         <>
                           <td className="table-cell font-medium">{emp.first_name} {emp.last_name}</td>
                           <td className="table-cell text-gray-500">{emp.email}</td>
+                          <td className="table-cell text-gray-500">{emp.phone || '-'}</td>
                           <td className="table-cell">
                             <Link to={`/super/tenants/${emp.tenant_id}`} className="text-indigo-600 hover:text-indigo-500 text-sm font-medium">
                               {emp.company_name}
@@ -245,7 +249,7 @@ const AllEmployees = () => {
                     </tr>
                   ))}
                   {employees.length === 0 && (
-                    <tr><td colSpan={7} className="table-cell text-center text-gray-400 py-8">No employees found</td></tr>
+                    <tr><td colSpan={8} className="table-cell text-center text-gray-400 py-8">No employees found</td></tr>
                   )}
                 </tbody>
               </table>

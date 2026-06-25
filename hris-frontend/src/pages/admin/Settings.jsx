@@ -19,6 +19,9 @@ const Settings = () => {
   const [taxRate, setTaxRate] = useState(18);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [hiddenGroups, setHiddenGroups] = useState({});
+  const [currencySymbol, setCurrencySymbol] = useState('₹');
+  const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
+  const [hideTempPassword, setHideTempPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -32,6 +35,18 @@ const Settings = () => {
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
       if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
+      if (res.settings?.currencySymbol) {
+        setCurrencySymbol(res.settings.currencySymbol);
+        localStorage.setItem('currency_symbol', res.settings.currencySymbol);
+      }
+      if (res.settings?.countryCode) {
+        setCountryCode(res.settings.countryCode);
+        localStorage.setItem('default_country_code', res.settings.countryCode);
+      }
+      if (res.settings?.hideTempPassword !== undefined) {
+        setHideTempPassword(res.settings.hideTempPassword);
+        localStorage.setItem('hide_temp_password', res.settings.hideTempPassword ? 'true' : 'false');
+      }
     }).catch(() => {});
   }, []);
 
@@ -44,8 +59,14 @@ const Settings = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      const res = await hrService.updateTenantSettings({ companyName, settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups } });
+      const res = await hrService.updateTenantSettings({
+        companyName,
+        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, currencySymbol, countryCode, hideTempPassword }
+      });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
+      localStorage.setItem('currency_symbol', currencySymbol);
+      localStorage.setItem('default_country_code', countryCode);
+      localStorage.setItem('hide_temp_password', hideTempPassword ? 'true' : 'false');
       window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups } }));
       if (firstName || lastName) {
         const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email, phone: user?.phone || '' });
@@ -54,6 +75,7 @@ const Settings = () => {
       setMessage(res.message || 'Settings saved.');
       applyTheme(primaryColor);
       localStorage.setItem('tenant_name', companyName);
+      window.dispatchEvent(new CustomEvent('currency-changed'));
     } catch (err) {
       setMessage('Failed to save settings.');
     }
@@ -144,6 +166,28 @@ const Settings = () => {
               <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
             </div>
           )}
+
+          <div className="border-t border-gray-200 pt-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Currency Symbol</label>
+              <input type="text" value={currencySymbol} onChange={e => setCurrencySymbol(e.target.value)} className="input-field max-w-[100px]" placeholder="₹" />
+              <p className="text-xs text-gray-400 mt-1">Used for all salary and monetary displays.</p>
+            </div>
+            {planRank >= 1 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Default Country Code</label>
+                <input type="text" value={countryCode} onChange={e => setCountryCode(e.target.value)} className="input-field max-w-[120px]" placeholder="+965" />
+                <p className="text-xs text-gray-400 mt-1">Pre-filled in phone number fields.</p>
+              </div>
+            )}
+            {planRank >= 2 && (
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={hideTempPassword} onChange={e => setHideTempPassword(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                <span className="text-sm text-gray-700">Hide Temp Password field on onboarding</span>
+              </label>
+            )}
+          </div>
 
           <div className="border-t border-gray-200 pt-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Sidebar Sections</label>

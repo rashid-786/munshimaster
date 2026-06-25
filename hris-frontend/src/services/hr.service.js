@@ -34,6 +34,43 @@ export const hrService = {
     const response = await api.post('/core/time/attendance/clock-out');
     return response.data;
   },
+  getAuditLogs: async (params = {}) => {
+    const response = await api.get('/core/audit-logs', { params });
+    return response.data;
+  },
+  getAuditActions: async () => {
+    const response = await api.get('/core/audit-logs/actions');
+    return response.data;
+  },
+  getAuditDetail: async (id) => {
+    const response = await api.get(`/core/audit-logs/${id}`);
+    return response.data;
+  },
+  downloadImportTemplate: async () => {
+    const response = await api.get('/core/employees/import/template', { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'staff_import_template.xlsx');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+  previewImport: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/core/employees/import/preview', formData);
+    return response.data;
+  },
+  executeImport: async (data) => {
+    const response = await api.post('/core/employees/import/execute', data);
+    return response.data;
+  },
+  adminCreateLeave: async (leaveData) => {
+    const response = await api.post('/core/time/leaves/admin-create', leaveData);
+    return response.data;
+  },
   applyLeave: async (leaveData) => {
     const response = await api.post('/core/time/leaves/apply', leaveData);
     return response.data;
@@ -44,6 +81,14 @@ export const hrService = {
   },
   reviewLeave: async (leaveId, status) => {
     const response = await api.patch('/core/time/leaves/review', { leaveId, status });
+    return response.data;
+  },
+  updateLeave: async (id, data) => {
+    const response = await api.put(`/core/time/leaves/${id}`, data);
+    return response.data;
+  },
+  deleteLeave: async (id) => {
+    const response = await api.delete(`/core/time/leaves/${id}`);
     return response.data;
   },
   runPayroll: async (payrollParameters) => {
@@ -288,15 +333,16 @@ export const hrService = {
     updateCashEntry: async (id, data) => { const r = await api.put(`/core/kirana/cashbook/${id}`, data); return r.data; },
     deleteCashEntry: async (id) => { const r = await api.delete(`/core/kirana/cashbook/${id}`); return r.data; },
     getReport: async (params) => { const r = await api.get('/core/kirana/reports', { params }); return r.data; },
-    downloadReportPDF: async (type, params) => {
-      const response = await api.get('/core/reports/download/pdf', { params: { ...params, type }, responseType: 'blob' });
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const link = document.createElement('a'); link.href = window.URL.createObjectURL(blob); link.download = `${type}_report.pdf`; link.click();
-    },
     downloadReportExcel: async (type, params) => {
-      const response = await api.get('/core/reports/download/excel', { params: { ...params, type }, responseType: 'blob' });
+      const mapType = { kirana_party: 'parties', kirana_cashbook: 'cashbook' };
+      const response = await api.get('/core/kirana/reports/download/excel', { params: { ...params, type: mapType[type] || type }, responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const link = document.createElement('a'); link.href = window.URL.createObjectURL(blob); link.download = `${type}_report.xlsx`; link.click();
+    },
+    getKiranaReportData: async (params) => {
+      const mapType = { kirana_party: 'parties', kirana_cashbook: 'cashbook' };
+      const response = await api.get('/core/kirana/reports', { params: { ...params, type: mapType[params.type] || params.type } });
+      return response.data;
     },
   },
 
@@ -365,6 +411,24 @@ export const hrService = {
   },
   getProfileCompletion: async () => {
     const response = await api.get('/core/subscription/profile-completion');
+    return response.data;
+  },
+
+  // Replacements
+  getReplacements: async (params) => {
+    const response = await api.get('/core/replacements', { params });
+    return response.data;
+  },
+  createReplacement: async (data) => {
+    const response = await api.post('/core/replacements', data);
+    return response.data;
+  },
+  endReplacement: async (id) => {
+    const response = await api.patch(`/core/replacements/${id}/end`);
+    return response.data;
+  },
+  deleteReplacement: async (id) => {
+    const response = await api.delete(`/core/replacements/${id}`);
     return response.data;
   },
 };

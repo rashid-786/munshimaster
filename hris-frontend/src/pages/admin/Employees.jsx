@@ -5,7 +5,18 @@ import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
+import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
+
+const PROFESSIONS = [
+  'Accountant', 'Administrator', 'Architect', 'Business Analyst', 'Chef',
+  'Customer Service', 'Data Analyst', 'Designer', 'Doctor', 'Driver',
+  'Engineer', 'Finance Manager', 'HR Manager', 'IT Specialist', 'Janitor',
+  'Lawyer', 'Logistics Coordinator', 'Manager', 'Marketing', 'Nurse',
+  'Operations Manager', 'Pharmacist', 'Receptionist', 'Sales Executive',
+  'Security Guard', 'Software Developer', 'Teacher', 'Technician',
+  'Trainer', 'Warehouse Worker',
+].map(p => ({ value: p, label: p }));
 
 const Icons = {
   search: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
@@ -23,16 +34,23 @@ const Employees = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const isAdmin = user?.role === 'tenant_admin';
+  const hideTempPassword = localStorage.getItem('hide_temp_password') === 'true';
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', baseSalary: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' });
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [duplicateAction, setDuplicateAction] = useState('skip');
+  const [importResult, setImportResult] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
 
   const fetchRoster = async () => {
     try {
@@ -48,19 +66,24 @@ const Employees = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        role: form.role,
+        jobType: form.jobType,
+        baseSalary: form.baseSalary,
+        profession: form.profession === 'Other' ? form.otherProfession : form.profession,
+        otherProfession: form.profession === 'Other' ? form.otherProfession : null,
+      };
       if (editingEmployee) {
-        await hrService.updateEmployee(editingEmployee.id, {
-          firstName: form.firstName,
-          lastName: form.lastName,
-          email: form.email,
-          phone: form.phone,
-          role: form.role,
-          baseSalary: form.baseSalary,
-        });
+        await hrService.updateEmployee(editingEmployee.id, payload);
       } else {
-        await hrService.onboardEmployee(form);
+        payload.password = form.password || 'Welcome@123';
+        await hrService.onboardEmployee(payload);
       }
-      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', baseSalary: '' });
+      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' });
       setShowOnboard(false);
       setEditingEmployee(null);
       fetchRoster();
@@ -104,9 +127,38 @@ const Employees = () => {
     });
   };
 
+  const handleImportPreview = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+    setError('');
+    try {
+      const res = await hrService.previewImport(importFile);
+      setImportPreview(res);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to preview import.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportExecute = async () => {
+    if (!importPreview || importPreview.validCount === 0) return;
+    setImportLoading(true);
+    setError('');
+    try {
+      const res = await hrService.executeImport({ rows: importPreview.rows.filter(r => r.valid), duplicateAction });
+      setImportResult(res);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Import failed.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const mobileEdit = (emp) => {
     setSelectedRecord(null);
     setEditingEmployee(emp);
+    const profession = PROFESSIONS.some(p => p.value === emp.profession) ? emp.profession : 'Other';
     setForm({
       firstName: emp.first_name,
       lastName: emp.last_name,
@@ -114,7 +166,10 @@ const Employees = () => {
       phone: emp.phone || '',
       password: '',
       role: emp.role,
+      jobType: emp.job_type || 'permanent',
       baseSalary: (emp.base_salary / 100).toFixed(2),
+      profession: profession,
+      otherProfession: profession === 'Other' ? emp.profession : '',
     });
     setShowOnboard(true);
   };
@@ -153,6 +208,7 @@ const Employees = () => {
       const b = v === 'tenant_admin' ? 'badge-info' : 'badge-success';
       return <span className={b}>{v === 'tenant_admin' ? 'Admin' : 'Employee'}</span>;
     }},
+    { key: 'job_type', label: 'Type', render: (v) => <span className={`badge ${v === 'adhoc' ? 'badge-warning' : 'badge-primary'}`}>{v === 'adhoc' ? 'Adhoc' : 'Permanent'}</span> },
     { key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
     { key: 'actions', label: 'Actions', render: (_, emp) => (
@@ -226,10 +282,16 @@ const Employees = () => {
               <p className="text-sm text-gray-500 mt-0.5">{activeCount} active &middot; {employees.length} total</p>
             </div>
             {isAdmin && (
-              <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', baseSalary: '' }); setShowOnboard(true); }} className="btn-primary">
-                {Icons.userAdd}
-                Onboard Staff
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' }); setShowOnboard(true); }} className="btn-primary">
+                  {Icons.userAdd}
+                  Onboard Staff
+                </button>
+                <button onClick={() => setShowImport(true)} className="btn-secondary">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+                  Import Staff
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -282,6 +344,7 @@ const Employees = () => {
                     <th className="table-header">Email</th>
                     <th className="table-header">Phone</th>
                     <th className="table-header">Role</th>
+                    <th className="table-header">Type</th>
                     <th className="table-header">Monthly Salary</th>
                     <th className="table-header">Status</th>
                     <th className="table-header text-right">Actions</th>
@@ -307,6 +370,11 @@ const Employees = () => {
                           {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
                         </span>
                       </td>
+                      <td className="table-cell">
+                        <span className={`badge ${emp.job_type === 'adhoc' ? 'badge-warning' : 'badge-primary'}`}>
+                          {emp.job_type === 'adhoc' ? 'Adhoc' : 'Permanent'}
+                        </span>
+                      </td>
                       <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
                       <td className="table-cell">
                         <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
@@ -330,7 +398,7 @@ const Employees = () => {
                     </tr>
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="table-cell text-center text-gray-400 py-12">
+                    <tr><td colSpan={8} className="table-cell text-center text-gray-400 py-12">
                       <p className="text-base font-medium mb-1">No staff found</p>
                       <p className="text-sm">{search ? 'Try a different search term.' : 'Click "Onboard Staff" to add your first team member.'}</p>
                     </td></tr>
@@ -378,7 +446,14 @@ const Employees = () => {
                     <option value="tenant_admin">Admin</option>
                   </select>
                 </div>
-                {!editingEmployee && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
+                  <select value={form.jobType} onChange={e => setForm({ ...form, jobType: e.target.value })} className="input-field">
+                    <option value="permanent">Permanent</option>
+                    <option value="adhoc">Adhoc (Temporary)</option>
+                  </select>
+                </div>
+                {!editingEmployee && !hideTempPassword && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Temp Password</label>
                     <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required className="input-field" />
@@ -387,6 +462,25 @@ const Employees = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary (Rs.)</label>
                   <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Profession</label>
+                  <SearchableSelect
+                    options={[...PROFESSIONS, { value: 'Other', label: 'Other (specify)' }]}
+                    value={form.profession}
+                    onChange={(val) => setForm({ ...form, profession: val, otherProfession: val === 'Other' ? form.otherProfession : '' })}
+                    placeholder="Select profession..."
+                  />
+                  {form.profession === 'Other' && (
+                    <input
+                      type="text"
+                      value={form.otherProfession}
+                      onChange={e => setForm({ ...form, otherProfession: e.target.value })}
+                      placeholder="Enter profession"
+                      className="input-field mt-2"
+                      required
+                    />
+                  )}
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -435,6 +529,8 @@ const Employees = () => {
               <DetailRow label="Email" value={selectedRecord.email} />
               <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
               <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />
+              <DetailRow label="Job Type" value={selectedRecord.job_type === 'adhoc' ? 'Adhoc' : 'Permanent'} />
+              <DetailRow label="Profession" value={selectedRecord.profession || '—'} />
               <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>
               <DetailRow label="Status">
                 <span className={statusBadge(selectedRecord.status)}>
@@ -444,6 +540,121 @@ const Employees = () => {
             </div>
           )}
         </BottomSheet>
+      )}
+
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!importLoading) setShowImport(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <h3 className="text-lg font-semibold text-gray-900">Import Staff</h3>
+              <button onClick={() => { if (!importLoading) { setShowImport(false); setImportPreview(null); setImportFile(null); setImportResult(null); } }} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400" disabled={importLoading}>{Icons.x}</button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {!importPreview && !importResult && (
+                <div className="space-y-5">
+                  <p className="text-sm text-gray-600">Upload an Excel (.xlsx) or CSV file to create multiple staff members at once. <a href="#!" onClick={(e) => { e.preventDefault(); hrService.downloadImportTemplate(); }} className="text-indigo-600 hover:text-indigo-700 font-medium underline">Download sample template</a></p>
+                  <label className="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-400 transition-colors">
+                    <input type="file" accept=".xlsx,.csv" className="hidden" onChange={e => { setImportFile(e.target.files[0]); setImportPreview(null); setImportResult(null); }} />
+                    <svg className="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+                    <p className="text-sm text-gray-600 font-medium">{importFile ? importFile.name : 'Click to select file'}</p>
+                    <p className="text-xs text-gray-400 mt-1">.xlsx or .csv</p>
+                  </label>
+                  {importFile && (
+                    <div className="flex justify-end">
+                      <button onClick={handleImportPreview} className="btn-primary">Preview</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {importPreview && !importResult && (
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">
+                        <span className="text-emerald-600 font-medium">{importPreview.validCount}</span> valid · <span className={importPreview.invalidCount > 0 ? 'text-red-600 font-medium' : 'text-gray-600'}>{importPreview.invalidCount}</span> invalid · <span className="text-gray-600 font-medium">{importPreview.totalRows}</span> total
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600">Duplicates:</label>
+                      <select value={duplicateAction} onChange={e => setDuplicateAction(e.target.value)} className="input-field text-sm py-1.5">
+                        <option value="skip">Skip</option>
+                        <option value="overwrite">Overwrite</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="max-h-80 overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">#</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Name</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Email</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Job Type</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Salary</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {importPreview.rows.map((row, i) => (
+                            <tr key={i} className={row.valid ? '' : 'bg-red-50'}>
+                              <td className="px-3 py-2 text-gray-400">{row.rowNumber}</td>
+                              <td className="px-3 py-2">
+                                <span className="text-gray-900">{row.firstName} {row.lastName}</span>
+                                {row.errors.length > 0 && (
+                                  <div className="text-xs text-red-500 mt-0.5">{row.errors.join('; ')}</div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-gray-600">{row.email}</td>
+                              <td className="px-3 py-2"><span className={`badge ${row.jobType === 'adhoc' ? 'badge-warning' : 'badge-info'}`}>{row.jobType}</span></td>
+                              <td className="px-3 py-2 text-gray-600">{formatINR(Number(row.baseSalary) * 100)}</td>
+                              <td className="px-3 py-2"><span className={`badge ${row.status === 'active' ? 'badge-success' : 'badge-danger'}`}>{row.status}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button onClick={() => { setShowImport(false); setImportPreview(null); setImportFile(null); }} className="btn-secondary">Cancel</button>
+                    <button onClick={handleImportExecute} disabled={importPreview.validCount === 0 || importLoading} className="btn-primary">{importLoading ? 'Importing...' : `Import ${importPreview.validCount} Staff`}</button>
+                  </div>
+                </div>
+              )}
+
+              {importResult && (
+                <div className="space-y-5 text-center py-8">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+                    <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">Import Complete</h4>
+                    <p className="text-sm text-gray-500 mt-1">{importResult.total} records processed</p>
+                  </div>
+                  <div className="flex justify-center gap-6">
+                    <div className="text-center"><p className="text-2xl font-bold text-emerald-600">{importResult.created}</p><p className="text-xs text-gray-500">Created</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-indigo-600">{importResult.updated}</p><p className="text-xs text-gray-500">Updated</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-gray-400">{importResult.skipped}</p><p className="text-xs text-gray-500">Skipped</p></div>
+                    <div className="text-center"><p className={`text-2xl font-bold ${importResult.failed?.length > 0 ? 'text-red-500' : 'text-gray-400'}`}>{importResult.failed?.length || 0}</p><p className="text-xs text-gray-500">Failed</p></div>
+                  </div>
+                  {importResult.failed?.length > 0 && (
+                    <div className="border border-red-200 bg-red-50 rounded-xl p-4 text-left">
+                      <p className="text-sm font-medium text-red-700 mb-2">Failed Records</p>
+                      {importResult.failed.map((f, i) => (
+                        <p key={i} className="text-xs text-red-600">{f.email}: {f.reason}</p>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => { setShowImport(false); setImportPreview(null); setImportFile(null); setImportResult(null); fetchRoster(); }} className="btn-primary">Done</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

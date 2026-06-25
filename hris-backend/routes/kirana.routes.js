@@ -25,5 +25,6 @@ router.delete('/cashbook/:id', authenticateToken, ctrl.deleteCashEntry);
 
 // Reports
 router.get('/reports', authenticateToken, ctrl.getReport);
+router.get('/reports/download/excel', authenticateToken, ctrl.downloadReportExcel);
 
 module.exports = router;

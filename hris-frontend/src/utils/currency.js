@@ -1,5 +1,6 @@
 export function formatINR(cents) {
-  return '₹' + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const symbol = localStorage.getItem('currency_symbol') || '₹';
+  return symbol + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function centsToDollars(cents) {

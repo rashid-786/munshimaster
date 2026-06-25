@@ -24,6 +24,8 @@ const TenantDetail = () => {
 
   const [companyName, setCompanyName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
+  const [hiddenGroups, setHiddenGroups] = useState({});
+  const [subscriptionPlan, setSubscriptionPlan] = useState('free');
   const [settingsMsg, setSettingsMsg] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -38,6 +40,8 @@ const TenantDetail = () => {
         setAdmin(data.admin);
         setCompanyName(data.tenant.company_name);
         setPrimaryColor(data.tenant.settings?.primaryColor || '#4f46e5');
+        setHiddenGroups(data.tenant.settings?.hiddenGroups || {});
+        setSubscriptionPlan(data.tenant.subscription_plan || 'free');
         if (data.admin) {
           setAdminEmail(data.admin.email || '');
         }
@@ -60,11 +64,18 @@ const TenantDetail = () => {
     }
   }, [activeTab, id, calendarMonth, calendarYear]);
 
+  const PLANS = [
+    { value: 'free', label: 'Free (Ledger)' },
+    { value: 'pro', label: 'Pro (+ Business)' },
+    { value: 'enterprise', label: 'Enterprise (+ HR)' },
+  ];
+
   const handleSaveSettings = async () => {
     try {
       await superService.updateTenant(id, {
         companyName,
-        settings: { primaryColor }
+        subscriptionPlan,
+        settings: { primaryColor, hiddenGroups }
       });
       setSettingsMsg('Settings saved.');
     } catch {
@@ -364,6 +375,21 @@ const TenantDetail = () => {
           {activeTab === 'Settings' && (
             <div className="max-w-2xl space-y-8">
               <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-4">Subscription Plan</h4>
+                <select
+                  value={subscriptionPlan}
+                  onChange={e => setSubscriptionPlan(e.target.value)}
+                  className="input-field max-w-xs"
+                >
+                  {PLANS.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              <div>
                 <h4 className="text-base font-semibold text-gray-900 mb-4">Branding</h4>
                 <div className="space-y-4">
                   <div>
@@ -377,10 +403,35 @@ const TenantDetail = () => {
                       <code className="text-sm text-gray-500">{primaryColor}</code>
                     </div>
                   </div>
-                  {settingsMsg && <p className="text-sm text-emerald-600">{settingsMsg}</p>}
-                  <button onClick={handleSaveSettings} className="btn-primary">Save Branding</button>
                 </div>
               </div>
+
+              <hr className="border-gray-200" />
+
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-4">Sidebar Visibility</h4>
+                <p className="text-sm text-gray-500 mb-3">Hide modules from this tenant's sidebar navigation.</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-sm text-gray-700">Hide My Ledger Book</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-sm text-gray-700">Hide My Business</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenGroups['My HR']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My HR': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-sm text-gray-700">Hide My HR</span>
+                  </label>
+                </div>
+              </div>
+
+              {settingsMsg && <p className="text-sm text-emerald-600">{settingsMsg}</p>}
+              <button onClick={handleSaveSettings} className="btn-primary">Save Settings</button>
 
               <hr className="border-gray-200" />
 

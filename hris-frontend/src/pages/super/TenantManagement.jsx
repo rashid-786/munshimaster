@@ -152,8 +152,10 @@ const TenantManagement = () => {
                       <button onClick={() => handleDelete(tenant.id, tenant.company_name)} className="btn-danger !py-1 !px-2.5 text-xs">Delete</button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                     <span>{tenant.subdomain}</span>
+                    <span>&middot;</span>
+                    <span>{tenant.admin_phone || 'no phone'}</span>
                     <span>&middot;</span>
                     <span>{tenant.employee_count} employees</span>
                     <span>&middot;</span>
@@ -182,7 +184,7 @@ const TenantManagement = () => {
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="table-header">Company Name</th>
                     <th className="table-header">Subdomain</th>
-                    <th className="table-header">Admin Email</th>
+                    <th className="table-header">Admin Phone</th>
                     <th className="table-header">Employees</th>
                     <th className="table-header">Created</th>
                     <th className="table-header">Actions</th>
@@ -193,7 +195,7 @@ const TenantManagement = () => {
                     <tr key={tenant.id} className="hover:bg-gray-50 transition-colors">
                       <td className="table-cell font-medium">{tenant.company_name}</td>
                       <td className="table-cell text-gray-500">{tenant.subdomain}</td>
-                      <td className="table-cell text-gray-500 text-sm">{tenant.admin_email || '-'}</td>
+                      <td className="table-cell text-gray-500 text-sm">{tenant.admin_phone || '-'}</td>
                       <td className="table-cell">
                         <span className="badge badge-info">{tenant.employee_count}</span>
                       </td>

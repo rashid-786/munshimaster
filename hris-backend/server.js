@@ -14,6 +14,9 @@ const uploadRoutes = require('./routes/upload.routes');
 const profileRoutes = require('./routes/profile.routes');
 const superRoutes = require('./routes/super.routes');
 const advanceRoutes = require('./routes/advance.routes');
+const importRoutes = require('./routes/import.routes');
+const auditRoutes = require('./routes/audit.routes');
+const replacementRoutes = require('./routes/replacement.routes');
 const balanceRoutes = require('./routes/balance.routes');
 const reportRoutes = require('./routes/report.routes');
 const kiranaRoutes = require('./routes/kirana.routes');
@@ -54,6 +57,9 @@ app.use('/api/v1/core/employees', planGate(2), employeeRoutes);
 app.use('/api/v1/core/time', planGate(2), timeRoutes);
 app.use('/api/v1/core/payroll', planGate(2), payrollRoutes);
 app.use('/api/v1/core/advances', planGate(2), advanceRoutes);
+app.use('/api/v1/core/employees/import', planGate(2), importRoutes);
+app.use('/api/v1/core/audit-logs', planGate(2), auditRoutes);
+app.use('/api/v1/core/replacements', planGate(2), replacementRoutes);
 
 // Business module (Pro+, rank 1)
 app.use('/api/v1/core/suppliers', planGate(1), supplierRoutes);

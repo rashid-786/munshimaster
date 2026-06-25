@@ -232,34 +232,116 @@ exports.deleteCashEntry = async (req, res) => {
 
 // ── Reports ──
 
+async function fetchKiranaParties(tenantId) {
+  const [parties] = await db.execute('SELECT * FROM kirana_parties WHERE tenant_id = ? ORDER BY name', [tenantId]);
+  const result = [];
+  for (const p of parties) {
+    const [txns] = await db.execute(
+      "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END),0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END),0) as g FROM kirana_transactions WHERE party_id=?",
+      [p.id]
+    );
+    result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g });
+  }
+  return result;
+}
+
+async function fetchKiranaCashbook(tenantId, startDate, endDate) {
+  let query = 'SELECT * FROM kirana_cashbook WHERE tenant_id = ?';
+  const params = [tenantId];
+  if (startDate) { query += ' AND entry_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND entry_date <= ?'; params.push(endDate); }
+  query += ' ORDER BY entry_date DESC';
+  const [rows] = await db.execute(query, params);
+  return rows;
+}
+
 exports.getReport = async (req, res) => {
   const { type, startDate, endDate } = req.query;
   try {
     if (type === 'parties') {
-      const [parties] = await db.execute('SELECT * FROM kirana_parties WHERE tenant_id = ? ORDER BY name', [req.tenantId]);
-      const result = [];
-      for (const p of parties) {
-        const [txns] = await db.execute(
-          "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END),0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END),0) as g FROM kirana_transactions WHERE party_id=?",
-          [p.id]
-        );
-        result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g });
-      }
+      const result = await fetchKiranaParties(req.tenantId);
       return res.json(result);
     }
-
     if (type === 'cashbook') {
-      let query = 'SELECT * FROM kirana_cashbook WHERE tenant_id = ?';
-      const params = [req.tenantId];
-      if (startDate) { query += ' AND entry_date >= ?'; params.push(startDate); }
-      if (endDate) { query += ' AND entry_date <= ?'; params.push(endDate); }
-      query += ' ORDER BY entry_date DESC';
-      const [rows] = await db.execute(query, params);
+      const rows = await fetchKiranaCashbook(req.tenantId, startDate, endDate);
       return res.json(rows);
     }
-
     res.status(400).json({ error: 'Invalid report type.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to generate report.' });
+  }
+};
+
+exports.downloadReportExcel = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { type, startDate, endDate } = req.query;
+
+  try {
+    const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
+    const companyName = tenantRow[0]?.company_name || 'Company';
+
+    let data, title, columns;
+    if (type === 'parties') {
+      data = await fetchKiranaParties(tenantId);
+      title = 'Kirana Parties Report';
+      columns = ['Type', 'Name', 'Phone', 'Total Received', 'Total Given', 'Balance'];
+    } else if (type === 'cashbook') {
+      data = await fetchKiranaCashbook(tenantId, startDate, endDate);
+      title = 'Kirana Cashbook Report';
+      columns = ['Date', 'Type', 'Category', 'Amount', 'Note'];
+    } else {
+      return res.status(400).json({ error: 'Invalid report type.' });
+    }
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = companyName;
+    const sheet = workbook.addWorksheet(title);
+
+    sheet.mergeCells('A1', `${String.fromCharCode(64 + columns.length)}1`);
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `${companyName} - ${title}`;
+    titleCell.font = { size: 14, bold: true };
+    titleCell.alignment = { horizontal: 'center' };
+    sheet.addRow([]);
+
+    const headerRow = sheet.addRow(columns);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    for (const row of data) {
+      let values;
+      if (type === 'parties') {
+        const bal = (row.balance || 0) / 100;
+        values = [
+          row.type || '-', row.name || '-', row.phone || '-',
+          `Rs.${((row.totalReceived || 0) / 100).toFixed(2)}`,
+          `Rs.${((row.totalGiven || 0) / 100).toFixed(2)}`,
+          `Rs.${bal.toFixed(2)}`,
+        ];
+      } else {
+        values = [
+          row.entry_date ? row.entry_date.split('T')[0] : '-', row.type || '-', row.category || '-',
+          row.amount ? `Rs.${(row.amount / 100).toFixed(2)}` : '0', row.note || '-',
+        ];
+      }
+      sheet.addRow(values);
+    }
+
+    sheet.columns = columns.map((c, i) => ({
+      header: c, key: c,
+      width: Math.max(c.length * 2, i === 0 ? 25 : i === 1 ? 30 : 20),
+    }));
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${type}_report.xlsx`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error(error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to generate Excel.' });
   }
 };

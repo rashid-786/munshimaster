@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { log } = require('../utils/audit');
 
 // ==========================================
 // ATTENDANCE ENGINE ACTIONS
@@ -194,6 +195,66 @@ exports.clockOut = async (req, res) => {
 // LEAVE ACTIONS
 // ==========================================
 
+exports.adminCreateLeave = async (req, res) => {
+  const { employeeId, leaveType, startDate, endDate, replacementEmployeeId } = req.body;
+  const tenantId = req.tenantId;
+
+  if (req.user.role !== 'tenant_admin') {
+    return res.status(403).json({ error: 'Access denied. Administrative authority required.' });
+  }
+
+  if (!employeeId || !leaveType || !startDate || !endDate) {
+    return res.status(400).json({ error: 'Employee, leave type, start date, and end date are required.' });
+  }
+
+  try {
+    const [emp] = await db.execute(
+      'SELECT id FROM employees WHERE id = ? AND tenant_id = ?', [employeeId, tenantId]
+    );
+    if (emp.length === 0) {
+      return res.status(404).json({ error: 'Employee not found in this tenant.' });
+    }
+
+    const leaveId = uuidv4();
+    await db.execute(
+      `INSERT INTO leaves (id, tenant_id, employee_id, leave_type, start_date, end_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'approved')`,
+      [leaveId, tenantId, employeeId, leaveType, startDate, endDate]
+    );
+
+    await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'leave.created', entityType: 'leave', entityId: leaveId, req });
+
+    // If replacement adhoc staff is provided, auto-create the replacement record
+    if (replacementEmployeeId) {
+      const [adhoc] = await db.execute(
+        "SELECT id FROM employees WHERE id = ? AND tenant_id = ? AND job_type = 'adhoc' AND status = 'active'",
+        [replacementEmployeeId, tenantId]
+      );
+      if (adhoc.length > 0) {
+        const [overlap] = await db.execute(
+          `SELECT id FROM staff_replacements
+           WHERE tenant_id = ? AND adhoc_employee_id = ? AND status = 'active'
+           AND start_date <= ? AND end_date >= ?`,
+          [tenantId, replacementEmployeeId, endDate, startDate]
+        );
+        if (overlap.length === 0) {
+          const repId = uuidv4();
+          await db.execute(
+            `INSERT INTO staff_replacements (id, tenant_id, permanent_employee_id, adhoc_employee_id, leave_id, start_date, end_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [repId, tenantId, employeeId, replacementEmployeeId, leaveId, startDate, endDate]
+          );
+        }
+      }
+    }
+
+    res.status(201).json({ message: 'Leave created and approved successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create leave record.' });
+  }
+};
+
 exports.applyLeave = async (req, res) => {
   const { leaveType, startDate, endDate } = req.body;
   const tenantId = req.tenantId;
@@ -209,6 +270,67 @@ exports.applyLeave = async (req, res) => {
     res.status(201).json({ message: 'Leave application submitted for approval.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to log leave request.' });
+  }
+};
+
+exports.updateLeave = async (req, res) => {
+  const { id } = req.params;
+  const { leaveType, startDate, endDate } = req.body;
+  const tenantId = req.tenantId;
+
+  if (req.user.role !== 'tenant_admin') {
+    return res.status(403).json({ error: 'Access denied. Administrative authority required.' });
+  }
+
+  try {
+    const updates = [];
+    const params = [];
+    if (leaveType !== undefined) { updates.push('leave_type = ?'); params.push(leaveType); }
+    if (startDate !== undefined) { updates.push('start_date = ?'); params.push(startDate); }
+    if (endDate !== undefined) { updates.push('end_date = ?'); params.push(endDate); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update.' });
+    }
+
+    params.push(id, tenantId);
+    await db.execute(
+      `UPDATE leaves SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`,
+      params
+    );
+
+    const changes = {};
+    if (leaveType !== undefined) changes.leaveType = leaveType;
+    if (startDate !== undefined) changes.startDate = startDate;
+    if (endDate !== undefined) changes.endDate = endDate;
+
+    await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'leave.updated', entityType: 'leave', entityId: id, changes, req });
+
+    res.json({ message: 'Leave updated successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update leave.' });
+  }
+};
+
+exports.deleteLeave = async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.tenantId;
+
+  if (req.user.role !== 'tenant_admin') {
+    return res.status(403).json({ error: 'Access denied. Administrative authority required.' });
+  }
+
+  try {
+    await db.execute(
+      'DELETE FROM leaves WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'leave.deleted', entityType: 'leave', entityId: id, req });
+    res.json({ message: 'Leave deleted permanently.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete leave.' });
   }
 };
 
