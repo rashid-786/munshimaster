@@ -2,8 +2,8 @@ import { useState } from 'react';
 
 const FAQS = [
   {
-    q: 'What is HRIS and how does it work?',
-    a: 'HRIS (Human Resource Information System) is a cloud-based platform that helps organizations manage employee data, payroll, attendance, leaves, and more. Simply register your organization, add your employees, and start managing your workforce from a single dashboard.',
+    q: 'What is bahi360 and how does it work?',
+    a: 'bahi360 is a cloud-based business management platform that helps organizations manage employee data, payroll, attendance, leaves, and more. Simply register your organization, add your employees, and start managing your workforce from a single dashboard.',
   },
   {
     q: 'How is payroll calculated?',
@@ -76,7 +76,7 @@ export default function Faq() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Frequently Asked Questions</h1>
           <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-            Everything you need to know about HRIS.
+            Everything you need to know about bahi360.
           </p>
         </div>
       </section>

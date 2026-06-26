@@ -22,12 +22,18 @@ const Customers = () => {
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
-  const limit = 15;
+  const limit = 200;
+  const [loading, setLoading] = useState(true);
 
   const fetch = useCallback(async () => {
-    const res = await hrService.getCustomers({ search, page, limit });
-    setCustomers(res.data);
-    setTotal(res.total);
+    setLoading(true);
+    try {
+      const res = await hrService.getCustomers({ search, page, limit });
+      setCustomers(res.data);
+      setTotal(res.total);
+    } finally {
+      setLoading(false);
+    }
   }, [search, page]);
 
   useEffect(() => { fetch(); }, [fetch]);
@@ -148,6 +154,9 @@ const Customers = () => {
         columns={columns}
         data={customers}
         keyField="id"
+        searchable={true}
+        searchKeys={['name', 'contact_person', 'email', 'phone']}
+        loading={loading}
         mobilePrimary="name"
         mobileSecondary="status"
         onRowClick={(c) => setSelectedRecord(c)}

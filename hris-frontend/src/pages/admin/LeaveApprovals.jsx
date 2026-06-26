@@ -30,6 +30,7 @@ const LeaveApprovals = () => {
   const [leaveForm, setLeaveForm] = useState({ employeeId: '', leaveType: 'Annual', startDate: '', endDate: '', replacementEmployeeId: '' });
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const adhocEmployees = useMemo(() =>
     employees.filter(e => e.job_type === 'adhoc' && e.status !== 'deactivated')
@@ -38,10 +39,20 @@ const LeaveApprovals = () => {
   );
 
   useEffect(() => {
-    hrService.getLeaves().then(setLeaves).catch(() => {});
-    if (isAdmin) {
-      hrService.getEmployees().then(setEmployees).catch(() => {});
-    }
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const leaves = await hrService.getLeaves();
+        setLeaves(leaves);
+        if (isAdmin) {
+          const emps = await hrService.getEmployees();
+          setEmployees(emps);
+        }
+      } catch {} finally {
+        setLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   const handleCreateLeave = async (e) => {
@@ -171,6 +182,9 @@ const LeaveApprovals = () => {
         columns={columns}
         data={filteredLeaves}
         keyField="id"
+        searchable={true}
+        searchKeys={['first_name', 'last_name', 'leave_type', 'status']}
+        loading={loading}
         mobilePrimary="employee_name"
         mobileSecondary="status"
         onRowClick={(r) => setSelectedRecord(r)}

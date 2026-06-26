@@ -52,12 +52,17 @@ const Employees = () => {
   const [importResult, setImportResult] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
 
+  const [loading, setLoading] = useState(true);
+
   const fetchRoster = async () => {
+    setLoading(true);
     try {
       const data = await hrService.getEmployees(includeDeactivated);
       setEmployees(data);
     } catch (err) {
       setError('Could not download employee records.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -169,7 +174,7 @@ const Employees = () => {
       jobType: emp.job_type || 'permanent',
       baseSalary: (emp.base_salary / 100).toFixed(2),
       profession: profession,
-      otherProfession: profession === 'Other' ? emp.profession : '',
+      otherProfession: profession === 'Other' ? (emp.profession || '') : '',
     });
     setShowOnboard(true);
   };
@@ -327,6 +332,9 @@ const Employees = () => {
               columns={columns}
               data={filtered}
               keyField="id"
+              searchable={true}
+              searchKeys={['first_name', 'last_name', 'email', 'phone']}
+              loading={loading}
               mobilePrimary="name"
               mobileSecondary="status"
               onRowClick={(emp) => setSelectedRecord(emp)}

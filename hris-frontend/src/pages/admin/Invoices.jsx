@@ -54,12 +54,18 @@ const Invoices = () => {
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const isMobile = useIsMobile();
-  const limit = 15;
+  const limit = 200;
+  const [loading, setLoading] = useState(true);
 
   const fetch = useCallback(async () => {
-    const res = await hrService.getInvoices({ search, status: statusFilter || undefined, page, limit });
-    setInvoices(res.data);
-    setTotal(res.total);
+    setLoading(true);
+    try {
+      const res = await hrService.getInvoices({ search, status: statusFilter || undefined, page, limit });
+      setInvoices(res.data);
+      setTotal(res.total);
+    } finally {
+      setLoading(false);
+    }
   }, [search, statusFilter, page]);
 
   useEffect(() => { fetch(); }, [fetch]);
@@ -216,6 +222,9 @@ const Invoices = () => {
         columns={columns}
         data={invoices}
         keyField="id"
+        searchable={true}
+        searchKeys={['invoice_number', 'customer_name', 'status']}
+        loading={loading}
         onRowClick={async (inv) => {
           setSelectedRecord(inv);
           if (isMobile) {

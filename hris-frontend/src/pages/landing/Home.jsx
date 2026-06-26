@@ -46,7 +46,7 @@ const FEATURES = [
 ];
 
 const TESTIMONIALS = [
-  { quote: 'HRIS transformed how we manage our workforce. The payroll automation alone saved us 15 hours every month.', author: 'Rajesh Kumar', role: 'CEO, TechCorp India' },
+  { quote: 'bahi360 transformed how we manage our workforce. The payroll automation alone saved us 15 hours every month.', author: 'Rajesh Kumar', role: 'CEO, TechCorp India' },
   { quote: 'The attendance tracking with calendar view gives me complete visibility into my team. Invaluable for a growing company.', author: 'Priya Sharma', role: 'HR Director, GreenLeaf Industries' },
   { quote: 'Implementation was seamless. Our employees adapted to the system within days, and the support team was exceptional.', author: 'Amit Verma', role: 'CTO, NovaTech Solutions' },
 ];
@@ -79,25 +79,25 @@ const PRICING_TIERS = [
 export default function Home() {
   return (
     <div>
-      <section className="relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-indigo-50">
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%234f46e5\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")', backgroundRepeat: 'repeat' }} />
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-50">
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%230B3C5D\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")', backgroundRepeat: 'repeat' }} />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28 lg:py-36">
           <div className="max-w-3xl mx-auto text-center">
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700 mb-6">
+            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium bg-primary-100 text-primary-700 mb-6">
               Trusted by 200+ organizations
             </span>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight tracking-tight">
               People Operations,{' '}
-              <span className="text-indigo-600">Simplified</span>
+              <span className="text-primary-600">Simplified</span>
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              Enterprise-grade HRIS platform that streamlines payroll, attendance, leave management, and workforce operations — all in one place.
+              Enterprise-grade platform that streamlines payroll, attendance, leave management, and workforce operations — all in one place.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register" className="btn-primary !py-3 !px-8 text-base shadow-lg shadow-indigo-500/25">
+              <Link to="/register" className="btn-primary !py-3 !px-8 text-base shadow-lg shadow-green-500/25">
                 Start Free Trial
               </Link>
-              <Link to="/services" className="btn-secondary !py-3 !px-8 text-base">
+              <Link to="/services" className="btn-secondary-navy !py-3 !px-8 text-base">
                 Explore Services
               </Link>
             </div>
@@ -114,8 +114,8 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
             {FEATURES.map((feature) => (
-              <div key={feature.title} className="group p-6 lg:p-8 rounded-2xl border border-gray-100 bg-white hover:shadow-lg hover:border-indigo-100 transition-all">
-                <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-5 group-hover:bg-indigo-100 transition-colors">
+              <div key={feature.title} className="group p-6 lg:p-8 rounded-2xl border border-gray-100 bg-white hover:shadow-lg hover:border-primary-100 transition-all">
+                <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 mb-5 group-hover:bg-primary-100 transition-colors">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     {feature.icon}
                   </svg>
@@ -128,7 +128,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-gradient-to-br from-gray-50 to-indigo-50/50">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-gray-50 to-primary-50/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Trusted by industry leaders</h2>
@@ -137,7 +137,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {TESTIMONIALS.map((t) => (
               <div key={t.author} className="p-6 lg:p-8 rounded-2xl bg-white border border-gray-100 shadow-sm">
-                <svg className="w-8 h-8 text-indigo-200 mb-4" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-primary-200 mb-4" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C9.591 11.69 11 13.189 11 15c0 1.933-1.567 3.5-3.5 3.5-1.271 0-2.404-.655-2.917-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C19.591 11.69 21 13.189 21 15c0 1.933-1.567 3.5-3.5 3.5-1.271 0-2.404-.655-2.917-1.179z" />
                 </svg>
                 <p className="text-gray-600 text-sm leading-relaxed mb-6">{t.quote}</p>
@@ -159,9 +159,9 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {PRICING_TIERS.map((tier) => (
-              <div key={tier.name} className={`relative rounded-2xl border p-8 ${tier.popular ? 'border-indigo-200 bg-indigo-50/30 shadow-lg shadow-indigo-500/10' : 'border-gray-200 bg-white'}`}>
+              <div key={tier.name} className={`relative rounded-2xl border p-8 ${tier.popular ? 'border-primary-200 bg-primary-50/30 shadow-lg shadow-primary-500/10' : 'border-gray-200 bg-white'}`}>
                 {tier.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-full">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary-600 text-white text-xs font-semibold rounded-full">
                     Most Popular
                   </span>
                 )}
@@ -177,7 +177,7 @@ export default function Home() {
                 <ul className="mt-6 space-y-3">
                   {tier.features.map((f) => (
                     <li key={f} className="flex items-center gap-3 text-sm text-gray-600">
-                      <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-primary-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       {f}
@@ -188,7 +188,7 @@ export default function Home() {
                   to="/register"
                   className={`mt-8 w-full block text-center py-2.5 rounded-lg text-sm font-medium transition-all ${
                     tier.popular
-                      ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
+                      ? 'bg-primary-600 text-white hover:bg-primary-700 shadow-md'
                       : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -200,12 +200,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-gradient-to-br from-indigo-600 to-indigo-800">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-primary-700 to-secondary-600">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to streamline your HR operations?</h2>
-          <p className="mt-4 text-lg text-indigo-100">Join 200+ organizations already using HRIS. Start your free trial today.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to streamline your business operations?</h2>
+          <p className="mt-4 text-lg text-white/80">Join 200+ organizations already using bahi360. Start your free trial today.</p>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/register" className="bg-white text-indigo-700 !py-3 !px-8 rounded-lg text-base font-semibold hover:bg-indigo-50 transition-colors shadow-xl">
+            <Link to="/register" className="bg-white text-primary-700 !py-3 !px-8 rounded-lg text-base font-semibold hover:bg-primary-50 transition-colors shadow-xl">
               Get Started Free
             </Link>
             <Link to="/login" className="text-white border border-white/30 !py-3 !px-8 rounded-lg text-base font-medium hover:bg-white/10 transition-colors">

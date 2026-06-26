@@ -3,7 +3,7 @@ const About = () => {
     <div>
       <section className="bg-gradient-to-br from-indigo-50 via-white to-indigo-50 py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About HRIS</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About bahi360</h1>
           <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
             Empowering organizations with intelligent HR technology since 2020.
           </p>

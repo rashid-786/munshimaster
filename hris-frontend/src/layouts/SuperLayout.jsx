@@ -46,9 +46,12 @@ export default function SuperLayout() {
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="h-16 flex items-center px-5 border-b border-gray-200 bg-gradient-subtle">
-        <span className="flex items-center gap-2.5 font-bold text-lg truncate">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-sm font-bold">S</div>
-          <span className="text-gray-800">Super Admin</span>
+        <span className="flex flex-col items-start justify-center leading-tight">
+          <span className="text-xl font-bold tracking-tight leading-none">
+            <span style={{ color: '#0B3C5D' }}>bahi</span>
+            <span style={{ color: '#2FBF71' }}>360</span>
+          </span>
+          <span className="text-xs font-medium truncate max-w-[160px]" style={{ color: 'var(--primary-600)' }}>Super Admin</span>
         </span>
       </div>
 

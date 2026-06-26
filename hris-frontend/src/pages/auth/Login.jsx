@@ -125,7 +125,7 @@ const Login = () => {
       <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">H</div>
+            <img src="/icon_logo.png" alt="bahi360" className="w-14 h-auto mx-auto mb-3" />
             <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
             <p className="text-gray-500 mt-1">We'll send a code to verify your number.</p>
           </div>
@@ -212,7 +212,7 @@ const Login = () => {
     <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">H</div>
+          <img src="/icon_logo.png" alt="bahi360" className="w-14 h-auto mx-auto mb-3" />
           <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
           <p className="text-gray-500 mt-1">Sign in to your account</p>
         </div>

@@ -64,8 +64,8 @@ const PlanSelection = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-indigo-50/30 to-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">H</div>
-          <h1 className="text-2xl font-bold text-gray-900">Welcome to {tenant?.company_name || 'HRIS'}</h1>
+          <img src="/icon_logo.png" alt="bahi360" className="w-16 h-auto mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900">Welcome to {tenant?.company_name || 'bahi360'}</h1>
           <p className="text-gray-500 mt-1">Choose a plan to get started. You can upgrade anytime.</p>
         </div>
 

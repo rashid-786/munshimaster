@@ -2,6 +2,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { hrService } from '../services/hr.service';
+import NotificationBell from '../components/NotificationBell';
 
 const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
 
@@ -97,6 +98,7 @@ export default function AdminLayout() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileCompletion, setProfileCompletion] = useState(null);
   const [hiddenGroups, setHiddenGroups] = useState({});
+  const [groupLabels, setGroupLabels] = useState({});
   const menuRef = useRef(null);
 
   const currentPlan = tenant?.subscriptionPlan || 'free';
@@ -111,7 +113,10 @@ export default function AdminLayout() {
   }, []);
 
   useEffect(() => {
-    const handler = (e) => setHiddenGroups(e.detail.hiddenGroups);
+    const handler = (e) => {
+      if (e.detail.hiddenGroups) setHiddenGroups(e.detail.hiddenGroups);
+      if (e.detail.groupLabels) setGroupLabels(e.detail.groupLabels);
+    };
     window.addEventListener('settings-saved', handler);
     return () => window.removeEventListener('settings-saved', handler);
   }, []);
@@ -123,23 +128,32 @@ export default function AdminLayout() {
   useEffect(() => {
     hrService.getTenantSettings().then(res => {
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
+      if (res.settings?.groupLabels) setGroupLabels(res.settings.groupLabels);
       localStorage.setItem('hidden_groups', JSON.stringify(res.settings?.hiddenGroups || {}));
+      localStorage.setItem('group_labels', JSON.stringify(res.settings?.groupLabels || {}));
     }).catch(() => {
       const cached = localStorage.getItem('hidden_groups');
       if (cached) setHiddenGroups(JSON.parse(cached));
+      const cachedLabels = localStorage.getItem('group_labels');
+      if (cachedLabels) setGroupLabels(JSON.parse(cachedLabels));
     });
   }, []);
 
+  const labelOf = (key) => groupLabels[key] || key;
   const toggleGroup = (label) => setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }));
   const handleLogout = () => { logout(); navigate('/login'); };
-  const pageTitle = pageTitles[location.pathname] || 'Dashboard';
+  const pageTitleKey = pageTitles[location.pathname] || 'Dashboard';
+  const pageTitle = groupLabels[pageTitleKey] || pageTitleKey;
 
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="h-16 flex items-center px-5 border-b border-gray-200 bg-gradient-subtle">
-        <button onClick={() => navigate('/admin/dashboard')} className="flex items-center gap-2.5 font-bold text-lg truncate">
-          <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center text-white text-sm font-bold">H</div>
-          <span className="text-gray-800">{tenant?.name || 'HRIS'}</span>
+        <button onClick={() => navigate('/admin/dashboard')} className="flex flex-col items-start justify-center leading-tight">
+          <span className="text-xl font-bold tracking-tight leading-none">
+            <span style={{ color: '#0B3C5D' }}>bahi</span>
+            <span style={{ color: '#2FBF71' }}>360</span>
+          </span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--primary-600)' }}>{tenant?.name || ''}</span>
         </button>
       </div>
 
@@ -172,7 +186,7 @@ export default function AdminLayout() {
                   }`}
                 >
                   <span className="shrink-0 text-gray-400">{group.icon}</span>
-                  <span className="flex-1 text-left">{group.label}</span>
+                  <span className="flex-1 text-left">{labelOf(group.label)}</span>
                   {isLocked ? (
                     <span className="shrink-0 text-gray-400">{Icons.lock}</span>
                   ) : (
@@ -216,7 +230,7 @@ export default function AdminLayout() {
               }`}
             >
               <span className="shrink-0 text-gray-400">{group.icon}</span>
-              <span>{group.label}</span>
+              <span>{labelOf(group.label)}</span>
             </NavLink>
           );
         })}
@@ -272,10 +286,7 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all">
-              {Icons.bell}
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
-            </button>
+            <NotificationBell />
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}

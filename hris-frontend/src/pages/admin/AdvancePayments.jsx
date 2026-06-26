@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -9,19 +9,37 @@ const AdvancePayments = () => {
   const isMobile = useIsMobile();
   const [advances, setAdvances] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showGrant, setShowGrant] = useState(false);
   const [form, setForm] = useState({ employeeId: '', amount: '', reason: '' });
   const [message, setMessage] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
 
-  useEffect(() => {
-    hrService.getAdvances().then(setAdvances).catch(() => {});
-    hrService.getEmployees().then(setEmployees).catch(() => {});
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await hrService.getAdvances();
+      setAdvances(data);
+    } catch {} finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadAdvances = () => {
-    hrService.getAdvances().then(setAdvances).catch(() => {});
-  };
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [advances, employees] = await Promise.all([
+        hrService.getAdvances(),
+        hrService.getEmployees(),
+      ]);
+      setAdvances(advances);
+      setEmployees(employees);
+    } catch {} finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const handleGrant = async (e) => {
     e.preventDefault();
@@ -31,7 +49,7 @@ const AdvancePayments = () => {
       setMessage(res.message);
       setShowGrant(false);
       setForm({ employeeId: '', amount: '', reason: '' });
-      loadAdvances();
+      fetch();
     } catch (err) {
       setMessage(err.response?.data?.error || 'Failed to grant advance.');
     }
@@ -40,7 +58,7 @@ const AdvancePayments = () => {
   const handleApprove = async (id) => {
     try {
       await hrService.approveAdvance(id);
-      loadAdvances();
+      fetch();
     } catch (err) {
       setMessage(err.response?.data?.error || 'Failed to approve.');
     }
@@ -49,7 +67,7 @@ const AdvancePayments = () => {
   const handleReject = async (id) => {
     try {
       await hrService.rejectAdvance(id);
-      loadAdvances();
+      fetch();
     } catch (err) {
       setMessage(err.response?.data?.error || 'Failed to reject.');
     }
@@ -128,6 +146,9 @@ const AdvancePayments = () => {
         columns={columns}
         data={advances}
         keyField="id"
+        searchable={true}
+        searchKeys={['first_name', 'last_name', 'amount', 'reason']}
+        loading={loading}
         mobilePrimary="employee_name"
         mobileSecondary="amount"
         onRowClick={(r) => setSelectedRecord(r)}

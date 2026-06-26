@@ -19,6 +19,11 @@ const Settings = () => {
   const [taxRate, setTaxRate] = useState(18);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [hiddenGroups, setHiddenGroups] = useState({});
+  const [groupLabels, setGroupLabels] = useState({
+    'My Ledger Book': 'My Ledger Book',
+    'My Business': 'My Business',
+    'My HR': 'My HR',
+  });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
   const [hideTempPassword, setHideTempPassword] = useState(false);
@@ -35,6 +40,7 @@ const Settings = () => {
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
       if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
+      if (res.settings?.groupLabels) setGroupLabels(prev => ({ ...prev, ...res.settings.groupLabels }));
       if (res.settings?.currencySymbol) {
         setCurrencySymbol(res.settings.currencySymbol);
         localStorage.setItem('currency_symbol', res.settings.currencySymbol);
@@ -61,13 +67,14 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, currencySymbol, countryCode, hideTempPassword }
+        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, groupLabels, currencySymbol, countryCode, hideTempPassword }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
+      localStorage.setItem('group_labels', JSON.stringify(groupLabels));
       localStorage.setItem('currency_symbol', currencySymbol);
       localStorage.setItem('default_country_code', countryCode);
       localStorage.setItem('hide_temp_password', hideTempPassword ? 'true' : 'false');
-      window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups } }));
+      window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups, groupLabels } }));
       if (firstName || lastName) {
         const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email, phone: user?.phone || '' });
         if (profileRes?.user) updateUser(profileRes.user);
@@ -189,24 +196,51 @@ const Settings = () => {
             )}
           </div>
 
-          <div className="border-t border-gray-200 pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Sidebar Sections</label>
-            <p className="text-xs text-gray-400 mb-3">Hide sections from the sidebar navigation.</p>
-            <div className="space-y-2">
-              {planRank >= 1 && (
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className="text-sm text-gray-700">Hide My Ledger Book</span>
-                </label>
-              )}
-              {planRank >= 2 && (
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className="text-sm text-gray-700">Hide My Business</span>
-                </label>
-              )}
+          <div className="border-t border-gray-200 pt-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Sidebar Labels</label>
+              <p className="text-xs text-gray-400 mb-3">Customize the names of sidebar sections.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Ledger Book Section</label>
+                  <input type="text" value={groupLabels['My Ledger Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Ledger Book': e.target.value })}
+                    className="input-field max-w-[240px]" />
+                </div>
+                {planRank >= 1 && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Business Section</label>
+                    <input type="text" value={groupLabels['My Business']} onChange={e => setGroupLabels({ ...groupLabels, 'My Business': e.target.value })}
+                      className="input-field max-w-[240px]" />
+                  </div>
+                )}
+                {planRank >= 2 && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">HR Section</label>
+                    <input type="text" value={groupLabels['My HR']} onChange={e => setGroupLabels({ ...groupLabels, 'My HR': e.target.value })}
+                      className="input-field max-w-[240px]" />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Hide Sections</label>
+              <p className="text-xs text-gray-400 mb-3">Hide sections from the sidebar navigation.</p>
+              <div className="space-y-2">
+                {planRank >= 1 && (
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+                    <span className="text-sm text-gray-700">Hide {groupLabels['My Ledger Book']}</span>
+                  </label>
+                )}
+                {planRank >= 2 && (
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+                    <span className="text-sm text-gray-700">Hide {groupLabels['My Business']}</span>
+                  </label>
+                )}
+              </div>
             </div>
           </div>
 

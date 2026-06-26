@@ -24,8 +24,10 @@ const BalanceSheet = () => {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const fetch = useCallback(async () => {
+    setLoading(true);
     try {
       const params = {};
       if (startDate) params.startDate = startDate;
@@ -33,7 +35,9 @@ const BalanceSheet = () => {
       const res = await hrService.getBalanceEntries(params);
       setEntries(res.entries);
       setSummary(res.summary);
-    } catch {}
+    } catch {} finally {
+      setLoading(false);
+    }
   }, [startDate, endDate]);
 
   useEffect(() => { fetch(); }, [fetch]);
@@ -226,6 +230,9 @@ const BalanceSheet = () => {
         columns={columns}
         data={entries}
         keyField="id"
+        searchable={true}
+        searchKeys={['description', 'type', 'payment_method']}
+        loading={loading}
         mobilePrimary="entry_date"
         mobileSecondary="type"
         onRowClick={(r) => setSelectedRecord(r)}

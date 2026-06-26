@@ -54,12 +54,18 @@ const PurchaseOrders = () => {
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const isMobile = useIsMobile();
-  const limit = 15;
+  const limit = 200;
+  const [loading, setLoading] = useState(true);
 
   const fetch = useCallback(async () => {
-    const res = await hrService.getPurchaseOrders({ search, status: statusFilter || undefined, page, limit });
-    setOrders(res.data);
-    setTotal(res.total);
+    setLoading(true);
+    try {
+      const res = await hrService.getPurchaseOrders({ search, status: statusFilter || undefined, page, limit });
+      setOrders(res.data);
+      setTotal(res.total);
+    } finally {
+      setLoading(false);
+    }
   }, [search, statusFilter, page]);
 
   useEffect(() => { fetch(); }, [fetch]);
@@ -218,6 +224,9 @@ const PurchaseOrders = () => {
         columns={columns}
         data={orders}
         keyField="id"
+        searchable={true}
+        searchKeys={['po_number', 'supplier_name', 'status']}
+        loading={loading}
         onRowClick={async (po) => {
           setSelectedRecord(po);
           if (isMobile) {

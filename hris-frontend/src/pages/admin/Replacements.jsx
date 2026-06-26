@@ -22,10 +22,25 @@ const Replacements = () => {
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [form, setForm] = useState({ permanentEmployeeId: '', adhocEmployeeId: '', startDate: '', endDate: '' });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    hrService.getReplacements({ status: filterStatus || undefined }).then(setReplacements).catch(() => setError('Failed to load replacements.'));
-    hrService.getEmployees(true).then(setEmployees).catch(() => {});
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [replacements, employees] = await Promise.all([
+          hrService.getReplacements({ status: filterStatus || undefined }),
+          hrService.getEmployees(true),
+        ]);
+        setReplacements(replacements);
+        setEmployees(employees);
+      } catch (err) {
+        setError('Failed to load replacements.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
   }, [filterStatus]);
 
   const permEmployees = useMemo(() =>
@@ -199,6 +214,9 @@ const Replacements = () => {
           columns={columns}
           data={replacements}
           keyField="id"
+          searchable={true}
+          searchKeys={['permanent_first_name', 'permanent_last_name', 'adhoc_first_name', 'adhoc_last_name', 'status']}
+          loading={loading}
           mobilePrimary="permanent"
           mobileSecondary="status"
           onRowClick={(r) => setSelectedRecord(r)}

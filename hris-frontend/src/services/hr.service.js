@@ -431,4 +431,17 @@ export const hrService = {
     const response = await api.delete(`/core/replacements/${id}`);
     return response.data;
   },
+
+  getNotifications: async () => {
+    const response = await api.get('/core/notifications');
+    return response.data;
+  },
+  markNotificationRead: async (id) => {
+    const response = await api.patch(`/core/notifications/${id}/read`);
+    return response.data;
+  },
+  markAllNotificationsRead: async () => {
+    const response = await api.patch('/core/notifications/read-all');
+    return response.data;
+  },
 };

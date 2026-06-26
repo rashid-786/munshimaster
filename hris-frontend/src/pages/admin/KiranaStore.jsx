@@ -50,6 +50,9 @@ const KiranaStore = () => {
   const [cashAttachments, setCashAttachments] = useState({});
   const [cashUploadFiles, setCashUploadFiles] = useState([]);
 
+  // Loading states
+  const [loading, setLoading] = useState(true);
+
   // Mobile state
   const [selectedParty, setSelectedParty] = useState(null);
   const [mobileTxForm, setMobileTxForm] = useState({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
@@ -57,12 +60,15 @@ const KiranaStore = () => {
   const [selectedReport, setSelectedReport] = useState(null);
 
   const fetchParties = useCallback(async () => {
+    setLoading(true);
     try {
       const params = { type: partyType };
       if (search) params.search = search;
       const data = await hrService.kirana.getParties(params);
       setParties(data);
-    } catch {}
+    } catch {} finally {
+      setLoading(false);
+    }
   }, [partyType, search]);
 
   const fetchSummary = useCallback(async () => {
@@ -82,6 +88,7 @@ const KiranaStore = () => {
   };
 
   const fetchCashbook = useCallback(async () => {
+    setLoading(true);
     try {
       const params = {};
       if (cashStart) params.startDate = cashStart;
@@ -90,7 +97,9 @@ const KiranaStore = () => {
       setCashEntries(data.entries);
       setCashSummary(data.summary);
       data.entries.forEach(e => { if (!cashAttachments[e.id]) loadCashAttachments(e.id); });
-    } catch {}
+    } catch {} finally {
+      setLoading(false);
+    }
   }, [cashStart, cashEnd]);
 
   useEffect(() => {
@@ -497,6 +506,9 @@ const KiranaStore = () => {
           columns={partyColumns}
           data={parties}
           keyField="id"
+          searchable={true}
+          searchKeys={['name', 'phone', 'email']}
+          loading={loading}
           onRowClick={handlePartyRowClick}
           mobilePrimary="name"
           mobileSecondary="phone"
@@ -610,6 +622,9 @@ const KiranaStore = () => {
         columns={cashbookColumns}
         data={cashEntries}
         keyField="id"
+        searchable={true}
+        searchKeys={['note', 'type']}
+        loading={loading}
         onRowClick={handleCashRowClick}
         mobilePrimary="amount"
         mobileSecondary="amount"
@@ -796,6 +811,8 @@ const KiranaStore = () => {
         columns={reportTab === 'parties' ? partyReportColumns : cashReportColumns}
         data={reportData}
         keyField="id"
+        searchable={true}
+        searchKeys={['name', 'phone', 'note', 'type']}
         onRowClick={handleReportRowClick}
         mobilePrimary={reportTab === 'parties' ? 'name' : 'amount'}
         mobileSecondary={reportTab === 'parties' ? 'balance' : 'entry_date'}

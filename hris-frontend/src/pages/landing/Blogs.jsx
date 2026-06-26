@@ -8,7 +8,7 @@ const BLOG_POSTS = [
     tag: 'Trends',
   },
   {
-    title: '10 Essential Features Every Modern HRIS Should Have',
+    title: '10 Essential Features Every Modern Platform Should Have',
     excerpt: 'A comprehensive guide to evaluating HR platforms and understanding what features truly matter for your growing organization.',
     date: 'Jun 5, 2026',
     author: 'Rajesh Kumar',
@@ -17,7 +17,7 @@ const BLOG_POSTS = [
   },
   {
     title: 'Simplifying Payroll: From Manual Spreadsheets to Automated Systems',
-    excerpt: 'How one company eliminated payroll errors and saved 15 hours per month by switching to an automated HRIS platform.',
+    excerpt: 'How one company eliminated payroll errors and saved 15 hours per month by switching to an automated platform.',
     date: 'May 28, 2026',
     author: 'Amit Verma',
     readTime: '4 min read',

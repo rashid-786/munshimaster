@@ -23,8 +23,12 @@ export default function EmpLayout() {
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="h-16 flex items-center px-4 border-b border-gray-200">
-        <button onClick={() => navigate('/employee/profile')} className="font-bold text-lg text-indigo-600 hover:text-indigo-500 truncate">
-          {tenant?.name || 'HRIS'}
+        <button onClick={() => navigate('/employee/profile')} className="flex flex-col items-start justify-center leading-tight">
+          <span className="text-xl font-bold tracking-tight leading-none">
+            <span style={{ color: '#0B3C5D' }}>bahi</span>
+            <span style={{ color: '#2FBF71' }}>360</span>
+          </span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--primary-600)' }}>{tenant?.name || ''}</span>
         </button>
       </div>
 

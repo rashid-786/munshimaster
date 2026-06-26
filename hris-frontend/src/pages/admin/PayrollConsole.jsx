@@ -13,9 +13,19 @@ const PayrollConsole = () => {
   const [payrun, setPayrun] = useState(null);
   const [selectedPayrun, setSelectedPayrun] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    hrService.getPayrollHistory().then(setHistory).catch(() => {});
+    const loadHistory = async () => {
+      setLoading(true);
+      try {
+        const data = await hrService.getPayrollHistory();
+        setHistory(data);
+      } catch {} finally {
+        setLoading(false);
+      }
+    };
+    loadHistory();
   }, []);
 
   const handleRunPayroll = async (e) => {
@@ -71,10 +81,13 @@ const PayrollConsole = () => {
             columns={payrunColumns}
             data={payrunData}
             keyField="_key"
+            searchable={true}
+            searchKeys={['employeeName']}
             mobilePrimary="employeeName"
             mobileSecondary="net"
             onRowClick={(r) => setSelectedPayrun(r)}
             emptyMessage="No results"
+            loading={loading}
           />
         </div>
       )}
@@ -105,10 +118,13 @@ const PayrollConsole = () => {
           columns={historyColumns}
           data={history}
           keyField="id"
+          searchable={true}
+          searchKeys={['first_name', 'last_name']}
           mobilePrimary="employee_name"
           mobileSecondary="net_salary"
           onRowClick={(r) => setSelectedHistory(r)}
           emptyMessage="No payroll history"
+          loading={loading}
         />
       </div>
 
