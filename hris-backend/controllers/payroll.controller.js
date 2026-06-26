@@ -58,7 +58,7 @@ exports.calculatePayroll = async (req, res) => {
       const absentDays = Number(absences[0].days) || 0;
 
       const [leaves] = await db.execute(
-        `SELECT COALESCE(SUM(DATEDIFF(end_date, start_date) + 1), 0) as days
+        `SELECT COALESCE(SUM((end_date - start_date) + 1), 0) as days
          FROM leaves
          WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND leave_type = 'Unpaid'
          AND start_date >= ? AND end_date <= ?`,
@@ -115,12 +115,12 @@ exports.calculatePayroll = async (req, res) => {
       await db.execute(
         `INSERT INTO payroll (id, tenant_id, employee_id, pay_period_start, pay_period_end,
           hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, advance_deduction, net_salary, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-         ON DUPLICATE KEY UPDATE
-          hourly_rate=VALUES(hourly_rate), total_hours_worked=VALUES(total_hours_worked),
-          standard_hours=VALUES(standard_hours), gross_salary=VALUES(gross_salary),
-          deductions=VALUES(deductions), advance_deduction=VALUES(advance_deduction),
-          net_salary=VALUES(net_salary)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft')
+         ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end) DO UPDATE SET
+          hourly_rate = EXCLUDED.hourly_rate, total_hours_worked = EXCLUDED.total_hours_worked,
+          standard_hours = EXCLUDED.standard_hours, gross_salary = EXCLUDED.gross_salary,
+          deductions = EXCLUDED.deductions, advance_deduction = EXCLUDED.advance_deduction,
+          net_salary = EXCLUDED.net_salary`,
         [payrollId, tenantId, emp.id, startDate, endDate,
           hourlyRate, actualHours, standardHours, grossSalary, deductions, advanceDeduction, netSalary]
       );

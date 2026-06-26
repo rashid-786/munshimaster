@@ -74,7 +74,7 @@ exports.create = async (req, res) => {
     const taxRate = (s.taxRate || 18) / 100;
 
     const [[{ next }]] = await db.query(
-      `SELECT COALESCE(MAX(CAST(SUBSTRING(po_number, 4) AS UNSIGNED)), 0) + 1 as next
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(po_number, 4) AS INTEGER)), 0) + 1 as next
        FROM purchase_orders WHERE tenant_id = ?`, [tenantId]
     );
     const poNumber = `PO-${String(next).padStart(4, '0')}`;

@@ -33,7 +33,7 @@ exports.adminLogAttendance = async (req, res) => {
     await db.execute(
       `INSERT INTO attendance (id, tenant_id, employee_id, date, clock_in, clock_out, total_hours)
              VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE clock_in=VALUES(clock_in), clock_out=VALUES(clock_out), total_hours=VALUES(total_hours)`,
+             ON CONFLICT (tenant_id, employee_id, date) DO UPDATE SET clock_in = EXCLUDED.clock_in, clock_out = EXCLUDED.clock_out, total_hours = EXCLUDED.total_hours`,
       [id, tenantId, employeeId, date, clockInTime, clockOutTime, totalHours]
     );
 
@@ -88,7 +88,7 @@ exports.adminSetStatus = async (req, res) => {
         await db.execute(
           `INSERT INTO attendance (id, tenant_id, employee_id, date, clock_in, clock_out, total_hours)
            VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE clock_in=VALUES(clock_in), clock_out=VALUES(clock_out), total_hours=VALUES(total_hours)`,
+           ON CONFLICT (tenant_id, employee_id, date) DO UPDATE SET clock_in = EXCLUDED.clock_in, clock_out = EXCLUDED.clock_out, total_hours = EXCLUDED.total_hours`,
           [id, tenantId, employeeId, date, clockInTime, clockOutTime, totalHours]
         );
         break;
@@ -102,7 +102,7 @@ exports.adminSetStatus = async (req, res) => {
         await db.execute(
           `INSERT INTO attendance (id, tenant_id, employee_id, date, clock_in, clock_out, total_hours)
            VALUES (?, ?, ?, ?, ?, ?, 0)
-           ON DUPLICATE KEY UPDATE clock_in=NULL, clock_out=NULL, total_hours=0`,
+           ON CONFLICT (tenant_id, employee_id, date) DO UPDATE SET clock_in = NULL, clock_out = NULL, total_hours = 0`,
           [id, tenantId, employeeId, date, new Date(`${date}T00:00`), new Date(`${date}T00:00`)]
         );
         break;
