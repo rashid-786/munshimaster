@@ -5,8 +5,8 @@ async function log({ tenantId, actorId, actorName, action, entityType, entityId,
   try {
     const ip = req ? req.ip || req.connection?.remoteAddress || null : null;
     await db.execute(
-      `INSERT INTO audit_logs (id, tenant_id, actor_id, actor_name, action, entity_type, entity_id, changes, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO audit_logs (id, tenant_id, actor_id, actor_name, action, entity_type, entity_id, changes, ip_address, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [uuidv4(), tenantId, actorId || null, actorName || null, action, entityType || null, entityId || null,
        changes ? JSON.stringify(changes) : null, ip]
     );

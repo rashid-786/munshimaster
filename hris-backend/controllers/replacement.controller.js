@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../utils/audit');
+const { create } = require('../utils/notify');
 
 exports.getReplacements = async (req, res) => {
   const tenantId = req.tenantId;
@@ -84,6 +85,13 @@ exports.createReplacement = async (req, res) => {
     );
 
     await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'replacement.created', entityType: 'replacement', entityId: id, req });
+
+    const [permEmp] = await db.execute('SELECT first_name, last_name FROM employees WHERE id = ?', [permanentEmployeeId]);
+    const [adhocEmp] = await db.execute('SELECT first_name, last_name FROM employees WHERE id = ?', [adhocEmployeeId]);
+    const permName = permEmp.length ? `${permEmp[0].first_name} ${permEmp[0].last_name}`.trim() : 'Permanent staff';
+    const adhocName = adhocEmp.length ? `${adhocEmp[0].first_name} ${adhocEmp[0].last_name}`.trim() : 'Adhoc staff';
+    await create({ tenantId, recipientId: permanentEmployeeId, title: 'Replacement Assigned', message: `${adhocName} has been assigned as your replacement from ${startDate} to ${endDate}`, type: 'replacement', actorId: req.user.id, actorName: req.user.name, entityType: 'replacement', entityId: id });
+    await create({ tenantId, recipientId: adhocEmployeeId, title: 'Replacement Duty', message: `You have been assigned to cover for ${permName} from ${startDate} to ${endDate}`, type: 'replacement', actorId: req.user.id, actorName: req.user.name, entityType: 'replacement', entityId: id });
 
     res.status(201).json({ message: 'Replacement created successfully.', id });
   } catch (error) {

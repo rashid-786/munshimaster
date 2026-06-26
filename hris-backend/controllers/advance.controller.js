@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { create, notifyAdmins } = require('../utils/notify');
 
 exports.createAdvance = async (req, res) => {
   const tenantId = req.tenantId;
@@ -29,6 +30,16 @@ exports.createAdvance = async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
         [advanceId, tenantId, req.user.id, amountInCents, amountInCents, reason]
       );
+      notifyAdmins({
+        tenantId,
+        title: 'Advance Request',
+        message: `${req.user.name} requested an advance of ${(amountInCents / 100).toFixed(2)} — ${reason || 'No reason given'}`,
+        type: 'advance',
+        actorId: req.user.id,
+        actorName: req.user.name,
+        entityType: 'advance',
+        entityId: advanceId,
+      });
       return res.status(201).json({ message: 'Advance request submitted for approval.', advanceId });
     }
 
@@ -77,15 +88,29 @@ exports.approveAdvance = async (req, res) => {
   }
 
   try {
-    const [result] = await db.execute(
+    const [[advance]] = await db.execute(
+      'SELECT employee_id, amount, reason FROM employee_advances WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!advance) return res.status(404).json({ error: 'Advance not found.' });
+
+    await db.execute(
       `UPDATE employee_advances SET status = 'approved', approved_by = ?, approved_at = NOW()
        WHERE id = ? AND tenant_id = ? AND status = 'pending'`,
       [req.user.id, id, tenantId]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Pending advance not found.' });
-    }
+    await create({
+      tenantId,
+      recipientId: advance.employee_id,
+      title: 'Advance Approved',
+      message: `Your advance request of ${(advance.amount / 100).toFixed(2)} has been approved by ${req.user.name}`,
+      type: 'advance',
+      actorId: req.user.id,
+      actorName: req.user.name,
+      entityType: 'advance',
+      entityId: id,
+    });
 
     res.json({ message: 'Advance approved successfully.' });
   } catch (error) {
@@ -103,15 +128,29 @@ exports.rejectAdvance = async (req, res) => {
   }
 
   try {
-    const [result] = await db.execute(
+    const [[advance]] = await db.execute(
+      'SELECT employee_id, amount, reason FROM employee_advances WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!advance) return res.status(404).json({ error: 'Advance not found.' });
+
+    await db.execute(
       `UPDATE employee_advances SET status = 'rejected', approved_by = ?, approved_at = NOW()
        WHERE id = ? AND tenant_id = ? AND status = 'pending'`,
       [req.user.id, id, tenantId]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Pending advance not found.' });
-    }
+    await create({
+      tenantId,
+      recipientId: advance.employee_id,
+      title: 'Advance Rejected',
+      message: `Your advance request of ${(advance.amount / 100).toFixed(2)} has been rejected by ${req.user.name}`,
+      type: 'advance',
+      actorId: req.user.id,
+      actorName: req.user.name,
+      entityType: 'advance',
+      entityId: id,
+    });
 
     res.json({ message: 'Advance rejected.' });
   } catch (error) {

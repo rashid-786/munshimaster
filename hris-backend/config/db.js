@@ -18,14 +18,15 @@ const pool = new Pool({
   connectionString: url,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
+  allowExitOnIdle: false,
 });
 
 // Set schema search path so unqualified table names resolve to hris_saas
 pool.query('SET search_path TO hris_saas, public').catch(() => {});
 
 pool.on('error', (err) => {
-  console.error('Unexpected pool error:', err);
+  console.error('PG Pool error (non-fatal):', err?.message || err);
 });
 
 // Convert ?-style placeholders to $N style

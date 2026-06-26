@@ -72,7 +72,7 @@ exports.sendOtp = async (req, res) => {
   try {
     // Remove old unverified OTPs for this phone+purpose
     await db.execute(
-      'DELETE FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = 0 AND expires_at > NOW()',
+      'DELETE FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = false AND expires_at > NOW()',
       [normalizedPhone, purpose]
     );
 
@@ -105,14 +105,14 @@ exports.verifyOtp = async (req, res) => {
 
   try {
     const [rows] = await db.execute(
-      'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = 0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
       [normalizedPhone, purpose, otp]
     );
 
     if (rows.length === 0) {
       // Check if expired
       const [expired] = await db.execute(
-        'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = 0 AND expires_at <= NOW() LIMIT 1',
+        'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1',
         [normalizedPhone, purpose, otp]
       );
       if (expired.length > 0) {
@@ -123,7 +123,7 @@ exports.verifyOtp = async (req, res) => {
 
     // Mark OTP as verified
     await db.execute(
-      'UPDATE otp_verifications SET verified = 1 WHERE id = ?',
+      'UPDATE otp_verifications SET verified = true WHERE id = ?',
       [rows[0].id]
     );
 

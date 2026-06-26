@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../utils/audit');
+const { create, notifyAdmins } = require('../utils/notify');
 
 // ==========================================
 // ATTENDANCE ENGINE ACTIONS
@@ -267,6 +268,16 @@ exports.applyLeave = async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?)`,
       [id, tenantId, employeeId, leaveType, startDate, endDate]
     );
+    notifyAdmins({
+      tenantId,
+      title: 'Leave Application',
+      message: `${req.user.name} applied for ${leaveType} leave (${startDate} - ${endDate})`,
+      type: 'leave',
+      actorId: employeeId,
+      actorName: req.user.name,
+      entityType: 'leave',
+      entityId: id,
+    });
     res.status(201).json({ message: 'Leave application submitted for approval.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to log leave request.' });
@@ -348,6 +359,25 @@ exports.updateLeaveStatus = async (req, res) => {
       'UPDATE leaves SET status = ? WHERE id = ? AND tenant_id = ?',
       [status, leaveId, tenantId]
     );
+
+    const [[leave]] = await db.execute(
+      'SELECT employee_id, leave_type FROM leaves WHERE id = ? AND tenant_id = ?',
+      [leaveId, tenantId]
+    );
+    if (leave) {
+      await create({
+        tenantId,
+        recipientId: leave.employee_id,
+        title: `Leave ${status}`,
+        message: `Your ${leave.leave_type} leave request has been ${status} by ${req.user.name}`,
+        type: 'leave',
+        actorId: req.user.id,
+        actorName: req.user.name,
+        entityType: 'leave',
+        entityId: leaveId,
+      });
+    }
+
     res.json({ message: `Leave application successfully updated to: ${status}` });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update leave record state.' });

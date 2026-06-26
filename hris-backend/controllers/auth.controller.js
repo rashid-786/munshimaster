@@ -46,7 +46,7 @@ exports.registerTenant = async (req, res) => {
 
   // Ensure OTP was verified before registration
   const [otpCheck] = await db.execute(
-    'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = 1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+    'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = true AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
     [normalizedPhone, 'registration']
   );
   if (otpCheck.length === 0) {
@@ -151,8 +151,9 @@ exports.loginEmployee = async (req, res) => {
       ? JSON.parse(tenant.settings)
       : (tenant.settings || {});
 
+    const userName = `${user.first_name} ${user.last_name}`.trim() || 'User';
     const token = jwt.sign(
-      { id: user.id, tenantId: user.tenant_id, role: user.role },
+      { id: user.id, tenantId: user.tenant_id, role: user.role, name: userName },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -201,7 +202,7 @@ exports.resetPassword = async (req, res) => {
 
   try {
     const [otpRows] = await db.execute(
-      'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = 1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = true AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
       [normalizedPhone, 'password_reset', otp]
     );
 

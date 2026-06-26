@@ -1,3 +1,10 @@
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err?.message || err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err?.message || err);
+});
+
 const express = require('express');
 const cors = require('cors');
 const tenantResolver = require('./middleware/tenant');
@@ -20,6 +27,7 @@ const replacementRoutes = require('./routes/replacement.routes');
 const balanceRoutes = require('./routes/balance.routes');
 const reportRoutes = require('./routes/report.routes');
 const kiranaRoutes = require('./routes/kirana.routes');
+const notificationRoutes = require('./routes/notification.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const { planGate } = require('./middleware/planGate');
 const db = require('./config/db');
@@ -75,6 +83,7 @@ app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
 app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/api/v1/core/subscription', subscriptionRoutes);
+app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 
