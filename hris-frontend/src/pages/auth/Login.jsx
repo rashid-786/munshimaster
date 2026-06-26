@@ -1,29 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { authService, getDefaultCountryCode } from '../../services/auth.service';
+import { authService } from '../../services/auth.service';
 import { applyTheme } from '../../utils/currency';
+import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
   const [formData, setFormData] = useState({ phone: '', password: '' });
-  const [countryCode, setCountryCode] = useState('+965');
   const [showForgot, setShowForgot] = useState(false);
   const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotPhoneErr, setForgotPhoneErr] = useState('');
   const [forgotOtp, setForgotOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [forgotStep, setForgotStep] = useState('phone'); // phone, otp, reset, done
   const [forgotCountdown, setForgotCountdown] = useState(0);
   const [error, setError] = useState('');
+  const [phoneErr, setPhoneErr] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_data');
     localStorage.removeItem('tenant_id');
-    getDefaultCountryCode().then(setCountryCode);
   }, []);
 
   useEffect(() => {
@@ -50,11 +51,22 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setPhoneErr('');
     setLoading(true);
 
-    if (!formData.phone || !formData.password) {
+    if (!formData.phone) {
       setLoading(false);
-      return setError('Please enter your phone number and password.');
+      setPhoneErr('Please enter your phone number.');
+      return;
+    }
+    if (!isValidPhoneNumber(formData.phone)) {
+      setLoading(false);
+      setPhoneErr('Please enter a valid phone number.');
+      return;
+    }
+    if (!formData.password) {
+      setLoading(false);
+      return setError('Please enter your password.');
     }
 
     try {
@@ -81,7 +93,9 @@ const Login = () => {
   };
 
   const handleSendForgotOtp = async () => {
-    if (!forgotPhone) { setError('Enter your phone number.'); return; }
+    setForgotPhoneErr('');
+    if (!forgotPhone) { setForgotPhoneErr('Enter your phone number.'); return; }
+    if (!isValidPhoneNumber(forgotPhone)) { setForgotPhoneErr('Please enter a valid phone number.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -125,7 +139,7 @@ const Login = () => {
       <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <img src="/icon_logo.png" alt="bahi360" className="w-14 h-auto mx-auto mb-3" />
+            <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />
             <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
             <p className="text-gray-500 mt-1">We'll send a code to verify your number.</p>
           </div>
@@ -136,14 +150,12 @@ const Login = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium pointer-events-none">{countryCode}</span>
-                      <input type="tel" value={forgotPhone} onChange={e => {
-                        const val = e.target.value.replace(/\s/g, '');
-                        if (val === '' || /^\d+$/.test(val)) setForgotPhone(val);
-                      }}
-                        className="input-field pl-16" placeholder="5xxxxxxxx" autoFocus />
-                    </div>
+                    <PhoneField
+                      value={forgotPhone}
+                      onChange={v => { setForgotPhone(v); setForgotPhoneErr(''); }}
+                      error={forgotPhoneErr}
+                      autoFocus
+                    />
                   </div>
                   <button onClick={handleSendForgotOtp} disabled={loading} className="btn-primary w-full !py-2.5">
                     {loading ? 'Sending...' : 'Send OTP'}
@@ -211,25 +223,23 @@ const Login = () => {
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src="/icon_logo.png" alt="bahi360" className="w-14 h-auto mx-auto mb-3" />
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="text-gray-500 mt-1">Sign in to your account</p>
-        </div>
+          <div className="text-center mb-8">
+            <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />
+            <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
+            <p className="text-gray-500 mt-1">Sign in to your account</p>
+          </div>
         <div className="card p-6 md:p-8">
           {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium pointer-events-none">{countryCode}</span>
-                <input type="tel" name="phone" value={formData.phone} onChange={e => {
-                  const val = e.target.value.replace(/\s/g, '');
-                  if (val === '' || /^\d+$/.test(val)) setFormData(prev => ({ ...prev, phone: val }));
-                }}
-                  className="input-field pl-16" placeholder="5xxxxxxxx" autoFocus />
-              </div>
+              <PhoneField
+                value={formData.phone}
+                onChange={v => { setFormData(prev => ({ ...prev, phone: v })); setPhoneErr(''); }}
+                error={phoneErr}
+                autoFocus
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>

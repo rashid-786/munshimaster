@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { authService, getDefaultCountryCode } from '../../services/auth.service';
+import { authService } from '../../services/auth.service';
+import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 
 const STEPS = { PHONE: 0, OTP: 1, CREDENTIALS: 2 };
 
@@ -8,17 +9,13 @@ const Register = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(STEPS.PHONE);
   const [phone, setPhone] = useState('');
-  const [countryCode, setCountryCode] = useState('+965');
+  const [phoneErr, setPhoneErr] = useState('');
   const [otpInput, setOtpInput] = useState(['', '', '', '', '', '']);
   const [credentials, setCredentials] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const otpRefs = useRef([]);
-
-  useEffect(() => {
-    getDefaultCountryCode().then(setCountryCode);
-  }, []);
 
   const startCountdown = () => {
     setCountdown(30);
@@ -32,7 +29,9 @@ const Register = () => {
 
   const handleSendOtp = async (e) => {
     e?.preventDefault();
-    if (!phone) { setError('Please enter your phone number.'); return; }
+    setPhoneErr('');
+    if (!phone) { setPhoneErr('Please enter your phone number.'); return; }
+    if (!isValidPhoneNumber(phone)) { setPhoneErr('Please enter a valid phone number.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -92,7 +91,7 @@ const Register = () => {
     <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/icon_logo.png" alt="bahi360" className="w-14 h-auto mx-auto mb-3" />
+          <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />
           <h1 className="text-2xl font-bold text-gray-900">Create your account</h1>
           <p className="text-gray-500 mt-1">Start managing your business in minutes</p>
         </div>
@@ -126,20 +125,12 @@ const Register = () => {
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium pointer-events-none">{countryCode}</span>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={e => {
-                      const val = e.target.value.replace(/\s/g, '');
-                      if (val === '' || /^\d+$/.test(val)) setPhone(val);
-                    }}
-                    placeholder="5xxxxxxxx"
-                    className="input-field text-base pl-16"
-                    autoFocus
-                  />
-                </div>
+                <PhoneField
+                  value={phone}
+                  onChange={v => { setPhone(v); setPhoneErr(''); }}
+                  error={phoneErr}
+                  autoFocus
+                />
                 <p className="text-xs text-gray-400 mt-1">We'll send a one-time code to verify your number.</p>
               </div>
               <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 text-base">

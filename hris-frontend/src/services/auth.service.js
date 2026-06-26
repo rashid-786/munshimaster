@@ -18,6 +18,17 @@ export async function getDefaultCountryCode() {
   }
 }
 
+export async function getGeoCountry() {
+  try {
+    const response = await api.get('/public/country');
+    if (response.data?.country) {
+      localStorage.setItem('preferred_country', response.data.country);
+      return response.data.country;
+    }
+  } catch {}
+  return null;
+}
+
 export const authService = {
   sendOtp: async (phone, purpose = 'registration') => {
     const response = await api.post('/auth/send-otp', { phone, purpose });

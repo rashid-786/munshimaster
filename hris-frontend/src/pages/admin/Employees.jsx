@@ -7,6 +7,7 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
+import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 
 const PROFESSIONS = [
   'Accountant', 'Administrator', 'Architect', 'Business Analyst', 'Chef',
@@ -37,6 +38,7 @@ const Employees = () => {
   const hideTempPassword = localStorage.getItem('hide_temp_password') === 'true';
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
+  const [phoneErr, setPhoneErr] = useState('');
   const [search, setSearch] = useState('');
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' });
@@ -70,6 +72,11 @@ const Employees = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setPhoneErr('');
+    if (form.phone && !isValidPhoneNumber(form.phone)) {
+      setPhoneErr('Please enter a valid phone number.');
+      return;
+    }
     try {
       const payload = {
         firstName: form.firstName,
@@ -443,9 +450,13 @@ const Employees = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Work Email</label>
                   <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field" />
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field" />
+                  <PhoneField
+                    value={form.phone}
+                    onChange={v => { setForm({ ...form, phone: v }); setPhoneErr(''); }}
+                    error={phoneErr}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
