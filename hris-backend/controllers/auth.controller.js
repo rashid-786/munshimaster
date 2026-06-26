@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
+const { validateE164 } = require('../utils/phone');
 
 async function getDefaultCountryCode() {
   try {
@@ -36,24 +37,34 @@ function generatePassword() {
 
 // 1. REGISTER (phone-only, after OTP verification)
 exports.registerTenant = async (req, res) => {
-  const countryCode = await getDefaultCountryCode();
-  const { phone } = req.body;
-  const normalizedPhone = normalizePhone(phone, countryCode);
+  let { phone } = req.body;
 
-  if (!normalizedPhone) {
+  if (!phone) {
     return res.status(400).json({ error: 'Phone number is required.' });
+  }
+
+  const parsed = validateE164(phone);
+  if (!parsed) {
+    const countryCode = await getDefaultCountryCode();
+    phone = normalizePhone(phone, countryCode);
+  } else {
+    phone = parsed.phone_e164;
+  }
+
+  if (!validateE164(phone)) {
+    return res.status(400).json({ error: 'Invalid phone number format.' });
   }
 
   // Ensure OTP was verified before registration
   const [otpCheck] = await db.execute(
     'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = true AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-    [normalizedPhone, 'registration']
+    [phone, 'registration']
   );
   if (otpCheck.length === 0) {
     return res.status(400).json({ error: 'Please verify your phone number first via OTP.' });
   }
 
-  const [existing] = await db.execute('SELECT id FROM tenants WHERE phone = ?', [normalizedPhone]);
+  const [existing] = await db.execute('SELECT id FROM tenants WHERE phone = ?', [phone]);
   if (existing.length > 0) {
     return res.status(400).json({ error: 'This phone is already registered. Please sign in.' });
   }
@@ -69,12 +80,12 @@ exports.registerTenant = async (req, res) => {
 
     await db.execute(
       'INSERT INTO tenants (id, company_name, subdomain, subscription_plan, phone) VALUES (?, ?, ?, ?, ?)',
-      [tenantId, '', subdomain, 'free', normalizedPhone]
+      [tenantId, '', subdomain, 'free', phone]
     );
 
     await db.execute(
       'INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, base_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [employeeId, tenantId, 'User', '', `${normalizedPhone}@placeholder.local`, normalizedPhone, hashedPassword, 'tenant_admin', 0]
+      [employeeId, tenantId, 'User', '', `${phone}@placeholder.local`, phone, hashedPassword, 'tenant_admin', 0]
     );
 
     await db.query('COMMIT');
@@ -82,7 +93,7 @@ exports.registerTenant = async (req, res) => {
     res.status(201).json({
       message: 'Account created successfully!',
       tenant: { id: tenantId, subdomain },
-      credentials: { phone: normalizedPhone, password: rawPassword },
+      credentials: { phone, password: rawPassword },
       defaultCountryCode: countryCode,
     });
   } catch (error) {

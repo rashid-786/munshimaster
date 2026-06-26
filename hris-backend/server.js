@@ -54,6 +54,36 @@ app.get('/api/v1/public/settings', async (req, res) => {
   }
 });
 
+// Country detection endpoint (no auth required)
+const COUNTRY_MAP = {
+  KW: { code: '+965', country: 'KW', name: 'Kuwait' },
+  SA: { code: '+966', country: 'SA', name: 'Saudi Arabia' },
+  AE: { code: '+971', country: 'AE', name: 'UAE' },
+  IN: { code: '+91', country: 'IN', name: 'India' },
+  PK: { code: '+92', country: 'PK', name: 'Pakistan' },
+  BD: { code: '+880', country: 'BD', name: 'Bangladesh' },
+  EG: { code: '+20', country: 'EG', name: 'Egypt' },
+  QA: { code: '+974', country: 'QA', name: 'Qatar' },
+  BH: { code: '+973', country: 'BH', name: 'Bahrain' },
+  OM: { code: '+968', country: 'OM', name: 'Oman' },
+  US: { code: '+1', country: 'US', name: 'United States' },
+  GB: { code: '+44', country: 'GB', name: 'United Kingdom' },
+};
+app.get('/api/v1/public/country', async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT default_country_code FROM system_settings WHERE id = 1');
+    const systemCode = rows.length > 0 ? rows[0].default_country_code : '+965';
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+    let country = 'KW';
+    for (const [c, info] of Object.entries(COUNTRY_MAP)) {
+      if (info.code === systemCode) { country = c; break; }
+    }
+    res.json({ country, countryCode: COUNTRY_MAP[country]?.code || '+965' });
+  } catch {
+    res.json({ country: 'KW', countryCode: '+965' });
+  }
+});
+
 
 // ==========================================
 // 2. PROTECTED MULTI-TENANT ROUTES

@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const { validateE164 } = require('../utils/phone');
 
 async function getDefaultCountryCode() {
   try {
@@ -50,14 +51,22 @@ async function sendOtpSms(phone, otp) {
 }
 
 exports.sendOtp = async (req, res) => {
-  const { phone, purpose = 'registration' } = req.body;
+  let { phone, purpose = 'registration' } = req.body;
 
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required.' });
   }
 
-  const countryCode = await getDefaultCountryCode();
-  const normalizedPhone = normalizePhone(phone, countryCode);
+  const parsed = validateE164(phone);
+  if (!parsed) {
+    const countryCode = await getDefaultCountryCode();
+    phone = normalizePhone(phone, countryCode);
+    if (!validateE164(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format.' });
+    }
+  } else {
+    phone = parsed.phone_e164;
+  }
 
   if (purpose === 'registration') {
     const [existing] = await db.execute(
@@ -94,26 +103,31 @@ exports.sendOtp = async (req, res) => {
 };
 
 exports.verifyOtp = async (req, res) => {
-  const { phone, otp, purpose = 'registration' } = req.body;
+  let { phone, otp, purpose = 'registration' } = req.body;
 
   if (!phone || !otp) {
     return res.status(400).json({ error: 'Phone and OTP are required.' });
   }
 
-  const countryCode = await getDefaultCountryCode();
-  const normalizedPhone = normalizePhone(phone, countryCode);
+  const parsed = validateE164(phone);
+  if (!parsed) {
+    const countryCode = await getDefaultCountryCode();
+    phone = normalizePhone(phone, countryCode);
+  } else {
+    phone = parsed.phone_e164;
+  }
 
   try {
     const [rows] = await db.execute(
       'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [normalizedPhone, purpose, otp]
+      [phone, purpose, otp]
     );
 
     if (rows.length === 0) {
       // Check if expired
       const [expired] = await db.execute(
         'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1',
-        [normalizedPhone, purpose, otp]
+        [phone, purpose, otp]
       );
       if (expired.length > 0) {
         return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
