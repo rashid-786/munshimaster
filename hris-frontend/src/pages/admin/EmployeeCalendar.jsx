@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { hrService } from '../../services/hr.service';
 import SearchableSelect from '../../components/SearchableSelect';
+import Loading from '../../components/Loading';
 
 const COLORS = {
   present: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
@@ -216,7 +217,12 @@ const EmployeeCalendar = () => {
         ))}
       </div>
 
-      {loading && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
+      <div className="relative">
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-xl">
+            <Loading />
+          </div>
+        )}
 
       {calendarData && calendarData.employees.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -297,6 +303,7 @@ const EmployeeCalendar = () => {
       {calendarData && calendarData.employees.length === 0 && (
         <div className="text-center text-gray-400 py-8 text-sm">No employees found</div>
       )}
+      </div>
 
       {tooltip && <Tooltip day={tooltip.day} rect={tooltip.rect} />}
 
