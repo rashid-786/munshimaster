@@ -46,7 +46,6 @@ import SuperLogin from './pages/super/SuperLogin';
 import SuperDashboard from './pages/super/SuperDashboard';
 import TenantManagement from './pages/super/TenantManagement';
 import TenantDetail from './pages/super/TenantDetail';
-import AllEmployees from './pages/super/AllEmployees';
 import SuperSettings from './pages/super/SuperSettings';
 import PlanRoute from './components/PlanRoute';
 
@@ -73,7 +72,6 @@ function App() {
             <Route path="dashboard" element={<SuperDashboard />} />
             <Route path="tenants" element={<TenantManagement />} />
             <Route path="tenants/:id" element={<TenantDetail />} />
-            <Route path="employees" element={<AllEmployees />} />
             <Route path="settings" element={<SuperSettings />} />
           </Route>
 

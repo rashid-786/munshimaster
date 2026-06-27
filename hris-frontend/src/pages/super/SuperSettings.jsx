@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 
 const PLANS = [
-  { value: 'free', label: 'Free (Ledger)' },
-  { value: 'pro', label: 'Pro (+ Business)' },
-  { value: 'enterprise', label: 'Enterprise (+ HR)' },
+  { value: 'free', label: 'Free' },
+  { value: 'business', label: 'Business' },
+  { value: 'pro', label: 'Pro' },
 ];
 
 const SuperSettings = () => {
-  const [countryCode, setCountryCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -18,14 +17,8 @@ const SuperSettings = () => {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      superService.getSystemSettings(),
-      superService.getTenants({ limit: 100 }),
-    ])
-      .then(([settings, tenantData]) => {
-        setCountryCode(settings.defaultCountryCode);
-        setTenants(tenantData.tenants);
-      })
+    superService.getTenants({ limit: 100 })
+      .then(data => setTenants(data.tenants))
       .catch(() => setError('Failed to load data.'))
       .finally(() => setLoading(false));
   }, []);
@@ -36,14 +29,11 @@ const SuperSettings = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!countryCode.trim()) { setError('Country code is required.'); return; }
     setSaving(true);
     setError('');
     setMessage(null);
 
     try {
-      await superService.updateSystemSettings(countryCode.trim());
-
       const changeEntries = Object.entries(planChanges);
       if (changeEntries.length > 0) {
         await Promise.all(
@@ -88,51 +78,31 @@ const SuperSettings = () => {
 
       <form onSubmit={handleSubmit}>
         <div className="card p-6 mb-6">
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Default Country Code</label>
-              <input
-                type="text"
-                value={countryCode}
-                onChange={e => setCountryCode(e.target.value)}
-                placeholder="+965"
-                className="input-field max-w-xs"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                This country code will be pre-filled in all phone number fields across the platform (e.g., +965 for Kuwait).
-              </p>
-            </div>
-
-            <hr className="border-gray-200" />
-
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Tenant Plans</h3>
-              <p className="text-sm text-gray-500 mb-4">Upgrade or downgrade subscription plans for tenants.</p>
-              {tenants.length === 0 ? (
-                <div className="text-center text-gray-400 text-sm py-4">No tenants found.</div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {tenants.map(tenant => (
-                    <div key={tenant.id} className="py-3 flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{tenant.company_name}</p>
-                        <p className="text-xs text-gray-400">ID: {tenant.id.slice(0, 8)}&hellip;</p>
-                      </div>
-                      <select
-                        value={planChanges[tenant.id] ?? tenant.subscription_plan ?? 'free'}
-                        onChange={e => handlePlanChange(tenant.id, e.target.value)}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[140px] max-w-[200px]"
-                      >
-                        {PLANS.map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Tenant Plans</h3>
+          <p className="text-sm text-gray-500 mb-4">Upgrade or downgrade subscription plans for tenants.</p>
+          {tenants.length === 0 ? (
+            <div className="text-center text-gray-400 text-sm py-4">No tenants found.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {tenants.map(tenant => (
+                <div key={tenant.id} className="py-3 flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{tenant.company_name}</p>
+                    <p className="text-xs text-gray-400">ID: {tenant.id.slice(0, 8)}&hellip;</p>
+                  </div>
+                  <select
+                    value={planChanges[tenant.id] ?? tenant.subscription_plan ?? 'free'}
+                    onChange={e => handlePlanChange(tenant.id, e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[140px] max-w-[200px]"
+                  >
+                    {PLANS.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
+          )}
         </div>
 
         <div className="flex justify-end">
