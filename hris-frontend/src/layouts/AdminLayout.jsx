@@ -2,9 +2,13 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { hrService } from '../services/hr.service';
+import { subscriptionService } from '../services/subscription.service';
 import NotificationBell from '../components/NotificationBell';
+import UpgradeModal from '../components/UpgradeModal';
+import DowngradeModal from '../components/DowngradeModal';
+import OnboardingWizard from '../components/OnboardingWizard';
 
-const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
+const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
 
 const Icons = {
   ledger: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>,
@@ -17,6 +21,7 @@ const Icons = {
   bell: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
   lock: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>,
   upgrade: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
+  payments: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
 };
 
 const NAV_GROUPS = [
@@ -34,7 +39,7 @@ const NAV_GROUPS = [
   {
     label: 'My Business',
     icon: Icons.business,
-    requiredPlan: 'pro',
+    requiredPlan: 'business',
     items: [
       { to: '/admin/suppliers', label: 'Suppliers' },
       { to: '/admin/customers', label: 'Customers' },
@@ -47,7 +52,7 @@ const NAV_GROUPS = [
   {
     label: 'My HR',
     icon: Icons.staff,
-    requiredPlan: 'enterprise',
+    requiredPlan: 'pro',
     items: [
       { to: '/admin/dashboard', label: 'Staff Directory' },
       { to: '/admin/calendar', label: 'Attendance' },
@@ -58,7 +63,9 @@ const NAV_GROUPS = [
       { to: '/admin/audit-logs', label: 'Audit Logs' },
     ],
   },
+  { to: '/admin/payments', label: 'Payments', icon: Icons.payments, requiredPlan: 'free' },
   { to: '/admin/settings', label: 'Settings', icon: Icons.settings, requiredPlan: 'free' },
+  { to: '/admin/referrals', label: 'Refer & Earn', icon: Icons.upgrade, requiredPlan: 'free' },
 ];
 
 const pageTitles = {
@@ -75,6 +82,8 @@ const pageTitles = {
   '/admin/balance': 'My Business',
   '/admin/reports': 'My Business',
   '/admin/settings': 'Settings',
+  '/admin/payments': 'Payments',
+  '/admin/referrals': 'Refer & Earn',
   '/admin/ledger': 'My Ledger Book',
   '/admin/ledger/buyers': 'My Ledger Book',
   '/admin/ledger/sellers': 'My Ledger Book',
@@ -82,16 +91,16 @@ const pageTitles = {
   '/admin/ledger/reports': 'My Ledger Book',
 };
 
-const PLAN_LABELS = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' };
+const PLAN_LABELS = { free: 'Free', business: 'Business', business_monthly: 'Business', pro: 'Pro', pro_monthly: 'Pro' };
 
 export default function AdminLayout() {
-  const { user, tenant, logout } = useAuth();
+  const { user, tenant, logout, refreshTenant } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const defaultOpen = tenant?.subscriptionPlan === 'free'
     ? { 'My Ledger Book': true, 'My Business': false, 'My HR': false }
-    : tenant?.subscriptionPlan === 'enterprise'
+    : tenant?.subscriptionPlan === 'pro'
     ? { 'My Ledger Book': false, 'My Business': false, 'My HR': true }
     : { 'My Ledger Book': false, 'My Business': true, 'My HR': false };
   const [openGroups, setOpenGroups] = useState(defaultOpen);
@@ -99,6 +108,9 @@ export default function AdminLayout() {
   const [profileCompletion, setProfileCompletion] = useState(null);
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [groupLabels, setGroupLabels] = useState({});
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showDowngrade, setShowDowngrade] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const menuRef = useRef(null);
 
   const currentPlan = tenant?.subscriptionPlan || 'free';
@@ -124,6 +136,22 @@ export default function AdminLayout() {
   useEffect(() => {
     hrService.getProfileCompletion().then(setProfileCompletion).catch(() => {});
   }, [location.pathname]);
+
+  // Check onboarding on mount
+  useEffect(() => {
+    const dismissed = localStorage.getItem('bahi_onboarding_dismissed');
+    if (dismissed) return;
+    if (!tenant?.id) return;
+    subscriptionService.getOnboardingStatus()
+      .then(data => {
+        if (data.onboardingDismissed) {
+          localStorage.setItem('bahi_onboarding_dismissed', 'true');
+          return;
+        }
+        if (!data.allDone) setShowOnboarding(true);
+      })
+      .catch(() => {});
+  }, [tenant?.id]);
 
   useEffect(() => {
     hrService.getTenantSettings().then(res => {
@@ -160,15 +188,20 @@ export default function AdminLayout() {
       {/* Plan badge */}
       <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          currentPlan === 'enterprise' ? 'bg-purple-100 text-purple-700' :
-          currentPlan === 'pro' ? 'bg-indigo-100 text-indigo-700' :
+          currentPlan === 'pro' || currentPlan === 'pro_monthly' ? 'bg-purple-100 text-purple-700' :
+          currentPlan === 'business' || currentPlan === 'business_monthly' ? 'bg-indigo-100 text-indigo-700' :
           'bg-gray-100 text-gray-600'
         }`}>
           {PLAN_LABELS[currentPlan]} Plan
         </span>
-        {currentPlan !== 'enterprise' && (
-          <button onClick={() => navigate('/select-plan')} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Upgrade</button>
-        )}
+        <div className="flex items-center gap-2">
+          {(currentPlan === 'business' || currentPlan === 'pro' || currentPlan === 'business_monthly' || currentPlan === 'pro_monthly') && (
+            <button onClick={() => setShowDowngrade(true)} className="text-xs text-gray-400 hover:text-red-600 font-medium">Cancel</button>
+          )}
+          {currentPlan !== 'pro' && currentPlan !== 'pro_monthly' && (
+            <button onClick={() => setShowUpgrade(true)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Upgrade</button>
+          )}
+        </div>
       </div>
 
       <nav className="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto">
@@ -317,6 +350,23 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </main>
+
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+      />
+      <DowngradeModal
+        open={showDowngrade}
+        onClose={() => setShowDowngrade(false)}
+        onDowngraded={refreshTenant}
+      />
+      <OnboardingWizard
+        open={showOnboarding}
+        onComplete={() => {
+          setShowOnboarding(false);
+          localStorage.setItem('bahi_onboarding_dismissed', 'true');
+        }}
+      />
     </div>
   );
 }

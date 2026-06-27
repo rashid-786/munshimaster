@@ -6,14 +6,14 @@ import { getDefaultCountryCode } from '../../services/auth.service';
 
 const PLAN_ICONS = {
   free: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-  pro: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>,
-  enterprise: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+  business: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>,
+  pro: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
 };
 
 const PLAN_COLORS = {
   free: { border: 'border-gray-200', badge: 'bg-gray-100 text-gray-700', hover: 'hover:border-gray-300', selected: 'ring-2 ring-gray-400' },
-  pro: { border: 'border-indigo-200', badge: 'bg-indigo-100 text-indigo-700', hover: 'hover:border-indigo-300', selected: 'ring-2 ring-indigo-500' },
-  enterprise: { border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', hover: 'hover:border-purple-300', selected: 'ring-2 ring-purple-500' },
+  business: { border: 'border-indigo-200', badge: 'bg-indigo-100 text-indigo-700', hover: 'hover:border-indigo-300', selected: 'ring-2 ring-indigo-500' },
+  pro: { border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', hover: 'hover:border-purple-300', selected: 'ring-2 ring-purple-500' },
 };
 
 const PlanSelection = () => {
@@ -35,11 +35,11 @@ const PlanSelection = () => {
     if (!user) { navigate('/login'); return; }
     setLoading(true);
     hrService.getPlans()
-      .then(data => setPlans(data.plans))
+      .then(data => setPlans(data.plans.filter(p => !p.id.endsWith('_monthly'))))
       .catch(() => setPlans([
         { id: 'free', name: 'Free', price: 0, features: ['My Ledger Book'] },
-        { id: 'pro', name: 'Pro', price: 0, features: ['Everything in Free', 'Business Module'] },
-        { id: 'enterprise', name: 'Enterprise', price: 0, features: ['Everything in Pro', 'Staff Management'] },
+        { id: 'business', name: 'Business', price: 1069, features: ['Everything in Free', 'Business Module'] },
+        { id: 'pro', name: 'Pro', price: 1609, features: ['Everything in Business', 'Staff Management'] },
       ]))
       .finally(() => setLoading(false));
   }, [user, navigate]);
@@ -118,13 +118,13 @@ const PlanSelection = () => {
                       </div>
                       <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        {plan.price === 0 ? 'Free' : `Rs.${plan.price}`}
+                        {plan.price === 0 ? 'Free' : `₹${plan.price}/yr`}
                       </p>
                       <ul className="mt-3 space-y-1.5">
-                        {plan.features.map((f, i) => (
+                        {plan.features?.map((f, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                             <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                            {f}
+                            {typeof f === 'string' ? f : f.text || f}
                           </li>
                         ))}
                       </ul>

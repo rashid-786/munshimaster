@@ -8,6 +8,7 @@ import BottomSheet from '../../components/BottomSheet';
 import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
 import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const PROFESSIONS = [
   'Accountant', 'Administrator', 'Architect', 'Business Analyst', 'Chef',
@@ -249,6 +250,7 @@ const Employees = () => {
           <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-4 shrink-0">&times;</button>
         </div>
       )}
+      <UpgradeBanner type="feature" feature="Staff Management" plan="pro" />
 
       {/* Welcome hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-primary p-6 md:p-8 text-white">

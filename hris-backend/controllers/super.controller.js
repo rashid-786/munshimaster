@@ -116,7 +116,7 @@ exports.createTenant = async (req, res) => {
 
     const settingsStr = settings ? JSON.stringify(settings) : JSON.stringify({ primaryColor: '#4f46e5' });
     await db.execute(
-      'INSERT INTO tenants (id, company_name, subdomain, settings) VALUES (?, ?, ?, ?)',
+      'INSERT INTO tenants (id, company_name, subdomain, settings, created_at) VALUES (?, ?, ?, ?, NOW())',
       [tenantId, companyName, subdomain, settingsStr]
     );
 
@@ -596,5 +596,88 @@ exports.updateSystemSettings = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update system settings.' });
+  }
+};
+
+// =============================================
+// ANALYTICS — Retention & business metrics
+// =============================================
+exports.getAnalytics = async (req, res) => {
+  try {
+    // Trial → paid conversion
+    const [trialStarted] = await db.execute(
+      "SELECT COUNT(*) as c FROM conversion_events WHERE event = 'trial_started'"
+    );
+    const [trialConverted] = await db.execute(
+      "SELECT COUNT(*) as c FROM conversion_events WHERE event = 'trial_converted'"
+    );
+    const started = Number(trialStarted[0]?.c || 0);
+    const converted = Number(trialConverted[0]?.c || 0);
+
+    // Subscription counts by plan
+    const [subsByPlan] = await db.execute(
+      `SELECT s.plan_id, COUNT(*) as c
+       FROM subscriptions s
+       WHERE s.status IN ('active','trialing')
+       GROUP BY s.plan_id`
+    );
+
+    // Revenue by month from payments
+    const [revenueByMonth] = await db.execute(
+      `SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as revenue
+       FROM payments WHERE status = 'captured'
+       GROUP BY month ORDER BY month DESC LIMIT 12`
+    );
+
+    // Churn
+    const [totalSubs] = await db.execute(
+      "SELECT COUNT(*) as c FROM subscriptions WHERE status IN ('active','trialing')"
+    );
+    const [churnedSubs] = await db.execute(
+      "SELECT COUNT(*) as c FROM subscriptions WHERE status IN ('cancelled','expired')"
+    );
+    const totalActive = Number(totalSubs[0]?.c || 0);
+    const totalChurned = Number(churnedSubs[0]?.c || 0);
+
+    // Referrals
+    const [referralCount] = await db.execute(
+      'SELECT COUNT(*) as c FROM referral_redemptions'
+    );
+    const [referralPending] = await db.execute(
+      "SELECT COUNT(*) as c FROM referral_redemptions WHERE status = 'pending'"
+    );
+
+    // Campaigns
+    const [campaigns] = await db.execute(
+      `SELECT c.name, c.code, c.redemptions, c.max_redemptions,
+              c.starts_at, c.ends_at, c.is_active
+       FROM campaigns c
+       ORDER BY c.created_at DESC`
+    );
+
+    // Active trials vs paid
+    const [activeTrials] = await db.execute(
+      "SELECT COUNT(*) as c FROM subscriptions WHERE status = 'trialing'"
+    );
+
+    res.json({
+      trialStarted: started,
+      trialConverted: converted,
+      conversionRate: started > 0 ? Math.round((converted / started) * 100) : 0,
+      subsByPlan: subsByPlan || [],
+      revenueByMonth: revenueByMonth || [],
+      totalActive,
+      totalChurned,
+      churnRate: (totalActive + totalChurned) > 0
+        ? Math.round((totalChurned / (totalActive + totalChurned)) * 100)
+        : 0,
+      totalReferrals: Number(referralCount[0]?.c || 0),
+      referralPending: Number(referralPending[0]?.c || 0),
+      activeTrials: Number(activeTrials[0]?.c || 0),
+      campaigns: campaigns || [],
+    });
+  } catch (error) {
+    console.error('getAnalytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics.' });
   }
 };

@@ -3,17 +3,29 @@ import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
 import useIsMobile from '../../hooks/useIsMobile';
 
+function formatINR(n) {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+}
+
 const SuperDashboard = () => {
   const [stats, setStats] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    superService.getDashboard()
-      .then(setStats)
+    Promise.all([
+      superService.getDashboard(),
+      superService.getAnalytics(),
+    ])
+      .then(([s, a]) => {
+        setStats(s);
+        setAnalytics(a);
+      })
       .catch(() => setError('Failed to load dashboard'))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setAnalyticsLoading(false); });
   }, []);
 
   if (loading) {
@@ -64,7 +76,7 @@ const SuperDashboard = () => {
     },
     {
       label: 'Role Distribution',
-      value: stats.roleDistribution?.map(r => `${r.role}: ${r.count}`).join(', ') || '-',
+      value: null,
       path: null,
       color: 'bg-purple-500',
       icon: (
@@ -75,8 +87,24 @@ const SuperDashboard = () => {
     },
   ];
 
+  const analyticsCards = analytics ? [
+    { label: 'Conversion Rate', value: `${analytics.conversionRate}%`, sub: `${analytics.trialConverted} of ${analytics.trialStarted} trials converted`, color: 'text-emerald-600' },
+    { label: 'Active Trials', value: analytics.activeTrials, sub: 'currently trialing', color: 'text-amber-600' },
+    { label: 'Churn Rate', value: `${analytics.churnRate}%`, sub: `${analytics.totalChurned} churned / ${analytics.totalActive + analytics.totalChurned} total`, color: 'text-red-600' },
+    { label: 'Referrals', value: analytics.totalReferrals, sub: `${analytics.referralPending} pending credit`, color: 'text-indigo-600' },
+  ] : [];
+
+  // Plan distribution pie (simple bar chart)
+  const planColors = { free: '#9CA3AF', business: '#6366F1', pro: '#7C3AED' };
+  const planLabels = { free: 'Free', business: 'Business', pro: 'Pro' };
+
+  // Revenue chart
+  const revenueData = analytics?.revenueByMonth?.slice().reverse() || [];
+  const maxRevenue = Math.max(...revenueData.map(r => Number(r.revenue) || 0), 1);
+
   return (
     <div className="space-y-6">
+      {/* Top cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
           <div key={card.label} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
@@ -107,6 +135,138 @@ const SuperDashboard = () => {
         ))}
       </div>
 
+      {/* Analytics section */}
+      {!analyticsLoading && analytics && (
+        <>
+          {/* Key metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {analyticsCards.map(card => (
+              <div key={card.label} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{card.label}</p>
+                <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+                {card.sub && <p className="text-xs text-gray-400 mt-1">{card.sub}</p>}
+              </div>
+            ))}
+          </div>
+
+          {/* Revenue chart + Plan distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Revenue bar chart */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">Revenue (12 months)</h3>
+              {revenueData.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">No revenue data yet</p>
+              ) : (
+                <div className="flex items-end gap-2 h-40">
+                  {revenueData.map((r, i) => {
+                    const height = (Number(r.revenue) / maxRevenue) * 100;
+                    const month = new Date(r.month).toLocaleDateString('en', { month: 'short', year: '2-digit' });
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                        <div className="w-full bg-indigo-100 rounded-t relative" style={{ height: `${Math.max(height, 4)}%` }}>
+                          <div
+                            className="absolute bottom-0 w-full bg-indigo-500 rounded-t transition-all hover:bg-indigo-600"
+                            style={{ height: `${height}%` }}
+                          >
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity">
+                              {formatINR(r.revenue)}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-gray-400">{month}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Plan distribution */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">Subscription Plans</h3>
+              {(!analytics.subsByPlan || analytics.subsByPlan.length === 0) ? (
+                <p className="text-sm text-gray-400 text-center py-8">No subscriptions yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {analytics.subsByPlan.map(row => {
+                    const total = analytics.subsByPlan.reduce((s, r) => s + Number(r.c || 0), 0);
+                    const pct = total > 0 ? Math.round((Number(row.c) / total) * 100) : 0;
+                    return (
+                      <div key={row.plan_id}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="font-medium text-gray-700">{planLabels[row.plan_id] || row.plan_id}</span>
+                          <span className="text-gray-500">{row.c} ({pct}%)</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%`, backgroundColor: planColors[row.plan_id] || '#6366F1' }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Campaigns table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Campaigns & Promotions</h3>
+            </div>
+            {(!analytics.campaigns || analytics.campaigns.length === 0) ? (
+              <div className="text-center text-gray-400 py-8 text-sm">No campaigns created yet</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="table-header">Name</th>
+                      <th className="table-header">Code</th>
+                      <th className="table-header">Redemptions</th>
+                      <th className="table-header">Period</th>
+                      <th className="table-header">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {analytics.campaigns.map((c, i) => {
+                      const now = new Date();
+                      const start = new Date(c.starts_at);
+                      const end = new Date(c.ends_at);
+                      const isActive = c.is_active && now >= start && now < end;
+                      return (
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="table-cell font-medium">{c.name}</td>
+                          <td className="table-cell">
+                            {c.code ? <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{c.code}</span> : '-'}
+                          </td>
+                          <td className="table-cell text-gray-500">
+                            {c.redemptions}{c.max_redemptions > 0 ? ` / ${c.max_redemptions}` : ''}
+                          </td>
+                          <td className="table-cell text-gray-500 text-sm">
+                            {start.toLocaleDateString()} – {end.toLocaleDateString()}
+                          </td>
+                          <td className="table-cell">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                              isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Recent tenants */}
       <div className="card">
         <div className="card-header">
           <h3 className="text-lg font-semibold text-gray-900">Recently Onboarded Tenants</h3>

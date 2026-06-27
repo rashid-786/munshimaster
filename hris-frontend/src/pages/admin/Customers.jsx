@@ -5,6 +5,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', credit_limit: '', payment_terms: '', notes: '' };
 
@@ -144,6 +145,7 @@ const Customers = () => {
         <span>{error}</span>
         <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
       </div>}
+      <UpgradeBanner type="feature" feature="Customers" plan="business" />
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-900">Customers</h2>

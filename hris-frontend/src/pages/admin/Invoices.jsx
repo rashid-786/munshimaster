@@ -5,6 +5,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '' };
 const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '' };
@@ -212,6 +213,7 @@ const Invoices = () => {
         <span>{error}</span>
         <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
       </div>}
+      <UpgradeBanner type="feature" feature="Invoices" plan="business" />
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-900">Invoices</h2>

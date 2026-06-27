@@ -25,4 +25,6 @@ router.get('/tenants/:id/leaves', authenticateSuperAdmin, superController.getTen
 router.get('/settings', authenticateSuperAdmin, superController.getSystemSettings);
 router.put('/settings', authenticateSuperAdmin, superController.updateSystemSettings);
 
+router.get('/analytics', authenticateSuperAdmin, superController.getAnalytics);
+
 module.exports = router;

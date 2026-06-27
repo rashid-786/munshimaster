@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
 import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 
@@ -7,6 +7,8 @@ const STEPS = { PHONE: 0, OTP: 1, CREDENTIALS: 2 };
 
 const Register = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const referralCode = searchParams.get('ref') || '';
   const [step, setStep] = useState(STEPS.PHONE);
   const [phone, setPhone] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
@@ -69,7 +71,7 @@ const Register = () => {
     setError('');
     try {
       await authService.verifyOtp(phone, otp, 'registration');
-      const result = await authService.register(phone);
+      const result = await authService.register(phone, referralCode);
       setCredentials(result.credentials);
       setStep(STEPS.CREDENTIALS);
     } catch (err) {
@@ -133,6 +135,11 @@ const Register = () => {
                 />
                 <p className="text-xs text-gray-400 mt-1">We'll send a one-time code to verify your number.</p>
               </div>
+              {referralCode && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
+                  Referral code <strong>{referralCode}</strong> will be applied automatically.
+                </div>
+              )}
               <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 text-base">
                 {loading ? 'Sending code...' : 'Send Verification Code'}
               </button>

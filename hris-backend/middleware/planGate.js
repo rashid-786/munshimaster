@@ -1,6 +1,7 @@
 const db = require('../config/db');
+const { planRank } = require('../utils/subscription');
 
-const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
+const PLAN_RANK = { free: 0, business: 1, pro: 2 };
 
 function planGate(minRank) {
   return async (req, res, next) => {
@@ -20,14 +21,15 @@ function planGate(minRank) {
       }
 
       const currentPlan = rows[0].subscription_plan || 'free';
-      const currentRank = PLAN_RANK[currentPlan] ?? 0;
+      const currentRank = planRank(currentPlan);
 
       if (currentRank < minRank) {
+        const planNames = { 0: 'free', 1: 'business', 2: 'pro' };
         return res.status(403).json({
           error: 'Upgrade required.',
-          message: `This feature requires ${minRank === 1 ? 'Pro' : 'Enterprise'} plan. Your current plan is ${currentPlan}.`,
+          message: `This feature requires ${planNames[minRank] === 'business' ? 'Business' : 'Pro'} plan. Your current plan is ${currentPlan}.`,
           currentPlan,
-          requiredPlan: minRank <= 1 ? 'pro' : 'enterprise',
+          requiredPlan: planNames[minRank],
         });
       }
 

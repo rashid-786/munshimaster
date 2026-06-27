@@ -5,6 +5,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const emptyForm = { type: 'IN', paymentMethod: 'cash', amount: '', description: '', entryDate: new Date().toISOString().split('T')[0] };
 
@@ -186,6 +187,7 @@ const BalanceSheet = () => {
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
       )}
+      <UpgradeBanner type="feature" feature="Balance Sheet" plan="business" />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="stat-card flex items-center gap-4">

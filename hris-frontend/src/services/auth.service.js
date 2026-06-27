@@ -40,8 +40,9 @@ export const authService = {
     return response.data;
   },
 
-  register: async (phone) => {
-    const response = await api.post('/auth/register', { phone });
+  register: async (phone, referralCode) => {
+    const payload = referralCode ? { phone, referralCode } : { phone };
+    const response = await api.post('/auth/register', payload);
     return response.data;
   },
 

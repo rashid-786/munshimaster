@@ -37,17 +37,20 @@ function generatePassword() {
 
 // 1. REGISTER (phone-only, after OTP verification)
 exports.registerTenant = async (req, res) => {
-  let { phone } = req.body;
+  let { phone, referralCode } = req.body;
 
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required.' });
   }
 
+  let countryCode;
+
   const parsed = validateE164(phone);
   if (!parsed) {
-    const countryCode = await getDefaultCountryCode();
+    countryCode = await getDefaultCountryCode();
     phone = normalizePhone(phone, countryCode);
   } else {
+    countryCode = parsed.calling_code;
     phone = parsed.phone_e164;
   }
 
@@ -79,7 +82,7 @@ exports.registerTenant = async (req, res) => {
     await db.query('START TRANSACTION');
 
     await db.execute(
-      'INSERT INTO tenants (id, company_name, subdomain, subscription_plan, phone) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO tenants (id, company_name, subdomain, subscription_plan, phone, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
       [tenantId, '', subdomain, 'free', phone]
     );
 
@@ -90,11 +93,39 @@ exports.registerTenant = async (req, res) => {
 
     await db.query('COMMIT');
 
+    // Apply referral code if provided (non-blocking)
+    if (referralCode) {
+      try {
+        const { logConversionEvent } = require('./retention.controller');
+        const [refRows] = await db.execute(
+          'SELECT id, tenant_id FROM referral_codes WHERE code = ?', [referralCode]
+        );
+        if (refRows.length > 0 && refRows[0].tenant_id !== tenantId) {
+          const redemptionId = uuidv4();
+          await db.execute(
+            `INSERT INTO referral_redemptions (id, referrer_id, referred_id, reward_months, status)
+             VALUES (?, ?, ?, 1, 'pending')`,
+            [redemptionId, refRows[0].tenant_id, tenantId]
+          );
+          logConversionEvent({
+            tenantId,
+            event: 'subscribed',
+            planTo: 'free',
+            source: 'referral',
+            metadata: { referrerId: refRows[0].tenant_id },
+          });
+        }
+      } catch (refErr) {
+        console.error('[Referral] Failed to apply referral code:', refErr.message);
+      }
+    }
+
     res.status(201).json({
       message: 'Account created successfully!',
       tenant: { id: tenantId, subdomain },
       credentials: { phone, password: rawPassword },
       defaultCountryCode: countryCode,
+      referralApplied: !!referralCode,
     });
   } catch (error) {
     await db.query('ROLLBACK');

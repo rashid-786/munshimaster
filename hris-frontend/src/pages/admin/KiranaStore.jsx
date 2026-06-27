@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const INNER_TABS = [
   { key: 'buyers', label: 'Buyers' },
@@ -831,6 +832,8 @@ const KiranaStore = () => {
           <button onClick={() => setMessage('')} className="text-blue-500 hover:text-blue-700">&times;</button>
         </div>
       )}
+
+      <UpgradeBanner type="feature" feature="Advanced Reports & Export" plan="business" />
 
       <div className="border-b border-gray-200">
         <div className="flex -mb-px">

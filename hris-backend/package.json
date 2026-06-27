@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --forceExit --detectOpenHandles",
+    "test:watch": "jest --watch",
     "start": "node server.js"
   },
   "keywords": [],
@@ -17,14 +18,20 @@
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "libphonenumber-js": "^1.13.7",
     "multer": "^2.2.0",
     "mysql2": "^3.22.5",
+    "nodemailer": "^9.0.1",
     "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
+    "razorpay": "^2.9.6",
     "twilio": "^6.0.2",
     "uuid": "^14.0.0",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }

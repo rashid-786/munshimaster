@@ -27,6 +27,7 @@ async function sendOtpSms(phone, otp) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+  const isDev = process.env.NODE_ENV !== 'production';
 
   if (accountSid && authToken && fromPhone) {
     try {
@@ -39,14 +40,18 @@ async function sendOtpSms(phone, otp) {
       console.log(`📱 Twilio SMS sent: ${message.sid}`);
     } catch (err) {
       console.error(`❌ Twilio SMS failed for ${phone}:`, err.message);
-      console.log(`\n========================================`);
-      console.log(`📱 OTP for ${phone}: ${otp} (Twilio failed, logged as fallback)`);
-      console.log(`========================================\n`);
+      if (isDev) {
+        console.log(`\n========================================`);
+        console.log(`📱 [DEV FALLBACK] OTP for ${phone}: ${otp}`);
+        console.log(`========================================\n`);
+      }
     }
-  } else {
+  } else if (isDev) {
     console.log(`\n========================================`);
-    console.log(`📱 OTP for ${phone}: ${otp}`);
+    console.log(`📱 [DEV FALLBACK] OTP for ${phone}: ${otp}`);
     console.log(`========================================\n`);
+  } else {
+    console.error(`❌ Twilio not configured and NODE_ENV=production — cannot send OTP`);
   }
 }
 
@@ -71,7 +76,7 @@ exports.sendOtp = async (req, res) => {
   if (purpose === 'registration') {
     const [existing] = await db.execute(
       'SELECT id FROM tenants WHERE phone = ?',
-      [normalizedPhone]
+      [phone]
     );
     if (existing.length > 0) {
       return res.status(400).json({ error: 'This phone number is already registered. Please sign in.' });
@@ -82,7 +87,7 @@ exports.sendOtp = async (req, res) => {
     // Remove old unverified OTPs for this phone+purpose
     await db.execute(
       'DELETE FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = false AND expires_at > NOW()',
-      [normalizedPhone, purpose]
+      [phone, purpose]
     );
 
     const otp = generateOtp();
@@ -90,10 +95,10 @@ exports.sendOtp = async (req, res) => {
 
     await db.execute(
       'INSERT INTO otp_verifications (phone, otp, purpose, expires_at) VALUES (?, ?, ?, ?)',
-      [normalizedPhone, otp, purpose, expiresAt]
+      [phone, otp, purpose, expiresAt]
     );
 
-    await sendOtpSms(normalizedPhone, otp);
+    await sendOtpSms(phone, otp);
 
     res.json({ message: 'OTP sent successfully.', retryAfter: 30 });
   } catch (error) {

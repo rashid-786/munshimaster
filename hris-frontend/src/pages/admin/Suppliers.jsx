@@ -5,6 +5,7 @@ import { formatPhone } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', payment_terms: '', notes: '' };
 
@@ -137,6 +138,7 @@ const Suppliers = () => {
         <span>{error}</span>
         <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
       </div>}
+      <UpgradeBanner type="feature" feature="Suppliers" plan="business" />
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-900">Suppliers</h2>

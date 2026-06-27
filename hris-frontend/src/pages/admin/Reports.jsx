@@ -4,6 +4,7 @@ import { formatPhone, formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import UpgradeBanner from '../../components/UpgradeBanner';
 
 const TABS = [
   { key: 'customers', label: 'Customers' },
@@ -175,6 +176,7 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
+      <UpgradeBanner type="feature" feature="Reports" plan="business" />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h2 className="text-xl font-semibold text-gray-900">Reports</h2>
         <div className="flex gap-2">

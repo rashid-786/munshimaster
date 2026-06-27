@@ -4,12 +4,13 @@ const { registerTenant, loginEmployee } = require('../controllers/auth.controlle
 const { getPlans } = require('../controllers/subscription.controller');
 const otpController = require('../controllers/otp.controller');
 const authController = require('../controllers/auth.controller');
+const { authLimiter, otpLimiter } = require('../middleware/rateLimiter');
 
-router.post('/register', registerTenant);
-router.post('/login', loginEmployee);
-router.post('/send-otp', otpController.sendOtp);
-router.post('/verify-otp', otpController.verifyOtp);
-router.post('/reset-password', authController.resetPassword);
+router.post('/register', authLimiter, registerTenant);
+router.post('/login', authLimiter, loginEmployee);
+router.post('/send-otp', otpLimiter, otpController.sendOtp);
+router.post('/verify-otp', otpLimiter, otpController.verifyOtp);
+router.post('/reset-password', authLimiter, authController.resetPassword);
 router.get('/plans', getPlans);
 
 module.exports = router;

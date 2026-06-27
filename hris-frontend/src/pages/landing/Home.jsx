@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../../services/api';
 
 const FEATURES = [
   {
@@ -51,32 +53,74 @@ const TESTIMONIALS = [
   { quote: 'Implementation was seamless. Our employees adapted to the system within days, and the support team was exceptional.', author: 'Amit Verma', role: 'CTO, NovaTech Solutions' },
 ];
 
-const PRICING_TIERS = [
-  {
-    name: 'Starter',
-    price: 'Free',
-    priceValue: null,
-    users: 'Up to 10',
-    features: ['Time & Attendance', 'Basic Payroll', 'Leave Management', 'Email Support'],
-  },
-  {
-    name: 'Business',
-    price: '500',
-    priceValue: 500,
-    users: 'Up to 25',
-    popular: true,
-    features: ['Everything in Starter', 'Advanced Payroll', 'Invoicing & PO', 'Supplier Management', 'Priority Support'],
-  },
-  {
-    name: 'Enterprise',
-    price: '1,000',
-    priceValue: 1000,
-    users: '25+',
-    features: ['Everything in Business', 'Custom Integrations', 'Dedicated Account Manager', 'SLA Guarantee', 'Custom Branding'],
-  },
+const FREE_FEATURES = [
+  { text: 'Khata ledger — 50 customers', included: true },
+  { text: '500 transactions/month', included: true },
+  { text: 'Basic daily reports', included: true },
+  { text: 'Advanced reports (P&L)', included: false },
+  { text: 'Invoices & estimates', included: false },
+  { text: 'Payroll calculation', included: false },
+];
+
+const BUSINESS_FEATURES = [
+  { text: 'Unlimited customers & transactions', included: true },
+  { text: 'Advanced P&L reports', included: true },
+  { text: 'Invoices & estimates', included: true },
+  { text: 'Purchase orders', included: true },
+  { text: 'Export to Excel/PDF', included: true },
+  { text: 'Email support', included: true },
+  { text: 'Unlimited staff', included: false },
+  { text: 'Attendance tracking', included: false },
+  { text: 'Leave management', included: false },
+  { text: 'Payroll calculation', included: false },
+  { text: 'Inventory management', included: false },
+  { text: 'Bulk WhatsApp notifications', included: false },
+];
+
+const PRO_FEATURES = [
+  { text: 'Everything in Business, plus...', included: true },
+  { text: '50 staff', included: true },
+  { text: 'Attendance tracking', included: true },
+  { text: 'Leave management', included: true },
+  { text: 'Payroll calculation', included: true },
+  { text: 'Inventory management', included: true },
+  { text: 'Bulk WhatsApp notifications', included: true },
+  { text: 'Phone + email support', included: true },
+];
+
+const PLANS = [
+  { id: 'free', name: 'Free', price: '₹0', period: 'forever', desc: 'For solo shopkeepers', popular: false, features: FREE_FEATURES },
+  { id: 'business', name: 'Business', monthly: 99, yearly: 1069, desc: 'For growing teams', popular: true, features: BUSINESS_FEATURES },
+  { id: 'pro', name: 'Pro', monthly: 149, yearly: 1609, desc: 'For established businesses', popular: false, features: PRO_FEATURES },
 ];
 
 export default function Home() {
+  const [contact, setContact] = useState({ name: '', email: '', message: '' });
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [billing, setBilling] = useState('year');
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    setContactError('');
+    setContactSuccess('');
+    if (!contact.name || !contact.email || !contact.message) {
+      setContactError('All fields are required.');
+      return;
+    }
+    setContactLoading(true);
+    try {
+      const res = await api.post('/public/contact', contact);
+      setContactSuccess(res.data.message);
+      setContact({ name: '', email: '', message: '' });
+    } catch (err) {
+      setContactError(err.response?.data?.error || 'Failed to send message.');
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
   return (
     <div>
       <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-50">
@@ -94,7 +138,7 @@ export default function Home() {
               Enterprise-grade platform that streamlines payroll, attendance, leave management, and workforce operations — all in one place.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register" className="btn-primary !py-3 !px-8 text-base shadow-lg shadow-green-500/25">
+              <Link to="/register" className="btn-primary !py-3 !px-8 text-base shadow-lg shadow-primary-700/25">
                 Start Free Trial
               </Link>
               <Link to="/services" className="btn-secondary-navy !py-3 !px-8 text-base">
@@ -156,51 +200,136 @@ export default function Home() {
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Simple, transparent pricing</h2>
             <p className="mt-4 text-lg text-gray-600">No hidden fees. Scale as you grow.</p>
+            <div className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-1 mt-6 shadow-sm">
+              <button
+                onClick={() => setBilling('month')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'month' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBilling('year')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'year' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Annual <span className="text-emerald-300 font-semibold">Save 10%</span>
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {PRICING_TIERS.map((tier) => (
-              <div key={tier.name} className={`relative rounded-2xl border p-8 ${tier.popular ? 'border-primary-200 bg-primary-50/30 shadow-lg shadow-primary-500/10' : 'border-gray-200 bg-white'}`}>
-                {tier.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary-600 text-white text-xs font-semibold rounded-full">
+            {PLANS.map((plan) => {
+              const isPaid = plan.monthly != null;
+              const price = isPaid ? (billing === 'month' ? plan.monthly : plan.yearly) : null;
+              const periodLabel = !isPaid ? plan.period : (billing === 'month' ? '/mo' : '/yr');
+              const perMonth = isPaid && billing === 'year' ? `₹${Math.round(plan.yearly / 12)}/mo` : null;
+              return (
+              <div key={plan.id} className={`relative rounded-2xl border-2 p-8 ${plan.popular ? 'border-primary-500 ring-2 ring-primary-500/20 bg-primary-50/30' : 'border-gray-200 bg-white'}`}>
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary-600 text-white text-xs font-semibold rounded-full whitespace-nowrap">
                     Most Popular
-                  </span>
+                  </div>
                 )}
-                <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
                 <p className="mt-4">
-                  {tier.priceValue ? (
-                    <><span className="text-4xl font-bold text-gray-900">₹{tier.price}</span><span className="text-gray-400 text-sm ml-1">/month</span></>
+                  {isPaid ? (
+                    <><span className="text-4xl font-bold text-gray-900">₹{price.toLocaleString('en-IN')}</span><span className="text-gray-400 text-sm ml-1">{periodLabel}</span></>
                   ) : (
-                    <span className="text-4xl font-bold text-gray-900">{tier.price}</span>
+                    <><span className="text-4xl font-bold text-gray-900">{plan.price}</span><span className="text-gray-400 text-sm ml-1">{plan.period}</span></>
                   )}
                 </p>
-                <p className="mt-1 text-sm text-gray-500">{tier.users} employees</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {perMonth}{plan.desc && ` — ${plan.desc}`}
+                </p>
                 <ul className="mt-6 space-y-3">
-                  {tier.features.map((f) => (
-                    <li key={f} className="flex items-center gap-3 text-sm text-gray-600">
-                      <svg className="w-4 h-4 text-primary-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      {f}
+                  {plan.features.map((f, i) => (
+                    <li key={i} className={`flex items-start gap-2.5 text-sm ${f.included ? 'text-gray-700' : 'text-gray-400'}`}>
+                      {f.included ? (
+                        <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      <span>{f.text}</span>
                     </li>
                   ))}
                 </ul>
                 <Link
                   to="/register"
-                  className={`mt-8 w-full block text-center py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    tier.popular
-                      ? 'bg-primary-600 text-white hover:bg-primary-700 shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  className={`mt-8 w-full block text-center py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isPaid
+                      ? 'bg-primary-600 text-white hover:bg-primary-700 shadow-sm'
+                      : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  Get Started
+                  {isPaid ? 'Upgrade Now' : 'Get Started Free'}
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-gradient-to-br from-primary-700 to-secondary-600">
+      {/* Contact section */}
+      <section id="contact" className="py-16 md:py-24 bg-gray-50">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Get in Touch</h2>
+            <p className="mt-4 text-lg text-gray-600">Have a question or need help? Drop us a message and we'll get back to you.</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+            <form onSubmit={handleContactSubmit} className="space-y-5">
+              {contactSuccess && (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-medium">{contactSuccess}</div>
+              )}
+              {contactError && (
+                <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{contactError}</div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Name</label>
+                <input
+                  type="text"
+                  value={contact.name}
+                  onChange={e => setContact(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="John Doe"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  value={contact.email}
+                  onChange={e => setContact(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="john@example.com"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
+                <textarea
+                  rows={4}
+                  value={contact.message}
+                  onChange={e => setContact(prev => ({ ...prev, message: e.target.value }))}
+                  placeholder="How can we help you?"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={contactLoading}
+                className="btn-primary w-full !py-2.5 !text-base"
+              >
+                {contactLoading ? 'Sending...' : 'Send Message'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 md:py-24 bg-gradient-to-br from-primary-700 to-primary-900">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to streamline your business operations?</h2>
           <p className="mt-4 text-lg text-white/80">Join 200+ organizations already using bahi360. Start your free trial today.</p>

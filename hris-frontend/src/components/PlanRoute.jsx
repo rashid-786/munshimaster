@@ -1,22 +1,19 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
+const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
+const LEGACY_RANK = { free: 0, pro: 1, enterprise: 2 };
 
-const REDIRECT_MAP = {
-  free: '/admin/ledger/buyers',
-  pro: '/admin/customers',
-};
+function rank(planId) {
+  return PLAN_RANK[planId] ?? LEGACY_RANK[planId] ?? 0;
+}
 
 export default function PlanRoute({ children, minPlan }) {
   const { tenant } = useAuth();
   const currentPlan = tenant?.subscriptionPlan || 'free';
-  const currentRank = PLAN_RANK[currentPlan] ?? 0;
-  const requiredRank = PLAN_RANK[minPlan] ?? 0;
 
-  if (currentRank < requiredRank) {
-    const redirect = REDIRECT_MAP[currentPlan] || '/admin/ledger/buyers';
-    return <Navigate to={redirect} replace />;
+  if (rank(currentPlan) < rank(minPlan)) {
+    return <Navigate to="/admin/ledger" replace />;
   }
 
   return children;

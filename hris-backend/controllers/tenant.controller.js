@@ -25,11 +25,18 @@ exports.updateTenantSettings = async (req, res) => {
   }
 
   try {
-    const settingsString = JSON.stringify(settings);
-    await db.execute(
-      'UPDATE tenants SET company_name = ?, settings = ? WHERE id = ?',
-      [companyName, settingsString, tenantId]
-    );
+    const existingSettings = settings ? JSON.stringify(settings) : undefined;
+    if (existingSettings) {
+      await db.execute(
+        'UPDATE tenants SET company_name = COALESCE(?, company_name), settings = ? WHERE id = ?',
+        [companyName, existingSettings, tenantId]
+      );
+    } else {
+      await db.execute(
+        'UPDATE tenants SET company_name = COALESCE(?, company_name) WHERE id = ?',
+        [companyName, tenantId]
+      );
+    }
     await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'settings.updated', entityType: 'settings', entityId: tenantId, changes: { companyName, settings }, req });
     res.json({ message: 'Workspace personalization properties updated successfully!' });
   } catch (error) {

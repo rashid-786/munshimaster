@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const PLAN_RANK = { free: 0, pro: 1, enterprise: 2 };
+const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
 
 const Settings = () => {
   const { user, tenant, updateUser } = useAuth();

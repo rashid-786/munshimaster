@@ -29,7 +29,10 @@ const reportRoutes = require('./routes/report.routes');
 const kiranaRoutes = require('./routes/kirana.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
+const retentionRoutes = require('./routes/retention.routes');
 const { planGate } = require('./middleware/planGate');
+const { startExpiryCron } = require('./cron/subscriptionExpiry');
+const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
 
@@ -41,8 +44,10 @@ app.use(express.json());
 // ==========================================
 // 1. PUBLIC ROUTES (No Tenant Header Required)
 // ==========================================
-// This handles /api/v1/auth/register completely cleanly
 app.use('/api/v1/auth', authRoutes);
+
+// Public endpoints with generous rate limit
+app.use('/api/v1/public', publicLimiter);
 
 // Public settings endpoint (no auth required)
 app.get('/api/v1/public/settings', async (req, res) => {
@@ -84,12 +89,55 @@ app.get('/api/v1/public/country', async (req, res) => {
   }
 });
 
+// Contact form endpoint (no auth required)
+app.post('/api/v1/public/contact', async (req, res) => {
+  const { name, email, message } = req.body;
+
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'Name, email, and message are required.' });
+  }
+
+  if (!email.includes('@')) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+
+  try {
+    const { sendEmail } = require('./utils/email');
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px;">
+        <h2 style="color: #0B3C5D;">New Contact Form Inquiry</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="padding: 8px 0; color: #6b7280; font-weight: 600;">Name</td><td style="padding: 8px 0;">${name.replace(/</g, '&lt;')}</td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280; font-weight: 600;">Email</td><td style="padding: 8px 0;"><a href="mailto:${email.replace(/</g, '&lt;')}">${email.replace(/</g, '&lt;')}</a></td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280; font-weight: 600; vertical-align: top;">Message</td><td style="padding: 8px 0;">${message.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</td></tr>
+        </table>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+        <p style="color: #9ca3af; font-size: 12px;">Sent via bahi360.com contact form</p>
+      </div>`;
+
+    const { sent } = await sendEmail({
+      to: process.env.SMTP_FROM || 'support@bahi360.com',
+      subject: `Contact Form: ${name}`,
+      html,
+      replyTo: email,
+    });
+
+    if (sent) {
+      res.json({ message: 'Thank you! We will get back to you soon.' });
+    } else {
+      res.status(500).json({ error: 'Failed to send message. Please try again later.' });
+    }
+  } catch (error) {
+    console.error('Contact form error:', error);
+    res.status(500).json({ error: 'Failed to send message. Please try again later.' });
+  }
+});
+
 
 // ==========================================
 // 2. PROTECTED MULTI-TENANT ROUTES
 // ==========================================
-// Any routes defined below this line will strictly require the X-Tenant-ID header
-app.use('/api/v1/core', tenantResolver);
+app.use('/api/v1/core', tenantResolver, apiLimiter);
 // Staff management (Enterprise only, rank 2)
 app.use('/api/v1/core/employees', planGate(2), employeeRoutes);
 app.use('/api/v1/core/time', planGate(2), timeRoutes);
@@ -112,15 +160,16 @@ app.use('/api/v1/core/tenant', tenantRoutes);
 app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
 app.use('/api/v1/core/kirana', kiranaRoutes);
-app.use('/api/v1/core/subscription', subscriptionRoutes);
+app.use('/api/v1/core/subscription', paymentLimiter, subscriptionRoutes);
 app.use('/api/v1/core/notifications', notificationRoutes);
+app.use('/api/v1/core/retention', retentionRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 
 // ==========================================
 // 3. SUPER ADMIN ROUTES (No Tenant Header Required)
 // ==========================================
-app.use('/api/v1/super', superRoutes);
+app.use('/api/v1/super', superLimiter, superRoutes);
 
 // Secure Test Route to verify multi-tenancy context later
 const { authenticateToken } = require('./middleware/auth');
@@ -139,4 +188,10 @@ db.query('SELECT 1')
   .catch(err => console.error('Database connection failed critical error:', err));
 
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => console.log(`SaaS Backend running securely on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`SaaS Backend running securely on port ${PORT}`);
+  // Start subscription expiry checker (every 10 minutes)
+  if (process.env.NODE_ENV !== 'test') {
+    startExpiryCron(10 * 60 * 1000);
+  }
+});

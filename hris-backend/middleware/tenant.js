@@ -1,5 +1,5 @@
 const tenantResolver = (req, res, next) => {
-  const tenantId = req.headers['x-tenant-id'];
+  const tenantId = req.headers['x-tenant-id'] || req.query.tenantId;
 
   if (!tenantId) {
     return res.status(400).json({ error: 'Tenant identification context (X-Tenant-ID) is missing.' });

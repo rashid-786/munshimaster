@@ -141,13 +141,16 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Company</h4>
               <ul className="space-y-3">
-                {['About', 'Blog', 'Careers', 'Contact Us'].map((item) => (
+                {['About', 'Blog', 'Careers'].map((item) => (
                   <li key={item}>
                     <Link to={`/${item.toLowerCase().replace(/\s+/g, '-')}`} className="text-sm text-gray-400 hover:text-white transition-colors">
                       {item}
                     </Link>
                   </li>
                 ))}
+                <li>
+                  <Link to="/#contact" className="text-sm text-gray-400 hover:text-white transition-colors">Contact Us</Link>
+                </li>
               </ul>
             </div>
 

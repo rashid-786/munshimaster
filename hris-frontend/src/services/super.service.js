@@ -78,4 +78,9 @@ export const superService = {
     const response = await api.put('/super/settings', { default_country_code });
     return response.data;
   },
+
+  getAnalytics: async () => {
+    const response = await api.get('/super/analytics');
+    return response.data;
+  },
 };

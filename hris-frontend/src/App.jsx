@@ -16,6 +16,7 @@ import Blogs from './pages/landing/Blogs';
 
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import Pricing from './pages/landing/Pricing';
 import PlanSelection from './pages/auth/PlanSelection';
 import Employees from './pages/admin/Employees';
 import EmployeeCalendar from './pages/admin/EmployeeCalendar';
@@ -32,6 +33,8 @@ import Customers from './pages/admin/Customers';
 import PurchaseOrders from './pages/admin/PurchaseOrders';
 import Invoices from './pages/admin/Invoices';
 import Settings from './pages/admin/Settings';
+import Referrals from './pages/admin/Referrals';
+import PaymentHistory from './pages/admin/PaymentHistory';
 import Workspace from './pages/employee/Workspace';
 import Attendance from './pages/employee/Attendance';
 import Profile from './pages/employee/Profile';
@@ -82,21 +85,23 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="dashboard" element={<PlanRoute minPlan="enterprise"><Employees /></PlanRoute>} />
-            <Route path="calendar" element={<PlanRoute minPlan="enterprise"><EmployeeCalendar /></PlanRoute>} />
-            <Route path="leaves" element={<PlanRoute minPlan="enterprise"><LeaveApprovals /></PlanRoute>} />
-            <Route path="payroll" element={<PlanRoute minPlan="enterprise"><PayrollConsole /></PlanRoute>} />
-            <Route path="advances" element={<PlanRoute minPlan="enterprise"><AdvancePayments /></PlanRoute>} />
-            <Route path="replacements" element={<PlanRoute minPlan="enterprise"><Replacements /></PlanRoute>} />
-            <Route path="audit-logs" element={<PlanRoute minPlan="enterprise"><AuditLogs /></PlanRoute>} />
-            <Route path="balance" element={<PlanRoute minPlan="pro"><BalanceSheet /></PlanRoute>} />
-            <Route path="reports" element={<PlanRoute minPlan="pro"><Reports /></PlanRoute>} />
+            <Route path="dashboard" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
+            <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
+            <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
+            <Route path="payroll" element={<PlanRoute minPlan="pro"><PayrollConsole /></PlanRoute>} />
+            <Route path="advances" element={<PlanRoute minPlan="pro"><AdvancePayments /></PlanRoute>} />
+            <Route path="replacements" element={<PlanRoute minPlan="pro"><Replacements /></PlanRoute>} />
+            <Route path="audit-logs" element={<PlanRoute minPlan="pro"><AuditLogs /></PlanRoute>} />
+            <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />
+            <Route path="reports" element={<PlanRoute minPlan="business"><Reports /></PlanRoute>} />
             <Route path="ledger" element={<KiranaStore />} />
             <Route path="ledger/:tab" element={<KiranaStore />} />
-            <Route path="suppliers" element={<PlanRoute minPlan="pro"><Suppliers /></PlanRoute>} />
-            <Route path="customers" element={<PlanRoute minPlan="pro"><Customers /></PlanRoute>} />
-            <Route path="purchase-orders" element={<PlanRoute minPlan="pro"><PurchaseOrders /></PlanRoute>} />
-            <Route path="invoices" element={<PlanRoute minPlan="pro"><Invoices /></PlanRoute>} />
+            <Route path="suppliers" element={<PlanRoute minPlan="business"><Suppliers /></PlanRoute>} />
+            <Route path="customers" element={<PlanRoute minPlan="business"><Customers /></PlanRoute>} />
+            <Route path="purchase-orders" element={<PlanRoute minPlan="business"><PurchaseOrders /></PlanRoute>} />
+            <Route path="invoices" element={<PlanRoute minPlan="business"><Invoices /></PlanRoute>} />
+            <Route path="payments" element={<PaymentHistory />} />
+            <Route path="referrals" element={<Referrals />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
@@ -123,6 +128,7 @@ function App() {
             <Route path="/blog" element={<Blogs />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/pricing" element={<Pricing />} />
           </Route>
 
           <Route path="/select-plan" element={<ProtectedRoute allowedRoles={['tenant_admin']}><PlanSelection /></ProtectedRoute>} />
