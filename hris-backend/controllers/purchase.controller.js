@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
+const { sendEmail } = require('../utils/email');
+const { logEmail } = require('../utils/emailLogger');
 
 exports.list = async (req, res) => {
   const tenantId = req.tenantId;
@@ -283,6 +285,155 @@ exports.downloadPDF = async (req, res) => {
   }
 };
 
+exports.sendEmail = async (req, res) => {
+  try {
+    const [pos] = await db.query(
+      `SELECT p.*, s.name as supplier_name, s.email as supplier_email,
+              s.address as supplier_address, s.city as supplier_city, s.state as supplier_state,
+              s.gstin as supplier_gstin, t.company_name, t.settings
+       FROM purchase_orders p
+       JOIN suppliers s ON p.supplier_id = s.id
+       JOIN tenants t ON p.tenant_id = t.id
+       WHERE p.id = ? AND p.tenant_id = ?`,
+      [req.params.id, req.tenantId]
+    );
+    if (pos.length === 0) return res.status(404).json({ error: 'Purchase order not found.' });
+    const po = pos[0];
+
+    if (!po.supplier_email) {
+      return res.status(400).json({ error: 'Supplier has no email address.' });
+    }
+
+    const poSettings = typeof po.settings === 'string' ? JSON.parse(po.settings) : (po.settings || {});
+    const poTaxRate = poSettings.taxRate || 18;
+    const [items] = await db.query(
+      'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
+    );
+
+    const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
+
+    const chunks = [];
+    const doc = new PDFDocument({ margin: 50, bufferPages: true });
+    doc.on('data', c => chunks.push(c));
+    await new Promise(resolve => {
+      doc.on('end', resolve);
+      doc.fontSize(18).text(po.company_name.toUpperCase(), { align: 'center' });
+      doc.fontSize(12).text('PURCHASE ORDER', { align: 'center' }).moveDown(2);
+
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.text(`PO Number: `, { continued: true }).font('Helvetica').text(po.po_number);
+      doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(po.order_date));
+      if (po.expected_date) {
+        doc.font('Helvetica-Bold').text(`Expected Delivery: `, { continued: true }).font('Helvetica').text(fmtDate(po.expected_date));
+      }
+      doc.moveDown(2);
+
+      doc.font('Helvetica-Bold').text('Supplier:', { underline: true }).moveDown(0.5);
+      doc.font('Helvetica').text(po.supplier_name);
+      if (po.supplier_address) doc.text(po.supplier_address);
+      if (po.supplier_city) doc.text(`${po.supplier_city}${po.supplier_state ? ', ' + po.supplier_state : ''}`);
+      if (po.supplier_email) doc.text(`Email: ${po.supplier_email}`);
+      if (po.supplier_gstin) doc.text(`GSTIN: ${po.supplier_gstin}`);
+      doc.moveDown(2);
+
+      doc.font('Helvetica-Bold').text(`Status: ${po.status.toUpperCase()}`).moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
+
+      const tableTop = doc.y;
+      const colX = [50, 190, 370, 420, 480];
+      doc.font('Helvetica-Bold').fontSize(9);
+      doc.text('#', colX[0], tableTop);
+      doc.text('Description', colX[1], tableTop);
+      doc.text('Qty', colX[2], tableTop, { width: 50, align: 'right' });
+      doc.text('Rate', colX[3], tableTop, { width: 60, align: 'right' });
+      doc.text('Amount', colX[4], tableTop, { width: 70, align: 'right' });
+
+      doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
+      let y = doc.y + 8;
+      doc.fontSize(9).font('Helvetica');
+
+      for (const [i, item] of items.entries()) {
+        doc.text(String(i + 1), colX[0], y);
+        doc.text(item.description, colX[1], y, { width: 180 });
+        doc.text(item.quantity.toString(), colX[2], y, { width: 50, align: 'right' });
+        doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[3], y, { width: 60, align: 'right' });
+        doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
+        y += 18;
+      }
+
+      doc.moveTo(50, y).lineTo(550, y).stroke();
+      y += 8;
+
+      doc.font('Helvetica-Bold');
+      doc.text('Subtotal:', colX[3], y, { width: 60, align: 'right' });
+      doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
+      y += 16;
+      doc.text(`Tax (${poTaxRate}%):`, colX[3], y, { width: 60, align: 'right' });
+      doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
+      y += 16;
+      doc.text('Total:', colX[3], y, { width: 60, align: 'right' });
+      doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
+
+      if (po.notes) {
+        y += 30;
+        doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
+        doc.font('Helvetica').fontSize(9).text(po.notes, 50, doc.y + 4, { width: 500 });
+      }
+
+      doc.end();
+    });
+
+    const pdfBuffer = Buffer.concat(chunks);
+
+    const result = await sendEmail({
+      to: po.supplier_email,
+      subject: `Purchase Order ${po.po_number} from ${po.company_name}`,
+      html: `
+        <p>Dear ${po.supplier_name},</p>
+        <p>Please find attached purchase order <strong>${po.po_number}</strong> from ${po.company_name}.</p>
+        <p>Amount: <strong>Rs.${(po.total_amount / 100).toFixed(2)}</strong></p>
+        ${po.expected_date ? `<p>Expected Delivery: ${fmtDate(po.expected_date)}</p>` : ''}
+        <br/>
+        <p style="color:#6b7280;font-size:12px;">Thank you for your partnership!</p>
+      `,
+      attachments: [{
+        filename: `${po.po_number}.pdf`,
+        content: pdfBuffer,
+      }],
+    });
+
+    if (result.sent) {
+      await db.query(
+        `UPDATE purchase_orders SET status = ? WHERE id = ? AND tenant_id = ?`,
+        ['sent', req.params.id, req.tenantId]
+      );
+      await logEmail({
+        tenantId: req.tenantId,
+        entityType: 'purchase_order',
+        entityId: req.params.id,
+        recipient: po.supplier_email,
+        subject: `Purchase Order ${po.po_number} from ${po.company_name}`,
+        status: 'sent',
+      });
+      res.json({ message: 'Purchase order emailed successfully.', status: 'sent' });
+    } else {
+      await logEmail({
+        tenantId: req.tenantId,
+        entityType: 'purchase_order',
+        entityId: req.params.id,
+        recipient: po.supplier_email,
+        subject: `Purchase Order ${po.po_number} from ${po.company_name}`,
+        status: 'failed',
+        errorMessage: result.error,
+      });
+      res.status(500).json({ error: 'Failed to send email. Please check SMTP configuration.' });
+    }
+  } catch (error) {
+    console.error('sendPOEmail error:', error);
+    res.status(500).json({ error: 'Failed to email purchase order.' });
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
     const [result] = await db.query('DELETE FROM purchase_orders WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
@@ -290,5 +441,93 @@ exports.remove = async (req, res) => {
     res.json({ message: 'Purchase order deleted.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete purchase order.' });
+  }
+};
+
+exports.bulkDelete = async (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Array of purchase order IDs is required.' });
+  }
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    const [result] = await db.query(
+      `DELETE FROM purchase_orders WHERE id IN (${placeholders}) AND tenant_id = ?`,
+      [...ids, req.tenantId]
+    );
+    res.json({ message: `${result.affectedRows} purchase order(s) deleted.` });
+  } catch (error) {
+    console.error('bulkDelete POs error:', error);
+    res.status(500).json({ error: 'Failed to delete purchase orders.' });
+  }
+};
+
+exports.bulkExportExcel = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Array of purchase order IDs is required.' });
+  }
+  try {
+    const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
+    const companyName = tenantRow[0]?.company_name || 'Company';
+
+    const placeholders = ids.map(() => '?').join(',');
+    const [orders] = await db.query(
+      `SELECT p.po_number, p.order_date, p.expected_date, p.status, p.subtotal, p.tax_amount, p.total_amount,
+              s.name as supplier_name, s.email as supplier_email, s.phone as supplier_phone
+       FROM purchase_orders p JOIN suppliers s ON p.supplier_id = s.id
+       WHERE p.id IN (${placeholders}) AND p.tenant_id = ?
+       ORDER BY p.created_at DESC`,
+      [...ids, tenantId]
+    );
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('PurchaseOrders');
+
+    sheet.mergeCells('A1:J1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `${companyName} — Purchase Order Export`;
+    titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3C5D' } };
+    titleCell.alignment = { horizontal: 'center' };
+    sheet.getRow(1).height = 30;
+
+    const headerRow = sheet.addRow(['PO #', 'Supplier', 'Email', 'Phone', 'Order Date', 'Expected Date', 'Status', 'Subtotal', 'Tax', 'Total']);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3C5D' } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    orders.forEach(po => {
+      sheet.addRow([
+        po.po_number,
+        po.supplier_name,
+        po.supplier_email || '',
+        po.supplier_phone || '',
+        po.order_date ? new Date(po.order_date).toLocaleDateString('en-IN') : '',
+        po.expected_date ? new Date(po.expected_date).toLocaleDateString('en-IN') : '',
+        po.status,
+        po.subtotal / 100,
+        po.tax_amount / 100,
+        po.total_amount / 100,
+      ]);
+    });
+
+    sheet.columns = [
+      { width: 14 }, { width: 22 }, { width: 25 }, { width: 16 },
+      { width: 14 }, { width: 14 }, { width: 12 }, { width: 12 },
+      { width: 10 }, { width: 12 },
+    ];
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=po_export.xlsx`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('bulkExportExcel POs error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to export purchase orders.' });
   }
 };

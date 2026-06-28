@@ -15,21 +15,14 @@ const statusBadge = {
   received: 'badge-success', cancelled: 'badge-danger',
 };
 
-const columns = [
-  { key: 'po_number', label: 'PO #', render: (v) => <span className="font-medium text-indigo-600">{v}</span> },
-  { key: 'supplier_name', label: 'Supplier', render: (v) => v },
-  { key: 'date', label: 'Date', render: (_, r) => <span className="text-gray-500">{r.order_date?.split('T')[0]}</span> },
-  { key: 'expected_date', label: 'Expected', render: (_, r) => <span className="text-gray-500">{r.expected_date?.split('T')[0] || '—'}</span> },
-  { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
-  { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
-  { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
-  { key: 'actions', label: 'Actions', render: (_, r) => (
-    <div className="flex gap-1.5 justify-end">
-      <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-      <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
-    </div>
-  )},
-];
+function Checkbox({ checked, onChange }) {
+  return (
+    <input type="checkbox" checked={checked}
+      onChange={onChange}
+      onClick={e => e.stopPropagation()}
+      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+  );
+}
 
 const PurchaseOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -51,12 +44,87 @@ const PurchaseOrders = () => {
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [emailSending, setEmailSending] = useState(null);
+  const [emailLogs, setEmailLogs] = useState({});
   const [mobileDetail, setMobileDetail] = useState(null);
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const isMobile = useIsMobile();
   const limit = 200;
   const [loading, setLoading] = useState(true);
+
+  const columns = React.useMemo(() => [
+    {
+      key: 'select', label: React.createElement(Checkbox, {
+        checked: orders.length > 0 && selectedIds.size === orders.length,
+        onChange: () => {
+          if (selectedIds.size === orders.length) setSelectedIds(new Set());
+          else setSelectedIds(new Set(orders.map(i => i.id)));
+        },
+      }),
+      render: (_, r) => React.createElement(Checkbox, {
+        checked: selectedIds.has(r.id),
+        onChange: () => toggleSelect(r.id),
+      }),
+    },
+    { key: 'po_number', label: 'PO #', render: (v) => <span className="font-medium text-indigo-600">{v}</span> },
+    { key: 'supplier_name', label: 'Supplier', render: (v) => v },
+    { key: 'date', label: 'Date', render: (_, r) => <span className="text-gray-500">{r.order_date?.split('T')[0]}</span> },
+    { key: 'expected_date', label: 'Expected', render: (_, r) => <span className="text-gray-500">{r.expected_date?.split('T')[0] || '—'}</span> },
+    { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
+    { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
+    { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
+    { key: 'actions', label: 'Actions', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+        <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+      </div>
+    )},
+  ], [orders, selectedIds]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setModal({
+      variant: 'danger',
+      title: `Delete ${selectedIds.size} Purchase Order(s)`,
+      message: `Permanently delete ${selectedIds.size} purchase order(s)? This cannot be undone.`,
+      confirmLabel: 'Delete All',
+      onConfirm: async () => {
+        setBulkLoading(true);
+        try {
+          await hrService.bulkDeletePOs([...selectedIds]);
+          setSelectedIds(new Set());
+          setDetail(null);
+          setMobileDetail(null);
+          setModal(null);
+          fetch();
+        } catch (err) {
+          setError(err.response?.data?.error || 'Bulk delete failed.');
+          setModal(null);
+        } finally { setBulkLoading(false); }
+      },
+    });
+  };
+
+  const handleBulkExport = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await hrService.bulkExportPOs([...selectedIds]);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Export failed.');
+    }
+  };
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -109,6 +177,9 @@ const PurchaseOrders = () => {
       setDetail(full);
       const atts = await hrService.getAttachments('purchase_order', po.id);
       setAttachments(atts);
+      hrService.getEmailLogs('purchase_order', po.id).then(logs => {
+        if (logs.length > 0) setEmailLogs(prev => ({ ...prev, [po.id]: logs }));
+      }).catch(() => {});
     } catch { setError('Failed to load PO details.'); }
   };
 
@@ -202,6 +273,23 @@ const PurchaseOrders = () => {
     });
   };
 
+  const handleEmailPO = async (id) => {
+    setEmailSending(id);
+    try {
+      await hrService.emailPurchaseOrder(id);
+      if (detail?.id === id) setDetail(prev => prev ? { ...prev, status: 'sent' } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, status: 'sent' } : null);
+      hrService.getEmailLogs('purchase_order', id).then(logs => {
+        setEmailLogs(prev => ({ ...prev, [id]: logs }));
+      }).catch(() => {});
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send email.');
+    } finally {
+      setEmailSending(null);
+    }
+  };
+
   const subtotal = calcSubtotal();
   const tax = Math.round(subtotal * taxRate / 100);
   const totalAmt = subtotal + tax;
@@ -221,6 +309,19 @@ const PurchaseOrders = () => {
         <h2 className="text-xl font-semibold text-gray-900">Purchase Orders</h2>
         <button onClick={openCreate} className="btn-primary">+ New Purchase Order</button>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-sm text-indigo-700 font-medium">{selectedIds.size} selected</span>
+          <div className="flex gap-2">
+            <button onClick={handleBulkExport} disabled={bulkLoading}
+              className="btn-secondary text-xs px-3 py-1.5">Export Excel</button>
+            <button onClick={handleBulkDelete} disabled={bulkLoading}
+              className="btn-danger text-xs px-3 py-1.5">{bulkLoading ? 'Deleting...' : 'Delete Selected'}</button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
+          </div>
+        </div>
+      )}
 
       <ResponsiveTable
         columns={columns}
@@ -272,10 +373,25 @@ const PurchaseOrders = () => {
             <div className="flex items-center gap-3">
               <h3 className="text-lg font-semibold text-gray-900">{detail.po_number}</h3>
               <span className={statusBadge[detail.status]}>{detail.status}</span>
+              {emailLogs[detail.id]?.length > 0 && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  emailLogs[detail.id][0].status === 'sent' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                }`}>
+                  {emailLogs[detail.id][0].status === 'sent' ? '✓ Emailed' : '✗ Failed'}
+                </span>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => hrService.downloadPurchaseOrderPDF(detail.id)}
                 className="btn-secondary text-xs px-3 py-1.5">Download PDF</button>
+              <button
+                onClick={() => handleEmailPO(detail.id)}
+                disabled={emailSending === detail.id || !detail.supplier_email}
+                className="btn-secondary text-xs px-3 py-1.5"
+                title={!detail.supplier_email ? 'Supplier has no email' : ''}
+              >
+                {emailSending === detail.id ? 'Sending...' : 'Email PO'}
+              </button>
               {statusFlow.indexOf(detail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(detail.status) === -1 && (
                 <button onClick={() => handleStatus(detail.id, statusFlow[statusFlow.indexOf(detail.status) + 1])}
                   className="btn-primary text-xs px-3 py-1.5">
@@ -377,6 +493,13 @@ const PurchaseOrders = () => {
           <>
             <button onClick={() => { if (mobileDetail) hrService.downloadPurchaseOrderPDF(mobileDetail.id); }}
               className="btn-secondary text-xs px-3 py-1.5 flex-1">PDF</button>
+            <button
+              onClick={() => { if (mobileDetail) handleEmailPO(mobileDetail.id); }}
+              disabled={emailSending === mobileDetail?.id || !mobileDetail?.supplier_email}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1"
+            >
+              {emailSending === mobileDetail?.id ? '...' : 'Email'}
+            </button>
             {mobileDetail && statusFlow.indexOf(mobileDetail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(mobileDetail.status) === -1 && (
               <button onClick={() => handleStatus(mobileDetail.id, statusFlow[statusFlow.indexOf(mobileDetail.status) + 1])}
                 className="btn-primary text-xs px-3 py-1.5 flex-1">

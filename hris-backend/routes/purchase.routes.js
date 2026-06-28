@@ -9,6 +9,11 @@ router.get('/:id/pdf', authenticateToken, purchase.downloadPDF);
 router.post('/', authenticateToken, purchase.create);
 router.put('/:id', authenticateToken, purchase.update);
 router.patch('/:id/status', authenticateToken, purchase.updateStatus);
+router.post('/:id/email', authenticateToken, purchase.sendEmail);
 router.delete('/:id', authenticateToken, purchase.remove);
+
+// Bulk operations
+router.post('/bulk/delete', authenticateToken, purchase.bulkDelete);
+router.post('/bulk/export', authenticateToken, purchase.bulkExportExcel);
 
 module.exports = router;

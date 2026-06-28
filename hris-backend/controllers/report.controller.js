@@ -355,3 +355,123 @@ exports.downloadExcel = async (req, res) => {
     if (!res.headersSent) res.status(500).json({ error: 'Failed to generate Excel.' });
   }
 };
+
+// =============================================
+// Profit & Loss Statement
+// =============================================
+exports.getPLStatement = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { startDate, endDate } = req.query;
+
+  try {
+    const yearStart = new Date();
+    yearStart.setMonth(0, 1);
+    yearStart.setHours(0, 0, 0, 0);
+    const sd = startDate || yearStart.toISOString().split('T')[0];
+    const ed = endDate || new Date().toISOString().split('T')[0];
+
+    const dateFilter = ' AND invoice_date >= ? AND invoice_date <= ?';
+    const bsDateFilter = ' AND entry_date >= ? AND entry_date <= ?';
+    const poDateFilter = ' AND order_date >= ? AND order_date <= ?';
+    const dateParams = [sd, ed];
+
+    // Revenue from paid invoices
+    const [revenue] = await db.execute(
+      `SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count
+       FROM invoices WHERE tenant_id = ? AND status = 'paid'${dateFilter}`,
+      [tenantId, ...dateParams]
+    );
+
+    // Other income (balance sheet IN)
+    const [otherIncome] = await db.execute(
+      `SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as count
+       FROM balance_sheet WHERE tenant_id = ? AND type = 'IN'${bsDateFilter}`,
+      [tenantId, ...dateParams]
+    );
+
+    // Cost of goods sold (received POs)
+    const [cogs] = await db.execute(
+      `SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count
+       FROM purchase_orders WHERE tenant_id = ? AND status = 'received'${poDateFilter}`,
+      [tenantId, ...dateParams]
+    );
+
+    // Operating expenses (balance sheet OUT)
+    const [operatingExpenses] = await db.execute(
+      `SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as count
+       FROM balance_sheet WHERE tenant_id = ? AND type = 'OUT'${bsDateFilter}`,
+      [tenantId, ...dateParams]
+    );
+
+    const totalIncome = Number(revenue[0].total) + Number(otherIncome[0].total);
+    const totalExpenses = Number(cogs[0].total) + Number(operatingExpenses[0].total);
+    const netProfit = totalIncome - totalExpenses;
+
+    // Monthly breakdown
+    const [monthlyIncome] = await db.execute(
+      `SELECT DATE_TRUNC('month', invoice_date) as month, SUM(total_amount) as amount
+       FROM invoices WHERE tenant_id = ? AND status = 'paid' AND invoice_date >= ? AND invoice_date <= ?
+       GROUP BY month ORDER BY month`,
+      [tenantId, sd, ed]
+    );
+
+    const [monthlyOtherIncome] = await db.execute(
+      `SELECT DATE_TRUNC('month', entry_date) as month, SUM(amount) as amount
+       FROM balance_sheet WHERE tenant_id = ? AND type = 'IN' AND entry_date >= ? AND entry_date <= ?
+       GROUP BY month ORDER BY month`,
+      [tenantId, sd, ed]
+    );
+
+    const [monthlyCOGS] = await db.execute(
+      `SELECT DATE_TRUNC('month', order_date) as month, SUM(total_amount) as amount
+       FROM purchase_orders WHERE tenant_id = ? AND status = 'received' AND order_date >= ? AND order_date <= ?
+       GROUP BY month ORDER BY month`,
+      [tenantId, sd, ed]
+    );
+
+    const [monthlyOpExpenses] = await db.execute(
+      `SELECT DATE_TRUNC('month', entry_date) as month, SUM(amount) as amount
+       FROM balance_sheet WHERE tenant_id = ? AND type = 'OUT' AND entry_date >= ? AND entry_date <= ?
+       GROUP BY month ORDER BY month`,
+      [tenantId, sd, ed]
+    );
+
+    // Merge monthly data into a single array
+    const monthMap = {};
+    const addToMap = (rows, key) => {
+      rows.forEach(r => {
+        const m = r.month ? new Date(r.month).toISOString().slice(0, 7) : null;
+        if (!m) return;
+        if (!monthMap[m]) monthMap[m] = { month: m, invoiceRevenue: 0, otherIncome: 0, cogs: 0, operatingExpenses: 0 };
+        monthMap[m][key] = Number(r.amount);
+      });
+    };
+    addToMap(monthlyIncome, 'invoiceRevenue');
+    addToMap(monthlyOtherIncome, 'otherIncome');
+    addToMap(monthlyCOGS, 'cogs');
+    addToMap(monthlyOpExpenses, 'operatingExpenses');
+
+    const monthly = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+
+    res.json({
+      period: { startDate: sd, endDate: ed },
+      summary: {
+        revenue: Number(revenue[0].total),
+        revenueCount: Number(revenue[0].count),
+        otherIncome: Number(otherIncome[0].total),
+        otherIncomeCount: Number(otherIncome[0].count),
+        totalIncome,
+        cogs: Number(cogs[0].total),
+        cogsCount: Number(cogs[0].count),
+        operatingExpenses: Number(operatingExpenses[0].total),
+        operatingExpensesCount: Number(operatingExpenses[0].count),
+        totalExpenses,
+        netProfit,
+      },
+      monthly,
+    });
+  } catch (error) {
+    console.error('getPLStatement error:', error);
+    res.status(500).json({ error: 'Failed to generate P&L statement.' });
+  }
+};

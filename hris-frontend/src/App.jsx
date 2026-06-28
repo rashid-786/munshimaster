@@ -27,6 +27,7 @@ import Replacements from './pages/admin/Replacements';
 import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
 import Reports from './pages/admin/Reports';
+import PLStatement from './pages/admin/PLStatement';
 import KiranaStore from './pages/admin/KiranaStore';
 import Suppliers from './pages/admin/Suppliers';
 import Customers from './pages/admin/Customers';
@@ -83,7 +84,8 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="dashboard" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="employees" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
             <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
             <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
             <Route path="payroll" element={<PlanRoute minPlan="pro"><PayrollConsole /></PlanRoute>} />
@@ -92,6 +94,7 @@ function App() {
             <Route path="audit-logs" element={<PlanRoute minPlan="pro"><AuditLogs /></PlanRoute>} />
             <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />
             <Route path="reports" element={<PlanRoute minPlan="business"><Reports /></PlanRoute>} />
+            <Route path="pl" element={<PlanRoute minPlan="business"><PLStatement /></PlanRoute>} />
             <Route path="ledger" element={<KiranaStore />} />
             <Route path="ledger/:tab" element={<KiranaStore />} />
             <Route path="suppliers" element={<PlanRoute minPlan="business"><Suppliers /></PlanRoute>} />

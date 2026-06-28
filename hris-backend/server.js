@@ -7,6 +7,7 @@ process.on('uncaughtException', (err) => {
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const tenantResolver = require('./middleware/tenant');
 const authRoutes = require('./routes/auth.routes');
 const employeeRoutes = require('./routes/employee.routes');
@@ -30,6 +31,8 @@ const kiranaRoutes = require('./routes/kirana.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const retentionRoutes = require('./routes/retention.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
+const emailLogRoutes = require('./routes/emailLog.routes');
 const { planGate } = require('./middleware/planGate');
 const { startExpiryCron } = require('./cron/subscriptionExpiry');
 const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
@@ -39,7 +42,9 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(helmet());
+app.use('/api/v1/core/subscription/webhook', express.raw({ type: 'application/json' }));
+app.use(express.json({ limit: '1mb' }));
 
 // ==========================================
 // 1. PUBLIC ROUTES (No Tenant Header Required)
@@ -163,6 +168,8 @@ app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/api/v1/core/subscription', paymentLimiter, subscriptionRoutes);
 app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/api/v1/core/retention', retentionRoutes);
+app.use('/api/v1/core/dashboard', dashboardRoutes);
+app.use('/api/v1/core/email-logs', emailLogRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 

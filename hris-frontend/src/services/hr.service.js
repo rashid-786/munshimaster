@@ -275,6 +275,44 @@ export const hrService = {
     link.remove();
     window.URL.revokeObjectURL(url);
   },
+  emailInvoice: async (id) => {
+    const response = await api.post(`/core/invoices/${id}/email`);
+    return response.data;
+  },
+  emailPurchaseOrder: async (id) => {
+    const response = await api.post(`/core/purchase-orders/${id}/email`);
+    return response.data;
+  },
+  getEmailLogs: async (entityType, entityId) => {
+    const response = await api.get('/core/email-logs', { params: { entity_type: entityType, entity_id: entityId } });
+    return response.data;
+  },
+
+  // Bulk Operations
+  bulkDeleteInvoices: async (ids) => {
+    const response = await api.post('/core/invoices/bulk/delete', { ids });
+    return response.data;
+  },
+  bulkExportInvoices: async (ids) => {
+    const response = await api.post('/core/invoices/bulk/export', { ids }, { responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = 'invoices_export.xlsx';
+    link.click();
+  },
+  bulkDeletePOs: async (ids) => {
+    const response = await api.post('/core/purchase-orders/bulk/delete', { ids });
+    return response.data;
+  },
+  bulkExportPOs: async (ids) => {
+    const response = await api.post('/core/purchase-orders/bulk/export', { ids }, { responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = 'po_export.xlsx';
+    link.click();
+  },
 
   // Attachments
   uploadFiles: async (entity_type, entity_id, files, onProgress) => {
@@ -351,6 +389,10 @@ export const hrService = {
     const response = await api.get('/core/reports', { params });
     return response.data;
   },
+  getPLStatement: async (params) => {
+    const response = await api.get('/core/reports/pl', { params });
+    return response.data;
+  },
   downloadReportPDF: async (type, params) => {
     const response = await api.get('/core/reports/download/pdf', { params: { ...params, type }, responseType: 'blob' });
     const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -368,7 +410,19 @@ export const hrService = {
     link.click();
   },
 
-  // Balance Sheet
+  // Payment Reconciliation
+  recordPayment: async (invoiceId, data) => {
+    const response = await api.post(`/core/invoices/${invoiceId}/payments`, data);
+    return response.data;
+  },
+  getInvoicePayments: async (invoiceId) => {
+    const response = await api.get(`/core/invoices/${invoiceId}/payments`);
+    return response.data;
+  },
+  deletePayment: async (invoiceId, paymentId) => {
+    const response = await api.delete(`/core/invoices/${invoiceId}/payments/${paymentId}`);
+    return response.data;
+  },
   getBalanceEntries: async (params) => {
     const response = await api.get('/core/balance', { params });
     return response.data;
@@ -442,6 +496,10 @@ export const hrService = {
   },
   markAllNotificationsRead: async () => {
     const response = await api.patch('/core/notifications/read-all');
+    return response.data;
+  },
+  getDashboard: async () => {
+    const response = await api.get('/core/dashboard');
     return response.data;
   },
 };

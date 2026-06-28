@@ -6,30 +6,24 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import Loading from '../../components/Loading';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '' };
 const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '' };
 
 const statusBadge = {
   draft: 'badge-info', sent: 'badge-warning', paid: 'badge-success',
-  overdue: 'badge-danger', cancelled: 'badge-danger',
+  partial: 'badge-info', overdue: 'badge-danger', cancelled: 'badge-danger',
 };
 
-const columns = [
-  { key: 'invoice_number', label: 'Invoice #', render: (v) => <span className="font-medium text-indigo-600">{v}</span> },
-  { key: 'customer_name', label: 'Customer', render: (v) => v },
-  { key: 'date', label: 'Date', render: (_, r) => <span className="text-gray-500">{r.invoice_date?.split('T')[0]}</span> },
-  { key: 'due_date', label: 'Due Date', render: (_, r) => <span className="text-gray-500">{r.due_date?.split('T')[0] || '—'}</span> },
-  { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
-  { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
-  { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
-  { key: 'actions', label: 'Actions', render: (_, r) => (
-    <div className="flex gap-1.5 justify-end">
-      <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-      <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
-    </div>
-  )},
-];
+function Checkbox({ checked, onChange }) {
+  return (
+    <input type="checkbox" checked={checked}
+      onChange={onChange}
+      onClick={e => e.stopPropagation()}
+      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+  );
+}
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -51,12 +45,90 @@ const Invoices = () => {
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [emailSending, setEmailSending] = useState(null);
+  const [emailLogs, setEmailLogs] = useState({});
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'cash', payment_date: '', reference: '', notes: '' });
+  const [paymentSaving, setPaymentSaving] = useState(false);
   const [mobileDetail, setMobileDetail] = useState(null);
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const isMobile = useIsMobile();
   const limit = 200;
   const [loading, setLoading] = useState(true);
+
+  const columns = React.useMemo(() => [
+    {
+      key: 'select', label: React.createElement(Checkbox, {
+        checked: invoices.length > 0 && selectedIds.size === invoices.length,
+        onChange: () => {
+          if (selectedIds.size === invoices.length) setSelectedIds(new Set());
+          else setSelectedIds(new Set(invoices.map(i => i.id)));
+        },
+      }),
+      render: (_, r) => React.createElement(Checkbox, {
+        checked: selectedIds.has(r.id),
+        onChange: () => toggleSelect(r.id),
+      }),
+    },
+    { key: 'invoice_number', label: 'Invoice #', render: (v) => <span className="font-medium text-indigo-600">{v}</span> },
+    { key: 'customer_name', label: 'Customer', render: (v) => v },
+    { key: 'date', label: 'Date', render: (_, r) => <span className="text-gray-500">{r.invoice_date?.split('T')[0]}</span> },
+    { key: 'due_date', label: 'Due Date', render: (_, r) => <span className="text-gray-500">{r.due_date?.split('T')[0] || '—'}</span> },
+    { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
+    { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
+    { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
+    { key: 'actions', label: 'Actions', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+        <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+      </div>
+    )},
+  ], [invoices, selectedIds]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setModal({
+      variant: 'danger',
+      title: `Delete ${selectedIds.size} Invoice(s)`,
+      message: `Permanently delete ${selectedIds.size} invoice(s)? This cannot be undone.`,
+      confirmLabel: 'Delete All',
+      onConfirm: async () => {
+        setBulkLoading(true);
+        try {
+          await hrService.bulkDeleteInvoices([...selectedIds]);
+          setSelectedIds(new Set());
+          setDetail(null);
+          setMobileDetail(null);
+          setModal(null);
+          fetch();
+        } catch (err) {
+          setError(err.response?.data?.error || 'Bulk delete failed.');
+          setModal(null);
+        } finally { setBulkLoading(false); }
+      },
+    });
+  };
+
+  const handleBulkExport = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await hrService.bulkExportInvoices([...selectedIds]);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Export failed.');
+    }
+  };
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -109,6 +181,9 @@ const Invoices = () => {
       setDetail(full);
       const atts = await hrService.getAttachments('invoice', inv.id);
       setAttachments(atts);
+      hrService.getEmailLogs('invoice', inv.id).then(logs => {
+        if (logs.length > 0) setEmailLogs(prev => ({ ...prev, [inv.id]: logs }));
+      }).catch(() => {});
     } catch { setError('Failed to load invoice details.'); }
   };
 
@@ -202,6 +277,64 @@ const Invoices = () => {
     });
   };
 
+  const handleEmailInvoice = async (id) => {
+    setEmailSending(id);
+    try {
+      await hrService.emailInvoice(id);
+      if (detail?.id === id) setDetail(prev => prev ? { ...prev, status: 'sent' } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, status: 'sent' } : null);
+      hrService.getEmailLogs('invoice', id).then(logs => {
+        setEmailLogs(prev => ({ ...prev, [id]: logs }));
+      }).catch(() => {});
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send email.');
+    } finally {
+      setEmailSending(null);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    const invId = detail?.id || mobileDetail?.id;
+    if (!invId || !paymentForm.amount || !paymentForm.payment_date) return;
+    setPaymentSaving(true);
+    try {
+      const result = await hrService.recordPayment(invId, {
+        amount: Math.round(parseFloat(paymentForm.amount) * 100),
+        payment_method: paymentForm.payment_method,
+        payment_date: paymentForm.payment_date,
+        reference: paymentForm.reference || undefined,
+        notes: paymentForm.notes || undefined,
+      });
+      // Refresh detail views
+      const full = await hrService.getInvoice(invId);
+      if (detail?.id === invId) setDetail(full);
+      if (mobileDetail?.id === invId) setMobileDetail(full);
+      setShowPaymentForm(false);
+      setPaymentForm({ amount: '', payment_method: 'cash', payment_date: '', reference: '', notes: '' });
+      fetch();
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to record payment.');
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId) => {
+    const invId = detail?.id || mobileDetail?.id;
+    if (!invId) return;
+    try {
+      await hrService.deletePayment(invId, paymentId);
+      const full = await hrService.getInvoice(invId);
+      if (detail?.id === invId) setDetail(full);
+      if (mobileDetail?.id === invId) setMobileDetail(full);
+      fetch();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete payment.');
+    }
+  };
+
   const subtotal = calcSubtotal();
   const tax = Math.round(subtotal * taxRate / 100);
   const totalAmt = subtotal + tax;
@@ -219,6 +352,19 @@ const Invoices = () => {
         <h2 className="text-xl font-semibold text-gray-900">Invoices</h2>
         <button onClick={openCreate} className="btn-primary">+ New Invoice</button>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-sm text-indigo-700 font-medium">{selectedIds.size} selected</span>
+          <div className="flex gap-2">
+            <button onClick={handleBulkExport} disabled={bulkLoading}
+              className="btn-secondary text-xs px-3 py-1.5">Export Excel</button>
+            <button onClick={handleBulkDelete} disabled={bulkLoading}
+              className="btn-danger text-xs px-3 py-1.5">{bulkLoading ? 'Deleting...' : 'Delete Selected'}</button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
+          </div>
+        </div>
+      )}
 
       <ResponsiveTable
         columns={columns}
@@ -256,8 +402,10 @@ const Invoices = () => {
               <option value="">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="partial">Partial</option>
               <option value="paid">Paid</option>
               <option value="overdue">Overdue</option>
+              <option value="unpaid">Unpaid (Sent + Overdue + Partial)</option>
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
@@ -270,15 +418,31 @@ const Invoices = () => {
             <div className="flex items-center gap-3">
               <h3 className="text-lg font-semibold text-gray-900">{detail.invoice_number}</h3>
               <span className={statusBadge[detail.status]}>{detail.status}</span>
+              {emailLogs[detail.id]?.length > 0 && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  emailLogs[detail.id][0].status === 'sent' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                }`}>
+                  {emailLogs[detail.id][0].status === 'sent' ? '✓ Emailed' : '✗ Failed'}
+                </span>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => hrService.downloadInvoicePDF(detail.id)}
                 className="btn-secondary text-xs px-3 py-1.5">Download PDF</button>
+              <button
+                onClick={() => handleEmailInvoice(detail.id)}
+                disabled={emailSending === detail.id || !detail.customer_email}
+                className="btn-secondary text-xs px-3 py-1.5"
+                title={!detail.customer_email ? 'Customer has no email' : ''}
+              >
+                {emailSending === detail.id ? 'Sending...' : 'Email Invoice'}
+              </button>
               {detail.status === 'draft' && (
                 <button onClick={() => handleStatus(detail.id, 'sent')} className="btn-primary text-xs px-3 py-1.5">Mark as Sent</button>
               )}
-              {(detail.status === 'sent' || detail.status === 'overdue') && (
-                <button onClick={() => handleStatus(detail.id, 'paid')} className="btn-primary text-xs px-3 py-1.5">Mark as Paid</button>
+              {detail.status !== 'paid' && detail.status !== 'cancelled' && (
+                <button onClick={() => { setPaymentForm({ ...paymentForm, amount: ((detail.total_amount - (detail.amountPaid || 0)) / 100).toFixed(2), payment_date: new Date().toISOString().split('T')[0] }); setShowPaymentForm(true); }}
+                  className="btn-primary text-xs px-3 py-1.5">Record Payment</button>
               )}
               {detail.status !== 'cancelled' && (
                 <button onClick={() => handleStatus(detail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5">Cancel</button>
@@ -336,8 +500,48 @@ const Invoices = () => {
                 <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatINR(detail.subtotal)}</span></div>
                 <div className="flex justify-between text-sm text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(detail.tax_amount)}</span></div>
                 <div className="flex justify-between text-base font-bold text-gray-900 border-t pt-1"><span>Total</span><span>{formatINR(detail.total_amount)}</span></div>
+                <div className="flex justify-between text-sm font-medium text-emerald-600 border-t border-dashed pt-1">
+                  <span>Amount Paid</span><span>{formatINR(detail.amountPaid || 0)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold text-red-600">
+                  <span>Balance Due</span><span>{formatINR(detail.balanceDue || detail.total_amount)}</span>
+                </div>
               </div>
             </div>
+
+            {/* Payment History */}
+            {detail.payments?.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-1">Payment History</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-xs text-gray-500">
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-left font-medium">Method</th>
+                        <th className="px-3 py-2 text-right font-medium">Amount</th>
+                        <th className="px-3 py-2 text-left font-medium">Reference</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {detail.payments.map(p => (
+                        <tr key={p.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{p.payment_date?.split('T')[0]}</td>
+                          <td className="px-3 py-2 text-gray-700 capitalize">{p.payment_method}</td>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900">{formatINR(p.amount)}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">{p.reference || '—'}</td>
+                          <td className="px-3 py-2 text-right">
+                            <button onClick={() => handleDeletePayment(p.id)}
+                              className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {detail.notes && (
               <div>
@@ -374,11 +578,19 @@ const Invoices = () => {
           <>
             <button onClick={() => { if (mobileDetail) hrService.downloadInvoicePDF(mobileDetail.id); }}
               className="btn-secondary text-xs px-3 py-1.5 flex-1">PDF</button>
+            <button
+              onClick={() => { if (mobileDetail) handleEmailInvoice(mobileDetail.id); }}
+              disabled={emailSending === mobileDetail?.id || !mobileDetail?.customer_email}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1"
+            >
+              {emailSending === mobileDetail?.id ? '...' : 'Email'}
+            </button>
             {mobileDetail?.status === 'draft' && (
               <button onClick={() => handleStatus(mobileDetail.id, 'sent')} className="btn-primary text-xs px-3 py-1.5 flex-1">Sent</button>
             )}
-            {(mobileDetail?.status === 'sent' || mobileDetail?.status === 'overdue') && (
-              <button onClick={() => handleStatus(mobileDetail.id, 'paid')} className="btn-primary text-xs px-3 py-1.5 flex-1">Paid</button>
+            {mobileDetail?.status !== 'paid' && mobileDetail?.status !== 'cancelled' && (
+              <button onClick={() => { setPaymentForm({ ...paymentForm, amount: ((mobileDetail.total_amount - (mobileDetail.amountPaid || 0)) / 100).toFixed(2), payment_date: new Date().toISOString().split('T')[0] }); setShowPaymentForm(true); }}
+                className="btn-primary text-xs px-3 py-1.5 flex-1">Pay</button>
             )}
             {mobileDetail?.status !== 'cancelled' && (
               <button onClick={() => handleStatus(mobileDetail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5 flex-1">Cancel</button>
@@ -434,6 +646,12 @@ const Invoices = () => {
               <div className="flex justify-between text-xs text-gray-600"><span>Subtotal</span><span>{formatINR(mobileDetail?.subtotal)}</span></div>
               <div className="flex justify-between text-xs text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(mobileDetail?.tax_amount)}</span></div>
               <div className="flex justify-between text-sm font-bold text-gray-900 border-t pt-0.5"><span>Total</span><span>{formatINR(mobileDetail?.total_amount)}</span></div>
+              <div className="flex justify-between text-xs font-medium text-emerald-600 border-t border-dashed pt-0.5">
+                <span>Paid</span><span>{formatINR(mobileDetail?.amountPaid || 0)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold text-red-600">
+                <span>Due</span><span>{formatINR(mobileDetail?.balanceDue || mobileDetail?.total_amount)}</span>
+              </div>
             </div>
           </div>
 
@@ -441,6 +659,35 @@ const Invoices = () => {
             <div>
               <p className="text-xs text-gray-500 font-medium">Notes</p>
               <p className="text-sm text-gray-700 mt-0.5">{mobileDetail.notes}</p>
+            </div>
+          )}
+
+          {mobileDetail?.payments?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-1">Payments</p>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b text-gray-500">
+                      <th className="px-2 py-1.5 text-left font-medium">Date</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Amount</th>
+                      <th className="px-2 py-1.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {mobileDetail.payments.map(p => (
+                      <tr key={p.id}>
+                        <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{p.payment_date?.split('T')[0]}</td>
+                        <td className="px-2 py-1.5 text-right font-medium text-gray-900">{formatINR(p.amount)}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          <button onClick={() => handleDeletePayment(p.id)}
+                            className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -596,6 +843,63 @@ const Invoices = () => {
         onConfirm={modal?.onConfirm || (() => {})}
         onCancel={() => setModal(null)}
       />
+
+      {/* Payment Form Modal */}
+      {showPaymentForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/30" onClick={() => setShowPaymentForm(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Record Payment</h3>
+              <button type="button" onClick={() => setShowPaymentForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹) *</label>
+                <input type="number" step="0.01" min="0.01" value={paymentForm.amount}
+                  onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  className="input-field" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date *</label>
+                <input type="date" value={paymentForm.payment_date}
+                  onChange={e => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
+                  className="input-field" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                <select value={paymentForm.payment_method}
+                  onChange={e => setPaymentForm({ ...paymentForm, payment_method: e.target.value })}
+                  className="input-field">
+                  <option value="cash">Cash</option>
+                  <option value="online">Online</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference (UPI ID / Cheque No. / Transaction ID)</label>
+                <input type="text" value={paymentForm.reference}
+                  onChange={e => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                  className="input-field" placeholder="Optional" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea value={paymentForm.notes}
+                  onChange={e => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  className="input-field" rows={2} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setShowPaymentForm(false)} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+              <button onClick={handleRecordPayment} disabled={paymentSaving || !paymentForm.amount || !paymentForm.payment_date}
+                className="btn-primary text-sm px-4 py-2">
+                {paymentSaving ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

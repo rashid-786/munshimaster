@@ -1,4 +1,7 @@
 const tenantResolver = (req, res, next) => {
+  // Skip tenant check for Razorpay webhook
+  if (req.originalUrl === '/api/v1/core/subscription/webhook') return next();
+
   const tenantId = req.headers['x-tenant-id'] || req.query.tenantId;
 
   if (!tenantId) {

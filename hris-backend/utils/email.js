@@ -29,13 +29,14 @@ function getTransporter() {
  * Send an email. Returns { sent, messageId, log }.
  * When jsonTransport is active, the email is logged but not actually sent.
  */
-async function sendEmail({ to, subject, html, from }) {
+async function sendEmail({ to, subject, html, from, attachments }) {
   const transport = getTransporter();
   const mailOptions = {
     from: from || process.env.SMTP_FROM || '"Bahi360" <noreply@bahi360.com>',
     to,
     subject,
     html,
+    attachments,
   };
 
   try {

@@ -281,34 +281,130 @@ exports.webhook = async (req, res) => {
 
   if (!secret) return res.status(200).json({ status: 'webhook not configured' });
 
+  // req.body is a Buffer from express.raw middleware
+  const rawBody = req.body;
+
   const isValid = crypto
     .createHmac('sha256', secret)
-    .update(JSON.stringify(req.body))
+    .update(rawBody)
     .digest('hex') === signature;
 
   if (!isValid) return res.status(400).json({ error: 'Invalid signature' });
 
-  const event = req.body.event;
-  const payment = req.body.payload?.payment?.entity;
-
-  if (event === 'payment.captured' && payment) {
-    try {
-      const [existing] = await db.execute(
-        'SELECT id FROM payments WHERE payment_id = ?', [payment.id]
-      );
-      if (existing.length > 0) return res.json({ status: 'duplicate' });
-
-      await db.execute(
-        `UPDATE payments SET payment_id = ?, status = 'captured', error_details = ?
-         WHERE order_id = ?`,
-        [payment.id, JSON.stringify(payment), payment.order_id]
-      );
-    } catch (error) {
-      console.error('Webhook error:', error);
-    }
+  let payload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return res.status(400).json({ error: 'Invalid JSON' });
   }
 
-  res.json({ status: 'ok' });
+  const event = payload.event;
+  const payment = payload.payload?.payment?.entity;
+  const order = payload.payload?.order?.entity;
+
+  try {
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentId = payment?.id || order?.id;
+      const orderId = payment?.order_id || order?.id;
+
+      if (!orderId) return res.json({ status: 'skipped', reason: 'no order_id' });
+
+      // Idempotency: skip if payment already processed (subscription exists)
+      const [existingSub] = await db.execute(
+        `SELECT s.id FROM subscriptions s
+         JOIN payments p ON p.subscription_id = s.id
+         WHERE p.order_id = ? AND s.status = 'active'`,
+        [orderId]
+      );
+      if (existingSub.length > 0) return res.json({ status: 'duplicate' });
+
+      // Also skip if payment record already has a payment_id (caught by verifyPayment)
+      const [existingPay] = await db.execute(
+        'SELECT id, tenant_id, plan_id, status FROM payments WHERE order_id = ?',
+        [orderId]
+      );
+      if (existingPay.length === 0) {
+        return res.json({ status: 'skipped', reason: 'order not found in payments table' });
+      }
+
+      const pay = existingPay[0];
+      if (pay.status !== 'created') return res.json({ status: 'duplicate', reason: 'payment already processed' });
+
+      const tenantId = pay.tenant_id;
+      const planId = pay.plan_id;
+
+      // Calculate period_end
+      const periodEnd = new Date();
+      if (planId.endsWith('_monthly')) {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      } else {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      }
+
+      // Deactivate old subscription
+      await db.execute(
+        `UPDATE subscriptions SET status = 'expired', ended_at = NOW()
+         WHERE tenant_id = ? AND status IN ('active','trialing')`,
+        [tenantId]
+      );
+
+      // Create new subscription
+      const subId = crypto.randomUUID();
+      await db.execute(
+        `INSERT INTO subscriptions (id, tenant_id, plan_id, status, current_period_start, current_period_end)
+         VALUES (?, ?, ?, 'active', NOW(), ?)`,
+        [subId, tenantId, planId, periodEnd]
+      );
+
+      // Update tenant's plan
+      await db.execute(
+        `UPDATE tenants SET subscription_plan = ? WHERE id = ?`,
+        [planId, tenantId]
+      );
+
+      // Update payment record
+      await db.execute(
+        `UPDATE payments SET payment_id = ?, status = 'captured', subscription_id = ?,
+             period_start = NOW(), period_end = ?, error_details = ?
+         WHERE order_id = ?`,
+        [paymentId, subId, periodEnd, JSON.stringify(payment || order), orderId]
+      );
+
+      // Invalidate plan cache
+      planCache.delete(tenantId);
+
+      return res.json({ status: 'ok', event, action: 'subscription_activated' });
+    }
+
+    if (event === 'payment.failed') {
+      if (!payment?.order_id) return res.json({ status: 'skipped', reason: 'no order_id' });
+
+      const errorDetails = {
+        id: payment.id,
+        error_code: payment.error_code,
+        error_description: payment.error_description,
+        error_source: payment.error_source,
+        error_step: payment.error_step,
+        error_reason: payment.error_reason,
+        method: payment.method,
+      };
+
+      // Also cancel the order if payment failed
+      await db.execute(
+        `UPDATE payments SET status = 'failed', payment_id = ?, error_details = ?
+         WHERE order_id = ? AND status = 'created'`,
+        [payment.id, JSON.stringify(errorDetails), payment.order_id]
+      );
+
+      return res.json({ status: 'ok', event, action: 'payment_failed_recorded' });
+    }
+
+    // Acknowledge other events silently
+    res.json({ status: 'ok', event });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
 };
 
 // =============================================
