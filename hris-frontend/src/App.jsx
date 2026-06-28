@@ -36,6 +36,13 @@ import Invoices from './pages/admin/Invoices';
 import Settings from './pages/admin/Settings';
 import Referrals from './pages/admin/Referrals';
 import PaymentHistory from './pages/admin/PaymentHistory';
+import RecurringInvoices from './pages/admin/RecurringInvoices';
+import BankImport from './pages/admin/BankImport';
+import Products from './pages/admin/Products';
+import CreditDebitNotes from './pages/admin/CreditDebitNotes';
+import GstReturns from './pages/admin/GstReturns';
+import Gstr2bReconciliation from './pages/admin/Gstr2bReconciliation';
+import TDSManagement from './pages/admin/TDSManagement';
 import Workspace from './pages/employee/Workspace';
 import Attendance from './pages/employee/Attendance';
 import Profile from './pages/employee/Profile';
@@ -101,6 +108,13 @@ function App() {
             <Route path="customers" element={<PlanRoute minPlan="business"><Customers /></PlanRoute>} />
             <Route path="purchase-orders" element={<PlanRoute minPlan="business"><PurchaseOrders /></PlanRoute>} />
             <Route path="invoices" element={<PlanRoute minPlan="business"><Invoices /></PlanRoute>} />
+            <Route path="recurring-invoices" element={<PlanRoute minPlan="business"><RecurringInvoices /></PlanRoute>} />
+            <Route path="bank" element={<PlanRoute minPlan="business"><BankImport /></PlanRoute>} />
+            <Route path="notes" element={<PlanRoute minPlan="business"><CreditDebitNotes /></PlanRoute>} />
+            <Route path="gst-returns" element={<PlanRoute minPlan="business"><GstReturns /></PlanRoute>} />
+            <Route path="gstr2b" element={<PlanRoute minPlan="business"><Gstr2bReconciliation /></PlanRoute>} />
+            <Route path="tds" element={<PlanRoute minPlan="business"><TDSManagement /></PlanRoute>} />
+            <Route path="products" element={<PlanRoute minPlan="pro"><Products /></PlanRoute>} />
             <Route path="payments" element={<PaymentHistory />} />
             <Route path="referrals" element={<Referrals />} />
             <Route path="settings" element={<Settings />} />

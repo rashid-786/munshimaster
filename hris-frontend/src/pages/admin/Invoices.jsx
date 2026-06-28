@@ -5,11 +5,13 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import useFormDraft from '../../hooks/useFormDraft';
+import DraftBanner from '../../components/DraftBanner';
 import UpgradeBanner from '../../components/UpgradeBanner';
 import Loading from '../../components/Loading';
 
-const emptyItem = { description: '', quantity: 1, unit_price: '' };
-const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '' };
+const emptyItem = { description: '', quantity: 1, unit_price: '', hsn_code: '' };
+const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '', gst_type: 'intra', place_of_supply: '' };
 
 const statusBadge = {
   draft: 'badge-info', sent: 'badge-warning', paid: 'badge-success',
@@ -46,6 +48,12 @@ const Invoices = () => {
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [emailSending, setEmailSending] = useState(null);
+  const [whatsappSending, setWhatsappSending] = useState(null);
+  const [einvoiceLoading, setEinvoiceLoading] = useState(null);
+  const [paymentLinkLoading, setPaymentLinkLoading] = useState(null);
+  const [ewaybillLoading, setEwaybillLoading] = useState(null);
+  const [showEwaybillForm, setShowEwaybillForm] = useState(false);
+  const [ewaybillForm, setEwaybillForm] = useState({ vehicleNumber: '', transporterName: '', transporterGstin: '', transportDocNumber: '', transportDocDate: '', distance: '' });
   const [emailLogs, setEmailLogs] = useState({});
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'cash', payment_date: '', reference: '', notes: '' });
@@ -54,6 +62,11 @@ const Invoices = () => {
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const draftKey = `invoice_${editing || 'new'}`;
+  const { draft, clearDraft, restoreDraft, dismissDraft } = useFormDraft(draftKey, form, {
+    enabled: showForm,
+    onRestore: (data) => setForm(data),
+  });
   const [bulkLoading, setBulkLoading] = useState(false);
   const isMobile = useIsMobile();
   const limit = 200;
@@ -168,8 +181,10 @@ const Invoices = () => {
         customer_id: full.customer_id,
         invoice_date: full.invoice_date?.split('T')[0] || full.invoice_date,
         due_date: full.due_date?.split('T')[0] || full.due_date || '',
-        items: full.items.map(i => ({ description: i.description, quantity: i.quantity, unit_price: (i.unit_price / 100).toFixed(2) })),
+        items: full.items.map(i => ({ description: i.description, quantity: i.quantity, unit_price: (i.unit_price / 100).toFixed(2), hsn_code: i.hsn_code || '' })),
         notes: full.notes || '',
+        gst_type: full.gst_type || 'intra',
+        place_of_supply: full.place_of_supply || '',
       });
       setShowForm(true);
     } catch { setError('Failed to load invoice details.'); }
@@ -211,10 +226,13 @@ const Invoices = () => {
         invoice_date: form.invoice_date,
         due_date: form.due_date || null,
         notes: form.notes,
+        gst_type: form.gst_type,
+        place_of_supply: form.place_of_supply || null,
         items: form.items.map(i => ({
           description: i.description,
           quantity: parseFloat(i.quantity) || 1,
           unit_price: (parseFloat(i.unit_price) || 0).toFixed(2),
+          hsn_code: i.hsn_code || null,
         })),
       };
       let invId;
@@ -239,6 +257,7 @@ const Invoices = () => {
       }
       setShowForm(false);
       setEditing(null);
+      clearDraft();
       fetch();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save invoice.');
@@ -291,6 +310,78 @@ const Invoices = () => {
       setError(err.response?.data?.error || 'Failed to send email.');
     } finally {
       setEmailSending(null);
+    }
+  };
+
+  const handleWhatsAppInvoice = async (id) => {
+    setWhatsappSending(id);
+    try {
+      await hrService.whatsappSendInvoice(id);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send WhatsApp.');
+    } finally {
+      setWhatsappSending(null);
+    }
+  };
+
+  const handleGenerateEinvoice = async (id) => {
+    setEinvoiceLoading(id);
+    try {
+      const res = await hrService.generateEinvoice(id);
+      setDetail(prev => prev ? { ...prev, irn: res.irn, ack_no: res.ackNo, ack_date: res.ackDate, signed_qr_code: res.signedQrCode } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, irn: res.irn } : null);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate e-invoice.');
+    } finally {
+      setEinvoiceLoading(null);
+    }
+  };
+
+  const handleGeneratePaymentLink = async (id) => {
+    setPaymentLinkLoading(id);
+    try {
+      const res = await hrService.generatePaymentLink(id);
+      setDetail(prev => prev ? { ...prev, payment_link_url: res.paymentLinkUrl, payment_link_id: res.paymentLinkId, payment_link_status: res.paymentLinkStatus } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, payment_link_url: res.paymentLinkUrl } : null);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate payment link.');
+    } finally {
+      setPaymentLinkLoading(null);
+    }
+  };
+
+  const handleGenerateEwaybill = async (id) => {
+    if (!ewaybillForm.vehicleNumber && !ewaybillForm.transporterName) {
+      setShowEwaybillForm(true);
+      return;
+    }
+    setEwaybillLoading(id);
+    try {
+      const res = await hrService.generateEwaybill(id, ewaybillForm);
+      setDetail(prev => prev ? { ...prev, ewaybill_number: res.ewbNo, ewaybill_generated_at: res.ewbGeneratedAt, ewaybill_valid_upto: res.ewbValidTill } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, ewaybill_number: res.ewbNo } : null);
+      setShowEwaybillForm(false);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate e-way bill.');
+    } finally {
+      setEwaybillLoading(null);
+    }
+  };
+
+  const handleCancelEwaybill = async (id) => {
+    const reason = prompt('Enter reason for cancelling e-way bill:');
+    if (!reason || reason.length < 3) return;
+    try {
+      await hrService.cancelEwaybill(id, reason);
+      setDetail(prev => prev ? { ...prev, ewaybill_number: null, ewaybill_generated_at: null, ewaybill_valid_upto: null } : null);
+      if (mobileDetail?.id === id) setMobileDetail(prev => prev ? { ...prev, ewaybill_number: null } : null);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to cancel e-way bill.');
     }
   };
 
@@ -437,6 +528,49 @@ const Invoices = () => {
               >
                 {emailSending === detail.id ? 'Sending...' : 'Email Invoice'}
               </button>
+              <button
+                onClick={() => handleWhatsAppInvoice(detail.id)}
+                disabled={whatsappSending === detail.id || !detail.customer_phone}
+                className="btn-secondary text-xs px-3 py-1.5"
+                title={!detail.customer_phone ? 'Customer has no phone' : ''}
+              >
+                {whatsappSending === detail.id ? 'Sending...' : 'WhatsApp'}
+              </button>
+              {detail.payment_link_url && detail.payment_link_status !== 'cancelled' ? (
+                <a href={detail.payment_link_url} target="_blank" rel="noopener noreferrer"
+                  className="btn-primary text-xs px-3 py-1.5 !bg-emerald-600 hover:!bg-emerald-700 inline-flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                  Pay Link
+                </a>
+              ) : (
+                <button onClick={() => handleGeneratePaymentLink(detail.id)} disabled={paymentLinkLoading === detail.id}
+                  className="btn-secondary text-xs px-3 py-1.5">
+                  {paymentLinkLoading === detail.id ? 'Creating...' : 'Payment Link'}
+                </button>
+              )}
+              {detail.irn ? (
+                <span className="text-xs px-2 py-1.5 rounded-lg bg-green-50 text-green-700 font-medium flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  IRN Generated
+                </span>
+              ) : (
+                <button onClick={() => handleGenerateEinvoice(detail.id)} disabled={einvoiceLoading === detail.id}
+                  className="btn-secondary text-xs px-3 py-1.5" title={!detail.customer_gstin ? 'B2C invoices don\'t need IRN' : ''}>
+                  {einvoiceLoading === detail.id ? 'Generating...' : 'Generate IRN'}
+                </button>
+              )}
+              {detail.ewaybill_number ? (
+                <span className="text-xs px-2 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-medium flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  EWB {detail.ewaybill_number}
+                </span>
+              ) : (
+                <button onClick={() => { if (detail.irn || !detail.customer_gstin) handleGenerateEwaybill(detail.id); else setError('Generate IRN first for B2B invoices.'); }}
+                  disabled={ewaybillLoading === detail.id}
+                  className="btn-secondary text-xs px-3 py-1.5">
+                  {ewaybillLoading === detail.id ? 'Generating...' : 'E-Way Bill'}
+                </button>
+              )}
               {detail.status === 'draft' && (
                 <button onClick={() => handleStatus(detail.id, 'sent')} className="btn-primary text-xs px-3 py-1.5">Mark as Sent</button>
               )}
@@ -470,6 +604,30 @@ const Invoices = () => {
                 {detail.customer_email && <p className="text-sm text-gray-900 mt-0.5">{detail.customer_email}</p>}
                 {detail.customer_phone && <p className="text-xs text-gray-500">{detail.customer_phone}</p>}
               </div>
+              {detail.irn && (
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">IRN</p>
+                  <p className="text-xs font-mono text-gray-900 mt-0.5 break-all">{detail.irn}</p>
+                  {detail.ack_no && <p className="text-[10px] text-gray-400">Ack: {detail.ack_no}</p>}
+                </div>
+              )}
+              {detail.ewaybill_number && (
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">E-Way Bill</p>
+                  <p className="text-xs font-mono text-gray-900 mt-0.5">{detail.ewaybill_number}</p>
+                  {detail.ewaybill_valid_upto && <p className="text-[10px] text-gray-400">Valid till: {detail.ewaybill_valid_upto?.split('T')[0]}</p>}
+                  <button onClick={() => handleCancelEwaybill(detail.id)} className="text-[10px] text-red-500 hover:text-red-700 mt-1">Cancel EWB</button>
+                </div>
+              )}
+              {detail.payment_link_url && detail.payment_link_status !== 'cancelled' && (
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Payment Link</p>
+                  <a href={detail.payment_link_url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-emerald-600 hover:text-emerald-700 font-medium mt-0.5 block truncate">
+                    {detail.payment_link_url}
+                  </a>
+                </div>
+              )}
             </div>
 
             <table className="w-full">
@@ -585,6 +743,41 @@ const Invoices = () => {
             >
               {emailSending === mobileDetail?.id ? '...' : 'Email'}
             </button>
+            <button
+              onClick={() => { if (mobileDetail) handleWhatsAppInvoice(mobileDetail.id); }}
+              disabled={whatsappSending === mobileDetail?.id || !mobileDetail?.customer_phone}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1"
+            >
+              {whatsappSending === mobileDetail?.id ? '...' : 'WA'}
+            </button>
+            {mobileDetail?.payment_link_url && mobileDetail?.payment_link_status !== 'cancelled' ? (
+              <a href={mobileDetail.payment_link_url} target="_blank" rel="noopener noreferrer"
+                className="btn-primary text-xs px-3 py-1.5 flex-1 !bg-emerald-600 hover:!bg-emerald-700">Pay</a>
+            ) : (
+              <button onClick={() => { if (mobileDetail) handleGeneratePaymentLink(mobileDetail.id); }}
+                disabled={paymentLinkLoading === mobileDetail?.id}
+                className="btn-secondary text-xs px-3 py-1.5 flex-1">
+                {paymentLinkLoading === mobileDetail?.id ? '...' : 'Link'}
+              </button>
+            )}
+            {mobileDetail?.irn ? (
+              <span className="text-[10px] px-2 py-1 rounded bg-green-50 text-green-700 font-medium">IRN ✓</span>
+            ) : (
+              <button onClick={() => { if (mobileDetail) handleGenerateEinvoice(mobileDetail.id); }}
+                disabled={einvoiceLoading === mobileDetail?.id}
+                className="btn-secondary text-xs px-3 py-1.5 flex-1">
+                {einvoiceLoading === mobileDetail?.id ? '...' : 'IRN'}
+              </button>
+            )}
+            {mobileDetail?.ewaybill_number ? (
+              <span className="text-[10px] px-2 py-1 rounded bg-blue-50 text-blue-700 font-medium">EWB</span>
+            ) : (
+              <button onClick={() => { if (mobileDetail) handleGenerateEwaybill(mobileDetail.id); }}
+                disabled={ewaybillLoading === mobileDetail?.id}
+                className="btn-secondary text-xs px-3 py-1.5 flex-1">
+                {ewaybillLoading === mobileDetail?.id ? '...' : 'EWB'}
+              </button>
+            )}
             {mobileDetail?.status === 'draft' && (
               <button onClick={() => handleStatus(mobileDetail.id, 'sent')} className="btn-primary text-xs px-3 py-1.5 flex-1">Sent</button>
             )}
@@ -604,8 +797,15 @@ const Invoices = () => {
       >
         <div className="space-y-4">
           <DetailRow label="Customer" value={mobileDetail?.customer_name} />
-          {mobileDetail?.customer_gstin && <DetailRow label="GST" value={mobileDetail.customer_gstin} />}
-          {mobileDetail?.customer_email && <DetailRow label="Email" value={mobileDetail.customer_email} />}
+            {mobileDetail?.customer_gstin && <DetailRow label="GST" value={mobileDetail.customer_gstin} />}
+            {mobileDetail?.irn && <DetailRow label="IRN" value={mobileDetail.irn} />}
+            {mobileDetail?.ewaybill_number && <DetailRow label="EWB" value={mobileDetail.ewaybill_number} />}
+            {mobileDetail?.payment_link_url && mobileDetail?.payment_link_status !== 'cancelled' && (
+              <DetailRow label="Pay Link">
+                <a href={mobileDetail.payment_link_url} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 font-medium truncate block max-w-[200px]">{mobileDetail.payment_link_url}</a>
+              </DetailRow>
+            )}
+            {mobileDetail?.customer_email && <DetailRow label="Email" value={mobileDetail.customer_email} />}
           {mobileDetail?.customer_phone && <DetailRow label="Phone" value={mobileDetail.customer_phone} />}
           <DetailRow label="Invoice Date" value={mobileDetail?.invoice_date?.split('T')[0]} />
           <DetailRow label="Due Date" value={mobileDetail?.due_date?.split('T')[0] || '—'} />
@@ -720,6 +920,9 @@ const Invoices = () => {
                 <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="text-gray-400 hover:text-gray-600">&times;</button>
               </div>
               <div className="p-6 space-y-4">
+                {draft && !editing && (
+                  <DraftBanner savedAt={draft.savedAt} onRestore={restoreDraft} onDismiss={dismissDraft} />
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
@@ -740,11 +943,27 @@ const Invoices = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">GST Type:</span>
+                    <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })}
+                      className="input-field text-sm w-32">
+                      <option value="intra">Intra-state (CGST+SGST)</option>
+                      <option value="inter">Inter-state (IGST)</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">Place of Supply:</span>
+                    <input type="text" value={form.place_of_supply} onChange={e => setForm({ ...form, place_of_supply: e.target.value })}
+                      className="input-field text-sm w-48" placeholder="e.g. Maharashtra" />
+                  </div>
+                </div>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-gray-50 border-b">
                         <th className="table-header">Description</th>
+                        <th className="table-header text-center w-20">HSN/SAC</th>
                         <th className="table-header text-right w-24">Qty</th>
                         <th className="table-header text-right w-32">Rate (₹)</th>
                         <th className="table-header text-right w-32">Amount</th>
@@ -757,6 +976,10 @@ const Invoices = () => {
                           <td className="p-2">
                             <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)}
                               className="input-field text-sm" placeholder="Item description" required />
+                          </td>
+                          <td className="p-2">
+                            <input value={item.hsn_code} onChange={e => updateItem(i, 'hsn_code', e.target.value)}
+                              className="input-field text-sm text-center" placeholder="HSN" maxLength={8} />
                           </td>
                           <td className="p-2">
                             <input type="number" min="0.01" step="any" value={item.quantity}
@@ -788,7 +1011,16 @@ const Invoices = () => {
                 <div className="flex justify-end">
                   <div className="w-64 space-y-1">
                     <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
-                    <div className="flex justify-between text-sm"><span>Tax ({taxRate}%)</span><span>{formatINR(tax)}</span></div>
+                    {form.gst_type === 'intra' ? (
+                      <>
+                        <div className="flex justify-between text-sm text-green-600"><span>CGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
+                        <div className="flex justify-between text-sm text-green-600"><span>SGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
+                      </>
+                    ) : form.gst_type === 'inter' ? (
+                      <div className="flex justify-between text-sm text-blue-600"><span>IGST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
+                    ) : (
+                      <div className="flex justify-between text-sm"><span>Tax ({taxRate}%)</span><span>{formatINR(tax)}</span></div>
+                    )}
                     <div className="flex justify-between text-base font-bold border-t pt-1"><span>Total</span><span>{formatINR(totalAmt)}</span></div>
                   </div>
                 </div>
@@ -895,6 +1127,69 @@ const Invoices = () => {
               <button onClick={handleRecordPayment} disabled={paymentSaving || !paymentForm.amount || !paymentForm.payment_date}
                 className="btn-primary text-sm px-4 py-2">
                 {paymentSaving ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEwaybillForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">E-Way Bill Transport Details</h3>
+              <button onClick={() => setShowEwaybillForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Number</label>
+                <input type="text" value={ewaybillForm.vehicleNumber}
+                  onChange={e => setEwaybillForm({ ...ewaybillForm, vehicleNumber: e.target.value })}
+                  className="input-field" placeholder="e.g. MH-01-AB-1234" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Transporter Name</label>
+                  <input type="text" value={ewaybillForm.transporterName}
+                    onChange={e => setEwaybillForm({ ...ewaybillForm, transporterName: e.target.value })}
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Transporter GSTIN</label>
+                  <input type="text" value={ewaybillForm.transporterGstin}
+                    onChange={e => setEwaybillForm({ ...ewaybillForm, transporterGstin: e.target.value })}
+                    className="input-field" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Transport Doc No.</label>
+                  <input type="text" value={ewaybillForm.transportDocNumber}
+                    onChange={e => setEwaybillForm({ ...ewaybillForm, transportDocNumber: e.target.value })}
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Doc Date</label>
+                  <input type="date" value={ewaybillForm.transportDocDate}
+                    onChange={e => setEwaybillForm({ ...ewaybillForm, transportDocDate: e.target.value })}
+                    className="input-field" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Distance (km)</label>
+                <input type="number" min="0" value={ewaybillForm.distance}
+                  onChange={e => setEwaybillForm({ ...ewaybillForm, distance: e.target.value })}
+                  className="input-field" placeholder="Approximate distance" />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setShowEwaybillForm(false)} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+              <button onClick={() => {
+                const invId = detail?.id || mobileDetail?.id;
+                if (invId) handleGenerateEwaybill(invId);
+              }} disabled={ewaybillLoading}
+                className="btn-primary text-sm px-4 py-2">
+                {ewaybillLoading ? 'Generating...' : 'Generate EWB'}
               </button>
             </div>
           </div>

@@ -27,6 +27,13 @@ const Settings = () => {
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
   const [hideTempPassword, setHideTempPassword] = useState(false);
+  const [seller, setSeller] = useState({
+    sellerGstin: '', sellerLegalName: '', sellerAddress: '', sellerCity: '',
+    sellerState: '', sellerPincode: '', sellerEmail: '',
+    einvoiceEnabled: false, irpClientId: '', irpClientSecret: '', irpUsername: '', irpGstin: '',
+  });
+  const [whatsapp, setWhatsapp] = useState({ whatsappEnabled: false, whatsappPhone: '', autoSendInvoice: false, autoSendPO: false });
+  const [whatsappLoaded, setWhatsappLoaded] = useState(false);
   const [message, setMessage] = useState('');
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -53,7 +60,23 @@ const Settings = () => {
         setHideTempPassword(res.settings.hideTempPassword);
         localStorage.setItem('hide_temp_password', res.settings.hideTempPassword ? 'true' : 'false');
       }
+      if (res.settings?.sellerGstin) setSeller(s => ({ ...s, sellerGstin: res.settings.sellerGstin }));
+      if (res.settings?.sellerLegalName) setSeller(s => ({ ...s, sellerLegalName: res.settings.sellerLegalName }));
+      if (res.settings?.sellerAddress) setSeller(s => ({ ...s, sellerAddress: res.settings.sellerAddress }));
+      if (res.settings?.sellerCity) setSeller(s => ({ ...s, sellerCity: res.settings.sellerCity }));
+      if (res.settings?.sellerState) setSeller(s => ({ ...s, sellerState: res.settings.sellerState }));
+      if (res.settings?.sellerPincode) setSeller(s => ({ ...s, sellerPincode: res.settings.sellerPincode }));
+      if (res.settings?.sellerEmail) setSeller(s => ({ ...s, sellerEmail: res.settings.sellerEmail }));
+      if (res.settings?.einvoiceEnabled !== undefined) setSeller(s => ({ ...s, einvoiceEnabled: res.settings.einvoiceEnabled }));
+      if (res.settings?.irpClientId) setSeller(s => ({ ...s, irpClientId: res.settings.irpClientId }));
+      if (res.settings?.irpClientSecret) setSeller(s => ({ ...s, irpClientSecret: res.settings.irpClientSecret }));
+      if (res.settings?.irpUsername) setSeller(s => ({ ...s, irpUsername: res.settings.irpUsername }));
+      if (res.settings?.irpGstin) setSeller(s => ({ ...s, irpGstin: res.settings.irpGstin }));
     }).catch(() => {});
+
+    if (planRank >= 1) {
+      hrService.whatsappGetSettings().then(setWhatsapp).catch(() => {}).finally(() => setWhatsappLoaded(true));
+    }
   }, []);
 
   const toggleWeekendDay = (day) => {
@@ -67,7 +90,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, groupLabels, currencySymbol, countryCode, hideTempPassword }
+        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, groupLabels, currencySymbol, countryCode, hideTempPassword, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('group_labels', JSON.stringify(groupLabels));
@@ -247,6 +270,126 @@ const Settings = () => {
           <button type="submit" className="btn-primary">Save Changes</button>
         </form>
       </div>
+
+      {planRank >= 1 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-gray-900">E-Invoicing (GST)</h3>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-gray-400">Configure your business details for e-invoice generation (IRN) via NIC IRP. Mandatory for businesses with ₹5Cr+ turnover.</p>
+
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={seller.einvoiceEnabled} onChange={e => setSeller({ ...seller, einvoiceEnabled: e.target.checked })}
+                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+              <span className="text-sm text-gray-700">Enable e-invoicing (generate IRN for B2B invoices)</span>
+            </label>
+
+            {seller.einvoiceEnabled && (
+              <div className="space-y-4 pl-6 border-l-2 border-indigo-200">
+                <h4 className="text-sm font-semibold text-gray-800">Seller Business Details</h4>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
+                  <input type="text" value={seller.sellerGstin} onChange={e => setSeller({ ...seller, sellerGstin: e.target.value })}
+                    className="input-field" placeholder="29AAAAA0000A1Z5" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Legal Name (as per GST)</label>
+                  <input type="text" value={seller.sellerLegalName} onChange={e => setSeller({ ...seller, sellerLegalName: e.target.value })}
+                    className="input-field" placeholder="ABC Pvt Ltd" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Registered Address</label>
+                  <input type="text" value={seller.sellerAddress} onChange={e => setSeller({ ...seller, sellerAddress: e.target.value })}
+                    className="input-field" placeholder="123, Main Street" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input type="text" value={seller.sellerCity} onChange={e => setSeller({ ...seller, sellerCity: e.target.value })}
+                      className="input-field" placeholder="Bengaluru" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input type="text" value={seller.sellerState} onChange={e => setSeller({ ...seller, sellerState: e.target.value })}
+                      className="input-field" placeholder="Karnataka" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
+                    <input type="text" value={seller.sellerPincode} onChange={e => setSeller({ ...seller, sellerPincode: e.target.value })}
+                      className="input-field" placeholder="560001" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email (for IRP communication)</label>
+                  <input type="email" value={seller.sellerEmail} onChange={e => setSeller({ ...seller, sellerEmail: e.target.value })}
+                    className="input-field" placeholder="admin@example.com" />
+                </div>
+
+                <hr className="border-gray-200" />
+                <h4 className="text-sm font-semibold text-gray-800">IRP API Credentials</h4>
+                <p className="text-xs text-gray-400">Leave blank to use simulation mode (mock IRN for testing).</p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IRP Client ID</label>
+                  <input type="text" value={seller.irpClientId} onChange={e => setSeller({ ...seller, irpClientId: e.target.value })}
+                    className="input-field" placeholder="From NIC registration" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IRP Client Secret</label>
+                  <input type="password" value={seller.irpClientSecret} onChange={e => setSeller({ ...seller, irpClientSecret: e.target.value })}
+                    className="input-field" placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IRP Username</label>
+                  <input type="text" value={seller.irpUsername} onChange={e => setSeller({ ...seller, irpUsername: e.target.value })}
+                    className="input-field" placeholder="e-invoice portal username" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IRP GSTIN (if different)</label>
+                  <input type="text" value={seller.irpGstin} onChange={e => setSeller({ ...seller, irpGstin: e.target.value })}
+                    className="input-field" placeholder="Leave blank to use seller GSTIN" />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {planRank >= 1 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-gray-900">WhatsApp Notifications</h3>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-gray-400">Send invoice/PO notifications via WhatsApp using Twilio.</p>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={whatsapp.whatsappEnabled} onChange={e => setWhatsapp({ ...whatsapp, whatsappEnabled: e.target.checked })}
+                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+              <span className="text-sm text-gray-700">Enable WhatsApp notifications</span>
+            </label>
+            {whatsapp.whatsappEnabled && (
+              <div className="space-y-4 pl-6 border-l-2 border-indigo-200">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Your WhatsApp Number</label>
+                  <input type="text" value={whatsapp.whatsappPhone} onChange={e => setWhatsapp({ ...whatsapp, whatsappPhone: e.target.value })}
+                    className="input-field max-w-[200px]" placeholder="+919999999999" />
+                  <p className="text-xs text-gray-400 mt-1">The business WhatsApp number (must be opted in with Twilio).</p>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={whatsapp.autoSendInvoice} onChange={e => setWhatsapp({ ...whatsapp, autoSendInvoice: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-gray-700">Auto-send WhatsApp when creating invoices</span>
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={whatsapp.autoSendPO} onChange={e => setWhatsapp({ ...whatsapp, autoSendPO: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-gray-700">Auto-send WhatsApp when creating purchase orders</span>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-header">

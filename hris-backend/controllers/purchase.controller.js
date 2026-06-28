@@ -3,6 +3,109 @@ const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../utils/email');
 const { logEmail } = require('../utils/emailLogger');
+const { log } = require('../utils/audit');
+const stockCtrl = require('./stock.controller');
+
+function computeTaxSplit(items) {
+  let totalCGST = 0, totalSGST = 0, totalIGST = 0;
+  items.forEach(item => {
+    totalCGST += Math.round((item.total_price || 0) * (parseFloat(item.cgst_rate) || 0) / 100);
+    totalSGST += Math.round((item.total_price || 0) * (parseFloat(item.sgst_rate) || 0) / 100);
+    totalIGST += Math.round((item.total_price || 0) * (parseFloat(item.igst_rate) || 0) / 100);
+  });
+  return { totalCGST, totalSGST, totalIGST };
+}
+
+function generatePODoc(doc, po, items, poTaxRate) {
+  const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
+  const taxSplit = computeTaxSplit(items);
+  const hasGst = po.gst_type === 'intra' || po.gst_type === 'inter';
+  const hasHsn = items.some(i => i.hsn_code);
+
+  doc.fontSize(18).text(po.company_name.toUpperCase(), { align: 'center' });
+  doc.fontSize(12).text('PURCHASE ORDER', { align: 'center' }).moveDown(2);
+
+  doc.fontSize(10).font('Helvetica-Bold');
+  doc.text(`PO Number: `, { continued: true }).font('Helvetica').text(po.po_number);
+  doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(po.order_date));
+  if (po.expected_date) {
+    doc.font('Helvetica-Bold').text(`Expected Delivery: `, { continued: true }).font('Helvetica').text(fmtDate(po.expected_date));
+  }
+  doc.moveDown(2);
+
+  doc.font('Helvetica-Bold').text('Supplier:', { underline: true }).moveDown(0.5);
+  doc.font('Helvetica').text(po.supplier_name);
+  if (po.supplier_address) doc.text(po.supplier_address);
+  if (po.supplier_city) doc.text(`${po.supplier_city}${po.supplier_state ? ', ' + po.supplier_state : ''}`);
+  if (po.supplier_email) doc.text(`Email: ${po.supplier_email}`);
+  if (po.supplier_phone) doc.text(`Phone: ${po.supplier_phone}`);
+  if (po.supplier_gstin) doc.text(`GSTIN: ${po.supplier_gstin}`);
+  if (po.place_of_supply) doc.text(`Place of Supply: ${po.place_of_supply}`);
+  doc.moveDown(2);
+
+  doc.font('Helvetica-Bold').text(`Status: ${po.status.toUpperCase()}`).moveDown(1);
+  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
+
+  const tableTop = doc.y;
+  const colX = hasHsn ? [50, 160, 310, 350, 400, 460, 510] : [50, 180, 370, 420, 480];
+  doc.font('Helvetica-Bold').fontSize(8);
+  doc.text('#', colX[0], tableTop);
+  doc.text('Description', colX[1], tableTop, { width: hasHsn ? 150 : 190 });
+  let nCol = 2;
+  if (hasHsn) { doc.text('HSN/SAC', colX[2], tableTop, { width: 40, align: 'center' }); nCol = 3; }
+  doc.text('Qty', colX[nCol], tableTop, { width: 40, align: 'right' });
+  doc.text('Rate', colX[nCol + 1], tableTop, { width: 55, align: 'right' });
+  doc.text('Amount', colX[nCol + 2], tableTop, { width: 65, align: 'right' });
+
+  doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
+  let y = doc.y + 8;
+  doc.fontSize(8).font('Helvetica');
+
+  for (const [i, item] of items.entries()) {
+    doc.text(String(i + 1), colX[0], y);
+    doc.text(item.description, colX[1], y, { width: hasHsn ? 150 : 190 });
+    let c = 2;
+    if (hasHsn) { doc.text(item.hsn_code || '—', colX[2], y, { width: 40, align: 'center' }); c = 3; }
+    doc.text(item.quantity.toString(), colX[c], y, { width: 40, align: 'right' });
+    doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[c + 1], y, { width: 55, align: 'right' });
+    doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[c + 2], y, { width: 65, align: 'right' });
+    y += 18;
+  }
+
+  doc.moveTo(50, y).lineTo(550, y).stroke();
+  y += 8;
+
+  doc.font('Helvetica-Bold').fontSize(9);
+  doc.text('Subtotal:', colX[nCol + 1], y, { width: 55, align: 'right' });
+  doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+  y += 16;
+
+  if (hasGst && po.gst_type === 'intra') {
+    doc.text(`CGST @ ${poTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
+    doc.text(`Rs.${(taxSplit.totalCGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+    y += 14;
+    doc.text(`SGST @ ${poTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
+    doc.text(`Rs.${(taxSplit.totalSGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+    y += 16;
+  } else if (hasGst && po.gst_type === 'inter') {
+    doc.text(`IGST @ ${poTaxRate}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
+    doc.text(`Rs.${(taxSplit.totalIGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+    y += 16;
+  } else {
+    doc.text(`Tax (${poTaxRate}%):`, colX[nCol + 1], y, { width: 55, align: 'right' });
+    doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+    y += 16;
+  }
+
+  doc.text('Total:', colX[nCol + 1], y, { width: 55, align: 'right' });
+  doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+
+  if (po.notes) {
+    y += 30;
+    doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
+    doc.font('Helvetica').fontSize(9).text(po.notes, 50, doc.y + 4, { width: 500 });
+  }
+}
 
 exports.list = async (req, res) => {
   const tenantId = req.tenantId;
@@ -64,7 +167,7 @@ exports.get = async (req, res) => {
 
 exports.create = async (req, res) => {
   const tenantId = req.tenantId;
-  const { supplier_id, order_date, expected_date, items, notes } = req.body;
+  const { supplier_id, order_date, expected_date, items, notes, gst_type, place_of_supply } = req.body;
 
   if (!supplier_id || !order_date || !items?.length) {
     return res.status(400).json({ error: 'Supplier, order date, and at least one item are required.' });
@@ -82,33 +185,57 @@ exports.create = async (req, res) => {
     const poNumber = `PO-${String(next).padStart(4, '0')}`;
 
     let subtotal = 0;
+    let totalTaxAmount = 0;
+    const useGst = gst_type === 'intra' || gst_type === 'inter';
+
     const lineItems = items.map(item => {
       const qty = parseFloat(item.quantity) || 1;
       const price = Math.round(parseFloat(item.unit_price) || 0);
       const total = Math.round(qty * price);
       subtotal += total;
-      return { ...item, quantity: qty, unit_price: price, total_price: total };
-    });
-    const taxAmount = Math.round(subtotal * taxRate);
-    const totalAmount = subtotal + taxAmount;
 
+      let cgstRate = 0, sgstRate = 0, igstRate = 0;
+      if (useGst) {
+        if (gst_type === 'intra') {
+          cgstRate = parseFloat(item.cgst_rate) || (taxRate * 100) / 2;
+          sgstRate = parseFloat(item.sgst_rate) || (taxRate * 100) / 2;
+        } else {
+          igstRate = parseFloat(item.igst_rate) || (taxRate * 100);
+        }
+      }
+
+      const cgstAmt = Math.round(total * cgstRate / 100);
+      const sgstAmt = Math.round(total * sgstRate / 100);
+      const igstAmt = Math.round(total * igstRate / 100);
+      totalTaxAmount += cgstAmt + sgstAmt + igstAmt;
+
+      return {
+        ...item,
+        quantity: qty, unit_price: price, total_price: total,
+        hsn_code: item.hsn_code || null,
+        cgst_rate: cgstRate, sgst_rate: sgstRate, igst_rate: igstRate,
+      };
+    });
+
+    const totalAmount = subtotal + totalTaxAmount;
     const poId = uuidv4();
 
     await db.query(
-      `INSERT INTO purchase_orders (id, tenant_id, po_number, supplier_id, order_date, expected_date, status, subtotal, tax_amount, total_amount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
-      [poId, tenantId, poNumber, supplier_id, order_date, expected_date || null, subtotal, taxAmount, totalAmount, notes || null]
+      `INSERT INTO purchase_orders (id, tenant_id, po_number, supplier_id, order_date, expected_date, status, subtotal, tax_amount, total_amount, notes, gst_type, place_of_supply)
+       VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`,
+      [poId, tenantId, poNumber, supplier_id, order_date, expected_date || null, subtotal, totalTaxAmount, totalAmount, notes || null, gst_type || null, place_of_supply || null]
     );
 
     for (const item of lineItems) {
       await db.query(
-        `INSERT INTO purchase_order_items (id, purchase_order_id, description, quantity, unit_price, total_price)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [uuidv4(), poId, item.description, item.quantity, item.unit_price, item.total_price]
+        `INSERT INTO purchase_order_items (id, purchase_order_id, description, quantity, unit_price, total_price, hsn_code, cgst_rate, sgst_rate, igst_rate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), poId, item.description, item.quantity, item.unit_price, item.total_price, item.hsn_code, item.cgst_rate, item.sgst_rate, item.igst_rate]
       );
     }
 
     res.status(201).json({ message: 'Purchase order created.', id: poId, po_number: poNumber });
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'purchase_order.created', entityType: 'purchase_order', entityId: poId, req });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create purchase order.' });
@@ -118,7 +245,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   const tenantId = req.tenantId;
   const poId = req.params.id;
-  const { supplier_id, order_date, expected_date, status, items, notes } = req.body;
+  const { supplier_id, order_date, expected_date, status, items, notes, gst_type, place_of_supply } = req.body;
 
   try {
     const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
@@ -130,38 +257,63 @@ exports.update = async (req, res) => {
 
     let subtotal = 0;
     if (items?.length) {
+      let totalTaxAmount = 0;
+      const useGst = gst_type === 'intra' || gst_type === 'inter';
+
       const lineItems = items.map(item => {
         const qty = parseFloat(item.quantity) || 1;
         const price = Math.round(parseFloat(item.unit_price) || 0);
         const total = Math.round(qty * price);
         subtotal += total;
-        return { ...item, quantity: qty, unit_price: price, total_price: total };
+
+        let cgstRate = 0, sgstRate = 0, igstRate = 0;
+        if (useGst) {
+          if (gst_type === 'intra') {
+            cgstRate = parseFloat(item.cgst_rate) || (taxRate * 100) / 2;
+            sgstRate = parseFloat(item.sgst_rate) || (taxRate * 100) / 2;
+          } else {
+            igstRate = parseFloat(item.igst_rate) || (taxRate * 100);
+          }
+        }
+
+        const cgstAmt = Math.round(total * cgstRate / 100);
+        const sgstAmt = Math.round(total * sgstRate / 100);
+        const igstAmt = Math.round(total * igstRate / 100);
+        totalTaxAmount += cgstAmt + sgstAmt + igstAmt;
+
+        return {
+          ...item,
+          quantity: qty, unit_price: price, total_price: total,
+          hsn_code: item.hsn_code || null,
+          cgst_rate: cgstRate, sgst_rate: sgstRate, igst_rate: igstRate,
+        };
       });
-      const taxAmount = Math.round(subtotal * taxRate);
-      const totalAmount = subtotal + taxAmount;
+
+      const totalAmount = subtotal + totalTaxAmount;
 
       await db.query(
-        `UPDATE purchase_orders SET supplier_id=?, order_date=?, expected_date=?, status=?, subtotal=?, tax_amount=?, total_amount=?, notes=?
+        `UPDATE purchase_orders SET supplier_id=?, order_date=?, expected_date=?, status=?, subtotal=?, tax_amount=?, total_amount=?, notes=?, gst_type=?, place_of_supply=?
          WHERE id=? AND tenant_id=?`,
-        [supplier_id, order_date, expected_date || null, status || 'draft', subtotal, taxAmount, totalAmount, notes || null, poId, tenantId]
+        [supplier_id, order_date, expected_date || null, status || 'draft', subtotal, totalTaxAmount, totalAmount, notes || null, gst_type || null, place_of_supply || null, poId, tenantId]
       );
 
       await db.query('DELETE FROM purchase_order_items WHERE purchase_order_id = ?', [poId]);
       for (const item of lineItems) {
         await db.query(
-          `INSERT INTO purchase_order_items (id, purchase_order_id, description, quantity, unit_price, total_price)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), poId, item.description, item.quantity, item.unit_price, item.total_price]
+          `INSERT INTO purchase_order_items (id, purchase_order_id, description, quantity, unit_price, total_price, hsn_code, cgst_rate, sgst_rate, igst_rate)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), poId, item.description, item.quantity, item.unit_price, item.total_price, item.hsn_code, item.cgst_rate, item.sgst_rate, item.igst_rate]
         );
       }
     } else {
       await db.query(
-        `UPDATE purchase_orders SET supplier_id=?, order_date=?, expected_date=?, status=?, notes=? WHERE id=? AND tenant_id=?`,
-        [supplier_id, order_date, expected_date || null, status || 'draft', notes || null, poId, tenantId]
+        `UPDATE purchase_orders SET supplier_id=?, order_date=?, expected_date=?, status=?, notes=?, gst_type=?, place_of_supply=? WHERE id=? AND tenant_id=?`,
+        [supplier_id, order_date, expected_date || null, status || 'draft', notes || null, gst_type || null, place_of_supply || null, poId, tenantId]
       );
     }
 
     res.json({ message: 'Purchase order updated.' });
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'purchase_order.updated', entityType: 'purchase_order', entityId: poId, req });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update purchase order.' });
@@ -180,7 +332,16 @@ exports.updateStatus = async (req, res) => {
       [status, req.params.id, req.tenantId]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Purchase order not found.' });
+
+    // Auto stock-in when PO is received
+    if (status === 'received') {
+      stockCtrl.stockInFromPO(req.tenantId, req.params.id, req.user?.id || null).catch(err => {
+        console.error('stockInFromPO error:', err);
+      });
+    }
+
     res.json({ message: `Status updated to ${status}.` });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: `purchase_order.status_${status}`, entityType: 'purchase_order', entityId: req.params.id, changes: { status }, req });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update status.' });
   }
@@ -206,77 +367,12 @@ exports.downloadPDF = async (req, res) => {
       'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
     );
 
-    const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
-
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${po.po_number}.pdf`);
     doc.pipe(res);
 
-    doc.fontSize(18).text(po.company_name.toUpperCase(), { align: 'center' });
-    doc.fontSize(12).text('PURCHASE ORDER', { align: 'center' }).moveDown(2);
-
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.text(`PO Number: `, { continued: true }).font('Helvetica').text(po.po_number);
-    doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(po.order_date));
-    if (po.expected_date) {
-      doc.font('Helvetica-Bold').text(`Expected Delivery: `, { continued: true }).font('Helvetica').text(fmtDate(po.expected_date));
-    }
-    doc.moveDown(2);
-
-    doc.font('Helvetica-Bold').text('Supplier:', { underline: true }).moveDown(0.5);
-    doc.font('Helvetica').text(po.supplier_name);
-    if (po.supplier_address) doc.text(po.supplier_address);
-    if (po.supplier_city) doc.text(`${po.supplier_city}${po.supplier_state ? ', ' + po.supplier_state : ''}`);
-    if (po.supplier_email) doc.text(`Email: ${po.supplier_email}`);
-    if (po.supplier_phone) doc.text(`Phone: ${po.supplier_phone}`);
-    if (po.supplier_gstin) doc.text(`GSTIN: ${po.supplier_gstin}`);
-    doc.moveDown(2);
-
-    doc.font('Helvetica-Bold').text(`Status: ${po.status.toUpperCase()}`, { color: '#6366f1' }).moveDown(1);
-
-    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
-
-    const tableTop = doc.y;
-    const colX = [50, 190, 370, 420, 480];
-    doc.font('Helvetica-Bold').fontSize(9);
-    doc.text('#', colX[0], tableTop);
-    doc.text('Description', colX[1], tableTop);
-    doc.text('Qty', colX[2], tableTop, { width: 50, align: 'right' });
-    doc.text('Rate', colX[3], tableTop, { width: 60, align: 'right' });
-    doc.text('Amount', colX[4], tableTop, { width: 70, align: 'right' });
-
-    doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
-    let y = doc.y + 8;
-    doc.fontSize(9).font('Helvetica');
-
-    for (const [i, item] of items.entries()) {
-      doc.text(String(i + 1), colX[0], y);
-      doc.text(item.description, colX[1], y, { width: 180 });
-      doc.text(item.quantity.toString(), colX[2], y, { width: 50, align: 'right' });
-      doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[3], y, { width: 60, align: 'right' });
-      doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-      y += 18;
-    }
-
-    doc.moveTo(50, y).lineTo(550, y).stroke();
-    y += 8;
-
-    doc.font('Helvetica-Bold');
-    doc.text('Subtotal:', colX[3], y, { width: 60, align: 'right' });
-    doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-    y += 16;
-    doc.text(`Tax (${poTaxRate}%):`, colX[3], y, { width: 60, align: 'right' });
-    doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-    y += 16;
-    doc.text('Total:', colX[3], y, { width: 60, align: 'right' });
-    doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-
-    if (po.notes) {
-      y += 30;
-      doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
-      doc.font('Helvetica').fontSize(9).text(po.notes, 50, doc.y + 4, { width: 500 });
-    }
+    generatePODoc(doc, po, items, poTaxRate);
 
     doc.end();
   } catch (error) {
@@ -310,76 +406,12 @@ exports.sendEmail = async (req, res) => {
       'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
     );
 
-    const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
-
     const chunks = [];
     const doc = new PDFDocument({ margin: 50, bufferPages: true });
     doc.on('data', c => chunks.push(c));
     await new Promise(resolve => {
       doc.on('end', resolve);
-      doc.fontSize(18).text(po.company_name.toUpperCase(), { align: 'center' });
-      doc.fontSize(12).text('PURCHASE ORDER', { align: 'center' }).moveDown(2);
-
-      doc.fontSize(10).font('Helvetica-Bold');
-      doc.text(`PO Number: `, { continued: true }).font('Helvetica').text(po.po_number);
-      doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(po.order_date));
-      if (po.expected_date) {
-        doc.font('Helvetica-Bold').text(`Expected Delivery: `, { continued: true }).font('Helvetica').text(fmtDate(po.expected_date));
-      }
-      doc.moveDown(2);
-
-      doc.font('Helvetica-Bold').text('Supplier:', { underline: true }).moveDown(0.5);
-      doc.font('Helvetica').text(po.supplier_name);
-      if (po.supplier_address) doc.text(po.supplier_address);
-      if (po.supplier_city) doc.text(`${po.supplier_city}${po.supplier_state ? ', ' + po.supplier_state : ''}`);
-      if (po.supplier_email) doc.text(`Email: ${po.supplier_email}`);
-      if (po.supplier_gstin) doc.text(`GSTIN: ${po.supplier_gstin}`);
-      doc.moveDown(2);
-
-      doc.font('Helvetica-Bold').text(`Status: ${po.status.toUpperCase()}`).moveDown(1);
-      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
-
-      const tableTop = doc.y;
-      const colX = [50, 190, 370, 420, 480];
-      doc.font('Helvetica-Bold').fontSize(9);
-      doc.text('#', colX[0], tableTop);
-      doc.text('Description', colX[1], tableTop);
-      doc.text('Qty', colX[2], tableTop, { width: 50, align: 'right' });
-      doc.text('Rate', colX[3], tableTop, { width: 60, align: 'right' });
-      doc.text('Amount', colX[4], tableTop, { width: 70, align: 'right' });
-
-      doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
-      let y = doc.y + 8;
-      doc.fontSize(9).font('Helvetica');
-
-      for (const [i, item] of items.entries()) {
-        doc.text(String(i + 1), colX[0], y);
-        doc.text(item.description, colX[1], y, { width: 180 });
-        doc.text(item.quantity.toString(), colX[2], y, { width: 50, align: 'right' });
-        doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[3], y, { width: 60, align: 'right' });
-        doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-        y += 18;
-      }
-
-      doc.moveTo(50, y).lineTo(550, y).stroke();
-      y += 8;
-
-      doc.font('Helvetica-Bold');
-      doc.text('Subtotal:', colX[3], y, { width: 60, align: 'right' });
-      doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-      y += 16;
-      doc.text(`Tax (${poTaxRate}%):`, colX[3], y, { width: 60, align: 'right' });
-      doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-      y += 16;
-      doc.text('Total:', colX[3], y, { width: 60, align: 'right' });
-      doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, colX[4], y, { width: 70, align: 'right' });
-
-      if (po.notes) {
-        y += 30;
-        doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
-        doc.font('Helvetica').fontSize(9).text(po.notes, 50, doc.y + 4, { width: 500 });
-      }
-
+      generatePODoc(doc, po, items, poTaxRate);
       doc.end();
     });
 
@@ -439,6 +471,7 @@ exports.remove = async (req, res) => {
     const [result] = await db.query('DELETE FROM purchase_orders WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Purchase order not found.' });
     res.json({ message: 'Purchase order deleted.' });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'purchase_order.deleted', entityType: 'purchase_order', entityId: req.params.id, req });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete purchase order.' });
   }
@@ -456,6 +489,7 @@ exports.bulkDelete = async (req, res) => {
       [...ids, req.tenantId]
     );
     res.json({ message: `${result.affectedRows} purchase order(s) deleted.` });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'purchase_order.bulk_delete', entityType: 'purchase_order', changes: { ids, count: result.affectedRows }, req });
   } catch (error) {
     console.error('bulkDelete POs error:', error);
     res.status(500).json({ error: 'Failed to delete purchase orders.' });

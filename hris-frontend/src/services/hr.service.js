@@ -314,6 +314,48 @@ export const hrService = {
     link.click();
   },
 
+  // Inventory / Products
+  getProducts: async (params) => {
+    const response = await api.get('/core/products', { params });
+    return response.data;
+  },
+  getProduct: async (id) => {
+    const response = await api.get(`/core/products/${id}`);
+    return response.data;
+  },
+  createProduct: async (data) => {
+    const response = await api.post('/core/products', data);
+    return response.data;
+  },
+  updateProduct: async (id, data) => {
+    const response = await api.put(`/core/products/${id}`, data);
+    return response.data;
+  },
+  deleteProduct: async (id) => {
+    const response = await api.delete(`/core/products/${id}`);
+    return response.data;
+  },
+  bulkDeleteProducts: async (ids) => {
+    const response = await api.post('/core/products/bulk/delete', { ids });
+    return response.data;
+  },
+  getStockMovements: async (params) => {
+    const response = await api.get('/core/stock/movements', { params });
+    return response.data;
+  },
+  recordStockMovement: async (data) => {
+    const response = await api.post('/core/stock/movements', data);
+    return response.data;
+  },
+  getLowStockAlerts: async () => {
+    const response = await api.get('/core/stock/alerts');
+    return response.data;
+  },
+  getStockSummary: async () => {
+    const response = await api.get('/core/stock/summary');
+    return response.data;
+  },
+
   // Attachments
   uploadFiles: async (entity_type, entity_id, files, onProgress) => {
     const formData = new FormData();
@@ -500,6 +542,227 @@ export const hrService = {
   },
   getDashboard: async () => {
     const response = await api.get('/core/dashboard');
+    return response.data;
+  },
+  globalSearch: async (q) => {
+    const response = await api.get('/core/search', { params: { q } });
+    return response.data;
+  },
+  getRecurringTemplates: async (params) => {
+    const response = await api.get('/core/recurring-invoices', { params });
+    return response.data;
+  },
+  getRecurringTemplate: async (id) => {
+    const response = await api.get(`/core/recurring-invoices/${id}`);
+    return response.data;
+  },
+  createRecurringTemplate: async (data) => {
+    const response = await api.post('/core/recurring-invoices', data);
+    return response.data;
+  },
+  updateRecurringTemplate: async (id, data) => {
+    const response = await api.put(`/core/recurring-invoices/${id}`, data);
+    return response.data;
+  },
+  toggleRecurringTemplate: async (id, isActive) => {
+    const response = await api.patch(`/core/recurring-invoices/${id}/toggle`, { is_active: isActive });
+    return response.data;
+  },
+  deleteRecurringTemplate: async (id) => {
+    const response = await api.delete(`/core/recurring-invoices/${id}`);
+    return response.data;
+  },
+  generateRecurringInvoice: async (id) => {
+    const response = await api.post(`/core/recurring-invoices/${id}/generate`);
+    return response.data;
+  },
+  bankImportPreview: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/core/bank/import/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+    return response.data;
+  },
+  bankImportConfirm: async (rows) => {
+    const response = await api.post('/core/bank/import/confirm', { rows });
+    return response.data;
+  },
+  bankGetTransactions: async (params) => {
+    const response = await api.get('/core/bank/transactions', { params });
+    return response.data;
+  },
+  bankGetImports: async () => {
+    const response = await api.get('/core/bank/imports');
+    return response.data;
+  },
+  bankCategorize: async (id, category) => {
+    const response = await api.patch(`/core/bank/transactions/${id}/categorize`, { category });
+    return response.data;
+  },
+  bankMatch: async (id, invoiceId) => {
+    const response = await api.patch(`/core/bank/transactions/${id}/match`, { invoice_id: invoiceId });
+    return response.data;
+  },
+  whatsappGetSettings: async () => {
+    const response = await api.get('/core/whatsapp/settings');
+    return response.data;
+  },
+  whatsappSendInvoice: async (id) => {
+    const response = await api.post(`/core/whatsapp/send/invoice/${id}`);
+    return response.data;
+  },
+  whatsappSendPO: async (id) => {
+    const response = await api.post(`/core/whatsapp/send/purchase-order/${id}`);
+    return response.data;
+  },
+  whatsappSendPaymentReminder: async (id) => {
+    const response = await api.post(`/core/whatsapp/send/payment-reminder/${id}`);
+    return response.data;
+  },
+  whatsappGetLogs: async (params) => {
+    const response = await api.get('/core/whatsapp/logs', { params });
+    return response.data;
+  },
+  generateEinvoice: async (id) => {
+    const response = await api.post(`/core/einvoice/${id}/generate`);
+    return response.data;
+  },
+  cancelEinvoice: async (id, reason) => {
+    const response = await api.post(`/core/einvoice/${id}/cancel`, { reason });
+    return response.data;
+  },
+  getEinvoiceStatus: async (id) => {
+    const response = await api.get(`/core/einvoice/${id}/status`);
+    return response.data;
+  },
+  getEinvoiceQrCode: async (id) => {
+    const response = await api.get(`/core/einvoice/${id}/qrcode`);
+    return response.data;
+  },
+  generatePaymentLink: async (id) => {
+    const response = await api.post(`/core/invoice-payments/${id}/generate`);
+    return response.data;
+  },
+  cancelPaymentLink: async (id) => {
+    const response = await api.post(`/core/invoice-payments/${id}/cancel`);
+    return response.data;
+  },
+  getNotes: async (type, params) => {
+    const response = await api.get(`/core/notes/${type}`, { params });
+    return response.data;
+  },
+  getNote: async (type, id) => {
+    const response = await api.get(`/core/notes/${type}/${id}`);
+    return response.data;
+  },
+  createNote: async (type, data) => {
+    const response = await api.post(`/core/notes/${type}`, data);
+    return response.data;
+  },
+  updateNoteStatus: async (type, id, status) => {
+    const response = await api.patch(`/core/notes/${type}/${id}/status`, { status });
+    return response.data;
+  },
+  deleteNote: async (type, id) => {
+    const response = await api.delete(`/core/notes/${type}/${id}`);
+    return response.data;
+  },
+  getGstr1: async (from, to) => {
+    const response = await api.get('/core/gst-returns/gstr1', { params: { from, to } });
+    return response.data;
+  },
+  downloadGstr1Json: async (from, to) => {
+    const response = await api.get('/core/gst-returns/gstr1/download', {
+      params: { from, to },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    const match = response.headers['content-disposition']?.match(/filename=(.+)/);
+    link.setAttribute('download', match ? match[1] : `GSTR1_${from}_${to}.json`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return response.data;
+  },
+  getGstr3b: async (from, to) => {
+    const response = await api.get('/core/gst-returns/gstr3b', { params: { from, to } });
+    return response.data;
+  },
+  generateEwaybill: async (id, transport) => {
+    const response = await api.post(`/core/ewaybill/${id}/generate`, transport);
+    return response.data;
+  },
+  cancelEwaybill: async (id, reason) => {
+    const response = await api.post(`/core/ewaybill/${id}/cancel`, { reason });
+    return response.data;
+  },
+  getEwaybillStatus: async (id) => {
+    const response = await api.get(`/core/ewaybill/${id}/status`);
+    return response.data;
+  },
+  uploadGstr2b: async (period, jsonData) => {
+    const response = await api.post('/core/gstr2b/upload', { period, jsonData }, { timeout: 30000 });
+    return response.data;
+  },
+  getGstr2bImports: async () => {
+    const response = await api.get('/core/gstr2b/imports');
+    return response.data;
+  },
+  getGstr2bItems: async (params) => {
+    const response = await api.get('/core/gstr2b/items', { params });
+    return response.data;
+  },
+  getGstr2bStats: async () => {
+    const response = await api.get('/core/gstr2b/stats');
+    return response.data;
+  },
+  matchGstr2bItem: async (id, poId) => {
+    const response = await api.post(`/core/gstr2b/items/${id}/match`, { poId });
+    return response.data;
+  },
+  unmatchGstr2bItem: async (id) => {
+    const response = await api.post(`/core/gstr2b/items/${id}/unmatch`);
+    return response.data;
+  },
+  deleteGstr2bImport: async (id) => {
+    const response = await api.delete(`/core/gstr2b/imports/${id}`);
+    return response.data;
+  },
+  getTdsSections: async () => {
+    const response = await api.get('/core/tds/sections');
+    return response.data;
+  },
+  getTdsDeductions: async (params) => {
+    const response = await api.get('/core/tds/deductions', { params });
+    return response.data;
+  },
+  createTdsDeduction: async (data) => {
+    const response = await api.post('/core/tds/deductions', data);
+    return response.data;
+  },
+  updateTdsDeduction: async (id, data) => {
+    const response = await api.put(`/core/tds/deductions/${id}`, data);
+    return response.data;
+  },
+  deleteTdsDeduction: async (id) => {
+    const response = await api.delete(`/core/tds/deductions/${id}`);
+    return response.data;
+  },
+  getTdsChallans: async (params) => {
+    const response = await api.get('/core/tds/challans', { params });
+    return response.data;
+  },
+  createTdsChallan: async (data) => {
+    const response = await api.post('/core/tds/challans', data);
+    return response.data;
+  },
+  getTdsSummary: async (period) => {
+    const response = await api.get('/core/tds/summary', { params: period ? { period } : {} });
     return response.data;
   },
 };

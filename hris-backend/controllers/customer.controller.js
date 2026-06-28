@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { log } = require('../utils/audit');
 
 exports.list = async (req, res) => {
   const tenantId = req.tenantId;
@@ -58,6 +59,7 @@ exports.create = async (req, res) => {
        payment_terms || null, notes || null]
     );
     res.status(201).json({ message: 'Customer created.', id });
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'customer.created', entityType: 'customer', entityId: id, req });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create customer.' });
@@ -70,7 +72,7 @@ exports.update = async (req, res) => {
   const { name, contact_person, email, phone, address, city, state, pincode, gstin, credit_limit, payment_terms, status, notes } = req.body;
 
   try {
-    const [existing] = await db.execute('SELECT id FROM customers WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    const [existing] = await db.execute('SELECT * FROM customers WHERE id = ? AND tenant_id = ?', [id, tenantId]);
     if (existing.length === 0) return res.status(404).json({ error: 'Customer not found.' });
 
     await db.execute(
@@ -82,6 +84,13 @@ exports.update = async (req, res) => {
        status || 'active', notes || null, id, tenantId]
     );
     res.json({ message: 'Customer updated.' });
+    const changes = {};
+    for (const key of ['name', 'contact_person', 'email', 'phone', 'address', 'city', 'state', 'pincode', 'gstin', 'credit_limit', 'payment_terms', 'status', 'notes']) {
+      if (String(existing[0][key] ?? '') !== String(req.body[key] ?? '')) {
+        changes[key] = { from: existing[0][key], to: req.body[key] ?? null };
+      }
+    }
+    if (Object.keys(changes).length) log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'customer.updated', entityType: 'customer', entityId: id, changes, req });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update customer.' });
@@ -93,6 +102,7 @@ exports.remove = async (req, res) => {
     const [result] = await db.execute('DELETE FROM customers WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Customer not found.' });
     res.json({ message: 'Customer deleted.' });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'customer.deleted', entityType: 'customer', entityId: req.params.id, req });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete customer.' });
   }
@@ -106,6 +116,7 @@ exports.deactivate = async (req, res) => {
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Customer not found.' });
     res.json({ message: 'Customer deactivated.' });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'customer.deactivated', entityType: 'customer', entityId: req.params.id, req });
   } catch (error) {
     res.status(500).json({ error: 'Failed to deactivate customer.' });
   }
@@ -119,6 +130,7 @@ exports.activate = async (req, res) => {
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Customer not found.' });
     res.json({ message: 'Customer activated.' });
+    log({ tenantId: req.tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'customer.activated', entityType: 'customer', entityId: req.params.id, req });
   } catch (error) {
     res.status(500).json({ error: 'Failed to activate customer.' });
   }

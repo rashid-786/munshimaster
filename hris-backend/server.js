@@ -33,8 +33,24 @@ const subscriptionRoutes = require('./routes/subscription.routes');
 const retentionRoutes = require('./routes/retention.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const emailLogRoutes = require('./routes/emailLog.routes');
+const productRoutes = require('./routes/product.routes');
+const stockRoutes = require('./routes/stock.routes');
+const complianceRoutes = require('./routes/compliance.routes');
+const searchRoutes = require('./routes/search.routes');
+const recurringInvoiceRoutes = require('./routes/recurringInvoice.routes');
+const bankRoutes = require('./routes/bank.routes');
+const whatsappRoutes = require('./routes/whatsapp.routes');
+const einvoiceRoutes = require('./routes/einvoice.routes');
+const paymentLinkRoutes = require('./routes/paymentLink.routes');
+const noteRoutes = require('./routes/note.routes');
+const ewaybillRoutes = require('./routes/ewaybill.routes');
+const gstReturnRoutes = require('./routes/gstReturn.routes');
+const gstr2bRoutes = require('./routes/gstr2b.routes');
+const tdsRoutes = require('./routes/tds.routes');
 const { planGate } = require('./middleware/planGate');
 const { startExpiryCron } = require('./cron/subscriptionExpiry');
+const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
+const { startWhatsAppCron } = require('./cron/whatsappReminders');
 const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
@@ -44,6 +60,7 @@ const app = express();
 app.use(cors());
 app.use(helmet());
 app.use('/api/v1/core/subscription/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/v1/core/invoice-payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
 
 // ==========================================
@@ -170,6 +187,20 @@ app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/api/v1/core/retention', retentionRoutes);
 app.use('/api/v1/core/dashboard', dashboardRoutes);
 app.use('/api/v1/core/email-logs', emailLogRoutes);
+app.use('/api/v1/core/products', planGate(2), productRoutes);
+app.use('/api/v1/core/stock', planGate(2), stockRoutes);
+app.use('/api/v1/core/compliance', complianceRoutes);
+app.use('/api/v1/core/search', searchRoutes);
+app.use('/api/v1/core/recurring-invoices', planGate(1), recurringInvoiceRoutes);
+app.use('/api/v1/core/bank', planGate(1), bankRoutes);
+app.use('/api/v1/core/whatsapp', planGate(1), whatsappRoutes);
+app.use('/api/v1/core/einvoice', planGate(1), einvoiceRoutes);
+app.use('/api/v1/core/invoice-payments', paymentLinkRoutes);
+app.use('/api/v1/core/notes', planGate(1), noteRoutes);
+app.use('/api/v1/core/gst-returns', planGate(1), gstReturnRoutes);
+app.use('/api/v1/core/ewaybill', planGate(1), ewaybillRoutes);
+app.use('/api/v1/core/gstr2b', planGate(1), gstr2bRoutes);
+app.use('/api/v1/core/tds', planGate(1), tdsRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 
@@ -200,5 +231,7 @@ app.listen(PORT, () => {
   // Start subscription expiry checker (every 10 minutes)
   if (process.env.NODE_ENV !== 'test') {
     startExpiryCron(10 * 60 * 1000);
+    startRecurringInvoiceCron(86400000);
+    startWhatsAppCron(86400000);
   }
 });

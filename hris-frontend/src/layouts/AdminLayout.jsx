@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { hrService } from '../services/hr.service';
 import { subscriptionService } from '../services/subscription.service';
 import NotificationBell from '../components/NotificationBell';
+import SearchBar from '../components/SearchBar';
 import UpgradeModal from '../components/UpgradeModal';
 import DowngradeModal from '../components/DowngradeModal';
 import OnboardingWizard from '../components/OnboardingWizard';
@@ -23,6 +24,7 @@ const Icons = {
   lock: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>,
   upgrade: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
   payments: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
+  inventory: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
 };
 
 const NAV_GROUPS = [
@@ -47,9 +49,16 @@ const NAV_GROUPS = [
       { to: '/admin/customers', label: 'Customers' },
       { to: '/admin/purchase-orders', label: 'Purchase Orders' },
       { to: '/admin/invoices', label: 'Invoices' },
+      { to: '/admin/recurring-invoices', label: 'Recurring' },
+      { to: '/admin/bank', label: 'Bank Import' },
+      { to: '/admin/notes', label: 'Credit/Debit Notes' },
       { to: '/admin/balance', label: 'Balance Sheet' },
       { to: '/admin/reports', label: 'Reports' },
       { to: '/admin/pl', label: 'P&L Statement' },
+      { to: '/admin/gst-returns', label: 'GST Returns' },
+      { to: '/admin/gstr2b', label: 'GSTR-2B Reco' },
+      { to: '/admin/tds', label: 'TDS Management' },
+      { to: '/admin/products', label: 'Inventory' },
     ],
   },
   {
@@ -67,6 +76,7 @@ const NAV_GROUPS = [
     ],
   },
   { to: '/admin/payments', label: 'Payments', icon: Icons.payments, requiredPlan: 'free' },
+  { to: '/admin/products', label: 'Inventory', icon: Icons.inventory, requiredPlan: 'pro' },
   { to: '/admin/settings', label: 'Settings', icon: Icons.settings, requiredPlan: 'free' },
   { to: '/admin/referrals', label: 'Refer & Earn', icon: Icons.upgrade, requiredPlan: 'free' },
 ];
@@ -83,9 +93,15 @@ const pageTitles = {
   '/admin/customers': 'My Business',
   '/admin/purchase-orders': 'My Business',
   '/admin/invoices': 'My Business',
+  '/admin/recurring-invoices': 'Recurring Invoices',
+  '/admin/bank': 'Bank Import',
+  '/admin/notes': 'Credit / Debit Notes',
   '/admin/balance': 'My Business',
   '/admin/reports': 'My Business',
   '/admin/pl': 'P&L Statement',
+  '/admin/gst-returns': 'GST Returns',
+  '/admin/gstr2b': 'GSTR-2B Reconciliation',
+  '/admin/tds': 'TDS Management',
   '/admin/settings': 'Settings',
   '/admin/payments': 'Payments',
   '/admin/referrals': 'Refer & Earn',
@@ -94,6 +110,7 @@ const pageTitles = {
   '/admin/ledger/sellers': 'My Ledger Book',
   '/admin/ledger/cashbook': 'My Ledger Book',
   '/admin/ledger/reports': 'My Ledger Book',
+  '/admin/products': 'Inventory',
 };
 
 const PLAN_LABELS = { free: 'Free', business: 'Business', business_monthly: 'Business', pro: 'Pro', pro_monthly: 'Pro' };
@@ -116,6 +133,7 @@ export default function AdminLayout() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showDowngrade, setShowDowngrade] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const menuRef = useRef(null);
 
   const currentPlan = tenant?.subscriptionPlan || 'free';
@@ -171,6 +189,20 @@ export default function AdminLayout() {
       if (cachedLabels) setGroupLabels(JSON.parse(cachedLabels));
     });
   }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(s => !s);
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showSearch]);
 
   const labelOf = (key) => groupLabels[key] || key;
   const toggleGroup = (label) => setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }));
@@ -324,6 +356,14 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            <button onClick={() => setShowSearch(true)} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-gray-200 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <span className="hidden lg:inline">Search</span>
+              <kbd className="text-[10px] text-gray-300 bg-gray-100 px-1 py-0.5 rounded">⌘K</kbd>
+            </button>
+            <button onClick={() => setShowSearch(true)} className="sm:hidden text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </button>
             <NotificationBell />
             <div className="relative" ref={menuRef}>
               <button
@@ -372,6 +412,7 @@ export default function AdminLayout() {
           localStorage.setItem('bahi_onboarding_dismissed', 'true');
         }}
       />
+      <SearchBar open={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );
 }

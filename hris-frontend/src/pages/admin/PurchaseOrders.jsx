@@ -5,10 +5,12 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
+import useFormDraft from '../../hooks/useFormDraft';
+import DraftBanner from '../../components/DraftBanner';
 import UpgradeBanner from '../../components/UpgradeBanner';
 
-const emptyItem = { description: '', quantity: 1, unit_price: '' };
-const emptyForm = { supplier_id: '', order_date: '', expected_date: '', items: [{ ...emptyItem }], notes: '' };
+const emptyItem = { description: '', quantity: 1, unit_price: '', hsn_code: '' };
+const emptyForm = { supplier_id: '', order_date: '', expected_date: '', items: [{ ...emptyItem }], notes: '', gst_type: 'intra', place_of_supply: '' };
 
 const statusBadge = {
   draft: 'badge-info', sent: 'badge-warning', approved: 'badge-success',
@@ -45,12 +47,18 @@ const PurchaseOrders = () => {
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [emailSending, setEmailSending] = useState(null);
+  const [whatsappSending, setWhatsappSending] = useState(null);
   const [emailLogs, setEmailLogs] = useState({});
   const [mobileDetail, setMobileDetail] = useState(null);
   const [mobileAttachments, setMobileAttachments] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const draftKey = `po_${editing || 'new'}`;
+  const { draft, clearDraft, restoreDraft, dismissDraft } = useFormDraft(draftKey, form, {
+    enabled: showForm,
+    onRestore: (data) => setForm(data),
+  });
   const isMobile = useIsMobile();
   const limit = 200;
   const [loading, setLoading] = useState(true);
@@ -164,8 +172,10 @@ const PurchaseOrders = () => {
         supplier_id: full.supplier_id,
         order_date: full.order_date?.split('T')[0] || full.order_date,
         expected_date: full.expected_date?.split('T')[0] || full.expected_date || '',
-        items: full.items.map(i => ({ description: i.description, quantity: i.quantity, unit_price: (i.unit_price / 100).toFixed(2) })),
+        items: full.items.map(i => ({ description: i.description, quantity: i.quantity, unit_price: (i.unit_price / 100).toFixed(2), hsn_code: i.hsn_code || '' })),
         notes: full.notes || '',
+        gst_type: full.gst_type || 'intra',
+        place_of_supply: full.place_of_supply || '',
       });
       setShowForm(true);
     } catch { setError('Failed to load PO details.'); }
@@ -207,10 +217,13 @@ const PurchaseOrders = () => {
         order_date: form.order_date,
         expected_date: form.expected_date || null,
         notes: form.notes,
+        gst_type: form.gst_type,
+        place_of_supply: form.place_of_supply || null,
         items: form.items.map(i => ({
           description: i.description,
           quantity: parseFloat(i.quantity) || 1,
           unit_price: (parseFloat(i.unit_price) || 0).toFixed(2),
+          hsn_code: i.hsn_code || null,
         })),
       };
       let poId;
@@ -235,6 +248,7 @@ const PurchaseOrders = () => {
       }
       setShowForm(false);
       setEditing(null);
+      clearDraft();
       fetch();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save purchase order.');
@@ -287,6 +301,18 @@ const PurchaseOrders = () => {
       setError(err.response?.data?.error || 'Failed to send email.');
     } finally {
       setEmailSending(null);
+    }
+  };
+
+  const handleWhatsAppPO = async (id) => {
+    setWhatsappSending(id);
+    try {
+      await hrService.whatsappSendPO(id);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send WhatsApp.');
+    } finally {
+      setWhatsappSending(null);
     }
   };
 
@@ -392,6 +418,14 @@ const PurchaseOrders = () => {
               >
                 {emailSending === detail.id ? 'Sending...' : 'Email PO'}
               </button>
+              <button
+                onClick={() => handleWhatsAppPO(detail.id)}
+                disabled={whatsappSending === detail.id || !detail.supplier_phone}
+                className="btn-secondary text-xs px-3 py-1.5"
+                title={!detail.supplier_phone ? 'Supplier has no phone' : ''}
+              >
+                {whatsappSending === detail.id ? 'Sending...' : 'WhatsApp'}
+              </button>
               {statusFlow.indexOf(detail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(detail.status) === -1 && (
                 <button onClick={() => handleStatus(detail.id, statusFlow[statusFlow.indexOf(detail.status) + 1])}
                   className="btn-primary text-xs px-3 py-1.5">
@@ -425,12 +459,21 @@ const PurchaseOrders = () => {
                 {detail.supplier_email && <p className="text-sm text-gray-900 mt-0.5">{detail.supplier_email}</p>}
                 {detail.supplier_phone && <p className="text-xs text-gray-500">{detail.supplier_phone}</p>}
               </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">GST Type</p>
+                <p className="text-sm text-gray-900 mt-0.5 capitalize">{detail.gst_type === 'intra' ? 'Intra-state (CGST+SGST)' : detail.gst_type === 'inter' ? 'Inter-state (IGST)' : '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Place of Supply</p>
+                <p className="text-sm text-gray-900 mt-0.5">{detail.place_of_supply || '-'}</p>
+              </div>
             </div>
 
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-y border-gray-200">
                   <th className="table-header">#</th>
+                  <th className="table-header">HSN/SAC</th>
                   <th className="table-header">Description</th>
                   <th className="table-header text-right">Qty</th>
                   <th className="table-header text-right">Rate</th>
@@ -441,6 +484,7 @@ const PurchaseOrders = () => {
                 {detail.items?.map((item, i) => (
                   <tr key={item.id || i}>
                     <td className="table-cell text-gray-400 w-10">{i + 1}</td>
+                    <td className="table-cell text-gray-500 font-mono text-xs">{item.hsn_code || '-'}</td>
                     <td className="table-cell">{item.description}</td>
                     <td className="table-cell text-right">{item.quantity}</td>
                     <td className="table-cell text-right">{formatINR(item.unit_price)}</td>
@@ -453,7 +497,16 @@ const PurchaseOrders = () => {
             <div className="flex justify-end">
               <div className="w-64 space-y-1">
                 <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatINR(detail.subtotal)}</span></div>
-                <div className="flex justify-between text-sm text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(detail.tax_amount)}</span></div>
+                {detail.gst_type === 'intra' ? (
+                  <>
+                    <div className="flex justify-between text-sm text-green-600"><span>CGST</span><span>{formatINR(Math.round(detail.tax_amount / 2))}</span></div>
+                    <div className="flex justify-between text-sm text-green-600"><span>SGST</span><span>{formatINR(Math.round(detail.tax_amount / 2))}</span></div>
+                  </>
+                ) : detail.gst_type === 'inter' ? (
+                  <div className="flex justify-between text-sm text-blue-600"><span>IGST</span><span>{formatINR(detail.tax_amount)}</span></div>
+                ) : (
+                  <div className="flex justify-between text-sm text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(detail.tax_amount)}</span></div>
+                )}
                 <div className="flex justify-between text-base font-bold text-gray-900 border-t pt-1"><span>Total</span><span>{formatINR(detail.total_amount)}</span></div>
               </div>
             </div>
@@ -500,6 +553,13 @@ const PurchaseOrders = () => {
             >
               {emailSending === mobileDetail?.id ? '...' : 'Email'}
             </button>
+            <button
+              onClick={() => { if (mobileDetail) handleWhatsAppPO(mobileDetail.id); }}
+              disabled={whatsappSending === mobileDetail?.id || !mobileDetail?.supplier_phone}
+              className="btn-secondary text-xs px-3 py-1.5 flex-1"
+            >
+              {whatsappSending === mobileDetail?.id ? '...' : 'WA'}
+            </button>
             {mobileDetail && statusFlow.indexOf(mobileDetail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(mobileDetail.status) === -1 && (
               <button onClick={() => handleStatus(mobileDetail.id, statusFlow[statusFlow.indexOf(mobileDetail.status) + 1])}
                 className="btn-primary text-xs px-3 py-1.5 flex-1">
@@ -524,6 +584,8 @@ const PurchaseOrders = () => {
           {mobileDetail?.supplier_phone && <DetailRow label="Phone" value={mobileDetail.supplier_phone} />}
           <DetailRow label="Order Date" value={mobileDetail?.order_date?.split('T')[0]} />
           <DetailRow label="Expected" value={mobileDetail?.expected_date?.split('T')[0] || '—'} />
+          <DetailRow label="GST Type" value={mobileDetail?.gst_type === 'intra' ? 'Intra (CGST+SGST)' : mobileDetail?.gst_type === 'inter' ? 'Inter (IGST)' : '-'} />
+          <DetailRow label="Place of Supply" value={mobileDetail?.place_of_supply || '-'} />
           <DetailRow label="Status">
             <span className={statusBadge[mobileDetail?.status]}>{mobileDetail?.status}</span>
           </DetailRow>
@@ -535,6 +597,7 @@ const PurchaseOrders = () => {
                 <thead>
                   <tr className="bg-gray-50 border-b">
                     <th className="px-2 py-1.5 text-left text-gray-500 font-medium">#</th>
+                    <th className="px-2 py-1.5 text-left text-gray-500 font-medium">HSN</th>
                     <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Description</th>
                     <th className="px-2 py-1.5 text-right text-gray-500 font-medium">Qty</th>
                     <th className="px-2 py-1.5 text-right text-gray-500 font-medium">Rate</th>
@@ -545,6 +608,7 @@ const PurchaseOrders = () => {
                   {mobileDetail?.items?.map((item, i) => (
                     <tr key={item.id || i}>
                       <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
+                      <td className="px-2 py-1.5 text-gray-500 font-mono">{item.hsn_code || '-'}</td>
                       <td className="px-2 py-1.5 text-gray-900">{item.description}</td>
                       <td className="px-2 py-1.5 text-right text-gray-700">{item.quantity}</td>
                       <td className="px-2 py-1.5 text-right text-gray-700">{formatINR(item.unit_price)}</td>
@@ -559,7 +623,16 @@ const PurchaseOrders = () => {
           <div className="flex justify-end">
             <div className="w-full max-w-[200px] space-y-0.5">
               <div className="flex justify-between text-xs text-gray-600"><span>Subtotal</span><span>{formatINR(mobileDetail?.subtotal)}</span></div>
-              <div className="flex justify-between text-xs text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(mobileDetail?.tax_amount)}</span></div>
+              {mobileDetail?.gst_type === 'intra' ? (
+                <>
+                  <div className="flex justify-between text-xs text-green-600"><span>CGST</span><span>{formatINR(Math.round(mobileDetail.tax_amount / 2))}</span></div>
+                  <div className="flex justify-between text-xs text-green-600"><span>SGST</span><span>{formatINR(Math.round(mobileDetail.tax_amount / 2))}</span></div>
+                </>
+              ) : mobileDetail?.gst_type === 'inter' ? (
+                <div className="flex justify-between text-xs text-blue-600"><span>IGST</span><span>{formatINR(mobileDetail.tax_amount)}</span></div>
+              ) : (
+                <div className="flex justify-between text-xs text-gray-600"><span>Tax ({taxRate}%)</span><span>{formatINR(mobileDetail?.tax_amount)}</span></div>
+              )}
               <div className="flex justify-between text-sm font-bold text-gray-900 border-t pt-0.5"><span>Total</span><span>{formatINR(mobileDetail?.total_amount)}</span></div>
             </div>
           </div>
@@ -600,6 +673,9 @@ const PurchaseOrders = () => {
                 <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="text-gray-400 hover:text-gray-600">&times;</button>
               </div>
               <div className="p-6 space-y-4">
+                {draft && !editing && (
+                  <DraftBanner savedAt={draft.savedAt} onRestore={restoreDraft} onDismiss={dismissDraft} />
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
@@ -620,11 +696,28 @@ const PurchaseOrders = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">GST Type:</span>
+                    <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })}
+                      className="input-field text-sm w-32">
+                      <option value="intra">Intra-state (CGST+SGST)</option>
+                      <option value="inter">Inter-state (IGST)</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">Place of Supply:</span>
+                    <input type="text" value={form.place_of_supply} onChange={e => setForm({ ...form, place_of_supply: e.target.value })}
+                      className="input-field text-sm w-48" placeholder="e.g. Maharashtra" />
+                  </div>
+                </div>
+
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-gray-50 border-b">
                         <th className="table-header">Description</th>
+                        <th className="table-header text-center w-20">HSN/SAC</th>
                         <th className="table-header text-right w-24">Qty</th>
                         <th className="table-header text-right w-32">Rate (₹)</th>
                         <th className="table-header text-right w-32">Amount</th>
@@ -637,6 +730,10 @@ const PurchaseOrders = () => {
                           <td className="p-2">
                             <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)}
                               className="input-field text-sm" placeholder="Item description" required />
+                          </td>
+                          <td className="p-2">
+                            <input value={item.hsn_code} onChange={e => updateItem(i, 'hsn_code', e.target.value)}
+                              className="input-field text-sm text-center" placeholder="HSN" maxLength={8} />
                           </td>
                           <td className="p-2">
                             <input type="number" min="0.01" step="any" value={item.quantity}
@@ -668,7 +765,16 @@ const PurchaseOrders = () => {
                 <div className="flex justify-end">
                   <div className="w-64 space-y-1">
                     <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
-                    <div className="flex justify-between text-sm"><span>Tax ({taxRate}%)</span><span>{formatINR(tax)}</span></div>
+                    {form.gst_type === 'intra' ? (
+                      <>
+                        <div className="flex justify-between text-sm text-green-600"><span>CGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
+                        <div className="flex justify-between text-sm text-green-600"><span>SGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
+                      </>
+                    ) : form.gst_type === 'inter' ? (
+                      <div className="flex justify-between text-sm text-blue-600"><span>IGST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
+                    ) : (
+                      <div className="flex justify-between text-sm"><span>Tax ({taxRate}%)</span><span>{formatINR(tax)}</span></div>
+                    )}
                     <div className="flex justify-between text-base font-bold border-t pt-1"><span>Total</span><span>{formatINR(totalAmt)}</span></div>
                   </div>
                 </div>

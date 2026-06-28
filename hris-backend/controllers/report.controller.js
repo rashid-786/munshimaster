@@ -84,9 +84,121 @@ async function fetchKiranaCashbook(tenantId, { startDate, endDate }) {
   return rows;
 }
 
+// =============================================
+// Sales by Customer
+// =============================================
+async function fetchSalesByCustomer(tenantId, { startDate, endDate }) {
+  let query = `SELECT c.id, c.name, c.email, c.phone,
+                      COUNT(i.id) as invoice_count,
+                      COALESCE(SUM(i.total_amount),0) as total_sales,
+                      COALESCE(SUM(i.amount_paid),0) as total_collected,
+                      COALESCE(SUM(i.total_amount - i.amount_paid),0) as balance_due
+               FROM customers c
+               JOIN invoices i ON c.id = i.customer_id AND i.tenant_id = c.tenant_id
+               WHERE c.tenant_id = ?`;
+  const params = [tenantId];
+  if (startDate) { query += ' AND i.invoice_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND i.invoice_date <= ?'; params.push(endDate); }
+  query += ' GROUP BY c.id, c.name, c.email, c.phone ORDER BY total_sales DESC';
+  const [rows] = await db.execute(query, params);
+  return rows;
+}
+
+// =============================================
+// Purchases by Supplier
+// =============================================
+async function fetchPurchasesBySupplier(tenantId, { startDate, endDate }) {
+  let query = `SELECT s.id, s.name, s.email, s.phone,
+                      COUNT(po.id) as order_count,
+                      COALESCE(SUM(po.total_amount),0) as total_purchases
+               FROM suppliers s
+               JOIN purchase_orders po ON s.id = po.supplier_id AND po.tenant_id = s.tenant_id
+               WHERE s.tenant_id = ?`;
+  const params = [tenantId];
+  if (startDate) { query += ' AND po.order_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND po.order_date <= ?'; params.push(endDate); }
+  query += ' GROUP BY s.id, s.name, s.email, s.phone ORDER BY total_purchases DESC';
+  const [rows] = await db.execute(query, params);
+  return rows;
+}
+
+// =============================================
+// AR Aging (outstanding invoices)
+// =============================================
+async function fetchARAging(tenantId, { asOnDate }) {
+  const asOn = asOnDate || new Date().toISOString().split('T')[0];
+  const [rows] = await db.execute(
+    `SELECT id, invoice_number, customer_id,
+            (SELECT name FROM customers WHERE id = i.customer_id AND tenant_id = i.tenant_id) as customer_name,
+            invoice_date, due_date, total_amount, amount_paid,
+            (total_amount - amount_paid) as outstanding,
+            DATE_PART('day', ?::date - due_date) as days_overdue
+     FROM invoices i
+     WHERE i.tenant_id = ? AND i.status IN ('sent','partial','overdue') AND i.due_date < ?
+     ORDER BY days_overdue DESC`,
+    [asOn, tenantId, asOn]
+  );
+  const buckets = { '0-30': [], '31-60': [], '61-90': [], '90+': [] };
+  let totalOutstanding = 0;
+  rows.forEach(r => {
+    const d = Number(r.days_overdue);
+    const bucket = d <= 30 ? '0-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : '90+';
+    buckets[bucket].push(r);
+    totalOutstanding += Number(r.outstanding);
+  });
+  return { buckets, totalOutstanding, asOnDate: asOn };
+}
+
+// =============================================
+// AP Aging (outstanding POs / amounts owed to suppliers)
+// =============================================
+async function fetchAPAging(tenantId, { asOnDate }) {
+  const asOn = asOnDate || new Date().toISOString().split('T')[0];
+  // Outstanding POs that are approved/sent (received but not fully paid)
+  const [poRows] = await db.execute(
+    `SELECT po.id, po.order_number, po.supplier_id,
+            (SELECT name FROM suppliers WHERE id = po.supplier_id AND tenant_id = po.tenant_id) as supplier_name,
+            po.order_date, po.expected_date, po.total_amount,
+            DATE_PART('day', ?::date - COALESCE(po.expected_date, po.order_date)) as days_overdue
+     FROM purchase_orders po
+     WHERE po.tenant_id = ? AND po.status IN ('approved','sent','received')
+       AND COALESCE(po.expected_date, po.order_date) < ?
+     ORDER BY days_overdue DESC`,
+    [asOn, tenantId, asOn]
+  );
+  const buckets = { '0-30': [], '31-60': [], '61-90': [], '90+': [] };
+  let totalOutstanding = 0;
+  poRows.forEach(r => {
+    const d = Number(r.days_overdue);
+    const bucket = d <= 30 ? '0-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : '90+';
+    buckets[bucket].push(r);
+    totalOutstanding += Number(r.total_amount);
+  });
+  return { buckets, totalOutstanding, asOnDate: asOn };
+}
+
+// =============================================
+// Invoice Status Summary
+// =============================================
+async function fetchInvoiceStatusSummary(tenantId, { startDate, endDate }) {
+  let query = `SELECT status, COUNT(*) as count, COALESCE(SUM(total_amount),0) as total_amount
+               FROM invoices WHERE tenant_id = ?`;
+  const params = [tenantId];
+  if (startDate) { query += ' AND invoice_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND invoice_date <= ?'; params.push(endDate); }
+  query += ' GROUP BY status ORDER BY status';
+  const [rows] = await db.execute(query, params);
+  const totalCount = rows.reduce((s, r) => s + Number(r.count), 0);
+  const totalAmount = rows.reduce((s, r) => s + Number(r.total_amount), 0);
+  return { rows, totalCount, totalAmount };
+}
+
+// =============================================
+// Main dispatcher
+// =============================================
 exports.getReportData = async (req, res) => {
   const tenantId = req.tenantId;
-  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType } = req.query;
+  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType, asOnDate } = req.query;
 
   try {
     let data;
@@ -106,6 +218,24 @@ exports.getReportData = async (req, res) => {
       case 'kirana_cashbook':
         data = await fetchKiranaCashbook(tenantId, { startDate, endDate });
         break;
+      case 'sales_by_customer':
+        data = await fetchSalesByCustomer(tenantId, { startDate, endDate });
+        break;
+      case 'purchases_by_supplier':
+        data = await fetchPurchasesBySupplier(tenantId, { startDate, endDate });
+        break;
+      case 'ar_aging':
+        data = await fetchARAging(tenantId, { asOnDate });
+        break;
+      case 'ap_aging':
+        data = await fetchAPAging(tenantId, { asOnDate });
+        break;
+      case 'invoice_status_summary':
+        data = await fetchInvoiceStatusSummary(tenantId, { startDate, endDate });
+        break;
+      case 'gst_summary':
+        data = await fetchGSTSummary(tenantId, { startDate, endDate });
+        break;
       default:
         return res.status(400).json({ error: 'Invalid report type.' });
     }
@@ -118,7 +248,7 @@ exports.getReportData = async (req, res) => {
 
 exports.downloadPDF = async (req, res) => {
   const tenantId = req.tenantId;
-  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType } = req.query;
+  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType, asOnDate } = req.query;
 
   try {
     const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
@@ -145,6 +275,30 @@ exports.downloadPDF = async (req, res) => {
       case 'kirana_cashbook':
         data = await fetchKiranaCashbook(tenantId, { startDate, endDate });
         title = 'Kirana Cashbook Report';
+        break;
+      case 'sales_by_customer':
+        data = await fetchSalesByCustomer(tenantId, { startDate, endDate });
+        title = 'Sales by Customer';
+        break;
+      case 'purchases_by_supplier':
+        data = await fetchPurchasesBySupplier(tenantId, { startDate, endDate });
+        title = 'Purchases by Supplier';
+        break;
+      case 'ar_aging':
+        data = await fetchARAging(tenantId, { asOnDate });
+        title = 'AR Aging Report';
+        break;
+      case 'ap_aging':
+        data = await fetchAPAging(tenantId, { asOnDate });
+        title = 'AP Aging Report';
+        break;
+      case 'invoice_status_summary':
+        data = await fetchInvoiceStatusSummary(tenantId, { startDate, endDate });
+        title = 'Invoice Status Summary';
+        break;
+      case 'gst_summary':
+        data = await fetchGSTSummary(tenantId, { startDate, endDate });
+        title = 'GST Tax Summary';
         break;
       default:
         return res.status(400).json({ error: 'Invalid report type.' });
@@ -238,7 +392,7 @@ exports.downloadPDF = async (req, res) => {
 
 exports.downloadExcel = async (req, res) => {
   const tenantId = req.tenantId;
-  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType } = req.query;
+  const { type, startDate, endDate, search, sortBy, sortOrder, paymentMethod, entryType, partyType, asOnDate } = req.query;
 
   try {
     const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
@@ -271,6 +425,36 @@ exports.downloadExcel = async (req, res) => {
         title = 'Kirana Cashbook Report';
         columns = ['Date', 'Type', 'Category', 'Amount', 'Note'];
         break;
+      case 'sales_by_customer':
+        data = await fetchSalesByCustomer(tenantId, { startDate, endDate });
+        title = 'Sales by Customer';
+        columns = ['Customer', 'Email', 'Phone', 'Invoice Count', 'Total Sales', 'Total Collected', 'Balance Due'];
+        break;
+      case 'purchases_by_supplier':
+        data = await fetchPurchasesBySupplier(tenantId, { startDate, endDate });
+        title = 'Purchases by Supplier';
+        columns = ['Supplier', 'Email', 'Phone', 'Order Count', 'Total Purchases'];
+        break;
+      case 'ar_aging':
+        data = await fetchARAging(tenantId, { asOnDate });
+        title = 'AR Aging Report';
+        columns = ['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Total', 'Paid', 'Outstanding', 'Days Overdue', 'Bucket'];
+        break;
+      case 'ap_aging':
+        data = await fetchAPAging(tenantId, { asOnDate });
+        title = 'AP Aging Report';
+        columns = ['Order #', 'Supplier', 'Order Date', 'Expected Date', 'Total', 'Days Overdue', 'Bucket'];
+        break;
+      case 'invoice_status_summary':
+        data = await fetchInvoiceStatusSummary(tenantId, { startDate, endDate });
+        title = 'Invoice Status Summary';
+        columns = ['Status', 'Count', 'Total Amount'];
+        break;
+      case 'gst_summary':
+        data = await fetchGSTSummary(tenantId, { startDate, endDate });
+        title = 'GST Tax Summary';
+        columns = ['Period', 'Output CGST', 'Output SGST', 'Output IGST', 'Total Output Tax', 'Input CGST', 'Input SGST', 'Input IGST', 'Total Input Tax', 'Net Payable'];
+        break;
       default:
         return res.status(400).json({ error: 'Invalid report type.' });
     }
@@ -294,7 +478,63 @@ exports.downloadExcel = async (req, res) => {
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
 
-    for (const row of data) {
+    // Flatten data for Excel rows (handle non-array data types)
+    let excelRows = data;
+    if (type === 'ar_aging') {
+      excelRows = [];
+      Object.entries(data.buckets || {}).forEach(([bucket, items]) => {
+        items.forEach(inv => {
+          excelRows.push([
+            inv.invoice_number || '-',
+            inv.customer_name || '-',
+            inv.invoice_date ? inv.invoice_date.split('T')[0] : '-',
+            inv.due_date ? inv.due_date.split('T')[0] : '-',
+            `Rs.${Number(inv.total_amount).toFixed(2)}`,
+            `Rs.${Number(inv.amount_paid).toFixed(2)}`,
+            `Rs.${Number(inv.outstanding).toFixed(2)}`,
+            String(inv.days_overdue || 0),
+            bucket,
+          ]);
+        });
+      });
+    } else if (type === 'ap_aging') {
+      excelRows = [];
+      Object.entries(data.buckets || {}).forEach(([bucket, items]) => {
+        items.forEach(po => {
+          excelRows.push([
+            po.order_number || '-',
+            po.supplier_name || '-',
+            po.order_date ? po.order_date.split('T')[0] : '-',
+            po.expected_date ? po.expected_date.split('T')[0] : '-',
+            `Rs.${Number(po.total_amount).toFixed(2)}`,
+            String(po.days_overdue || 0),
+            bucket,
+          ]);
+        });
+      });
+    } else if (type === 'invoice_status_summary') {
+      excelRows = (data.rows || []).map(r => [
+        r.status || '-',
+        String(r.count || 0),
+        `Rs.${Number(r.total_amount).toFixed(2)}`,
+      ]);
+    } else if (type === 'gst_summary') {
+      const d = data;
+      excelRows = [[
+        `${d.period?.startDate || ''} — ${d.period?.endDate || ''}`,
+        `Rs.${(d.outputTax?.cgst || 0).toFixed(2)}`,
+        `Rs.${(d.outputTax?.sgst || 0).toFixed(2)}`,
+        `Rs.${(d.outputTax?.igst || 0).toFixed(2)}`,
+        `Rs.${(d.outputTax?.totalOutput || 0).toFixed(2)}`,
+        `Rs.${(d.inputTax?.cgst || 0).toFixed(2)}`,
+        `Rs.${(d.inputTax?.sgst || 0).toFixed(2)}`,
+        `Rs.${(d.inputTax?.igst || 0).toFixed(2)}`,
+        `Rs.${(d.inputTax?.totalInput || 0).toFixed(2)}`,
+        `Rs.${(d.netPayable || 0).toFixed(2)}`,
+      ]];
+    }
+
+    for (const row of excelRows) {
       let values;
       if (type === 'balance') {
         values = [
@@ -323,6 +563,26 @@ exports.downloadExcel = async (req, res) => {
           row.amount ? `Rs.${(row.amount / 100).toFixed(2)}` : '0',
           row.note || '-',
         ];
+      } else if (type === 'sales_by_customer') {
+        values = [
+          row.name || '-',
+          row.email || '-',
+          row.phone || '-',
+          String(row.invoice_count || 0),
+          `Rs.${Number(row.total_sales).toFixed(2)}`,
+          `Rs.${Number(row.total_collected).toFixed(2)}`,
+          `Rs.${Number(row.balance_due).toFixed(2)}`,
+        ];
+      } else if (type === 'purchases_by_supplier') {
+        values = [
+          row.name || '-',
+          row.email || '-',
+          row.phone || '-',
+          String(row.order_count || 0),
+          `Rs.${Number(row.total_purchases).toFixed(2)}`,
+        ];
+      } else if (['ar_aging', 'ap_aging', 'invoice_status_summary'].includes(type)) {
+        values = row;
       } else {
         values = [
           row.name || '-',
@@ -357,8 +617,82 @@ exports.downloadExcel = async (req, res) => {
 };
 
 // =============================================
-// Profit & Loss Statement
+// GST Tax Summary (input vs output tax)
 // =============================================
+async function fetchGSTSummary(tenantId, { startDate, endDate }) {
+  const sd = startDate || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+  const ed = endDate || new Date().toISOString().split('T')[0];
+
+  // Output tax (sales) — from invoices with item-level rates
+  const [outputTax] = await db.execute(
+    `SELECT
+       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.cgst_rate, 0) / 100)), 0) as cgst,
+       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.sgst_rate, 0) / 100)), 0) as sgst,
+       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.igst_rate, 0) / 100)), 0) as igst,
+       COUNT(DISTINCT i.id) as invoice_count
+     FROM invoices i
+     JOIN invoice_items ii ON i.id = ii.invoice_id
+     WHERE i.tenant_id = ? AND i.status IN ('paid','sent','partial')
+       AND i.invoice_date >= ? AND i.invoice_date <= ?`,
+    [tenantId, sd, ed]
+  );
+
+  // Also get output tax from flat-rate invoices (no cgst/sgst/igst)
+  const [flatOutputTax] = await db.execute(
+    `SELECT COALESCE(SUM(i.tax_amount), 0) as flat_tax, COUNT(*) as flat_count
+     FROM invoices i
+     WHERE i.tenant_id = ? AND i.status IN ('paid','sent','partial')
+       AND (i.gst_type IS NULL OR i.gst_type NOT IN ('intra','inter'))
+       AND i.invoice_date >= ? AND i.invoice_date <= ?`,
+    [tenantId, sd, ed]
+  );
+
+  // Input tax (purchases) — from POs with item-level rates
+  const [inputTax] = await db.execute(
+    `SELECT
+       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.cgst_rate, 0) / 100)), 0) as cgst,
+       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.sgst_rate, 0) / 100)), 0) as sgst,
+       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.igst_rate, 0) / 100)), 0) as igst,
+       COUNT(DISTINCT po.id) as po_count
+     FROM purchase_orders po
+     JOIN purchase_order_items pii ON po.id = pii.purchase_order_id
+     WHERE po.tenant_id = ? AND po.status IN ('received','approved','sent')
+       AND po.order_date >= ? AND po.order_date <= ?`,
+    [tenantId, sd, ed]
+  );
+
+  const [flatInputTax] = await db.execute(
+    `SELECT COALESCE(SUM(po.tax_amount), 0) as flat_tax, COUNT(*) as flat_count
+     FROM purchase_orders po
+     WHERE po.tenant_id = ? AND po.status IN ('received','approved','sent')
+       AND (po.gst_type IS NULL OR po.gst_type NOT IN ('intra','inter'))
+       AND po.order_date >= ? AND po.order_date <= ?`,
+    [tenantId, sd, ed]
+  );
+
+  const output = {
+    cgst: Number(outputTax[0].cgst),
+    sgst: Number(outputTax[0].sgst),
+    igst: Number(outputTax[0].igst),
+    totalOutput: Number(outputTax[0].cgst) + Number(outputTax[0].sgst) + Number(outputTax[0].igst) + Number(flatOutputTax[0].flat_tax),
+    invoiceCount: Number(outputTax[0].invoice_count) + Number(flatOutputTax[0].flat_count),
+  };
+  const input = {
+    cgst: Number(inputTax[0].cgst),
+    sgst: Number(inputTax[0].sgst),
+    igst: Number(inputTax[0].igst),
+    totalInput: Number(inputTax[0].cgst) + Number(inputTax[0].sgst) + Number(inputTax[0].igst) + Number(flatInputTax[0].flat_tax),
+    poCount: Number(inputTax[0].po_count) + Number(flatInputTax[0].flat_count),
+  };
+
+  return {
+    period: { startDate: sd, endDate: ed },
+    outputTax: output,
+    inputTax: input,
+    netPayable: Math.max(0, output.totalOutput - input.totalInput),
+    netRefundable: Math.max(0, input.totalInput - output.totalOutput),
+  };
+}
 exports.getPLStatement = async (req, res) => {
   const tenantId = req.tenantId;
   const { startDate, endDate } = req.query;
