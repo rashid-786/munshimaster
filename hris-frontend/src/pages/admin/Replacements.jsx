@@ -16,6 +16,7 @@ const Replacements = () => {
   const [employees, setEmployees] = useState([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -99,6 +100,18 @@ const Replacements = () => {
       },
     });
   };
+
+  const filteredReplacements = useMemo(() => {
+    let result = replacements;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(r =>
+        `${r.permanent_first_name} ${r.permanent_last_name}`.toLowerCase().includes(q) ||
+        `${r.adhoc_first_name} ${r.adhoc_last_name}`.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [replacements, search]);
 
   const statusBadge = (s) => s === 'active' ? 'badge-success' : 'badge-info';
 
@@ -202,19 +215,28 @@ const Replacements = () => {
         </div>
 
         <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field max-w-[150px] text-sm">
+          <div className="relative flex-1 min-w-[140px] max-w-[200px]">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <input
+              type="text"
+              placeholder="Search staff..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="input-field pl-8 text-sm"
+            />
+          </div>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field max-w-[130px] text-sm">
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
           </select>
-          <span className="text-xs text-gray-400">{replacements.length} replacement{replacements.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-gray-400">{filteredReplacements.length} replacement{filteredReplacements.length !== 1 ? 's' : ''}</span>
         </div>
 
         <ResponsiveTable
           columns={columns}
-          data={replacements}
+          data={filteredReplacements}
           keyField="id"
-          searchable={true}
           searchKeys={['permanent_first_name', 'permanent_last_name', 'adhoc_first_name', 'adhoc_last_name', 'status']}
           loading={loading}
           mobilePrimary="permanent"

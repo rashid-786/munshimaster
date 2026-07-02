@@ -47,10 +47,18 @@ const ewaybillRoutes = require('./routes/ewaybill.routes');
 const gstReturnRoutes = require('./routes/gstReturn.routes');
 const gstr2bRoutes = require('./routes/gstr2b.routes');
 const tdsRoutes = require('./routes/tds.routes');
+const tallyRoutes = require('./routes/tally.routes');
+const bulkImportRoutes = require('./routes/bulkImport.routes');
+const cashFlowRoutes = require('./routes/cashFlow.routes');
+const khataRoutes = require('./routes/khata.routes');
+const portalRoutes = require('./routes/portal.routes');
+const entityRoutes = require('./routes/entity.routes');
+const consolidatedRoutes = require('./routes/consolidated.routes');
 const { planGate } = require('./middleware/planGate');
 const { startExpiryCron } = require('./cron/subscriptionExpiry');
 const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
 const { startWhatsAppCron } = require('./cron/whatsappReminders');
+const { startAuditCleanupCron } = require('./cron/auditCleanup');
 const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
@@ -70,6 +78,7 @@ app.use('/api/v1/auth', authRoutes);
 
 // Public endpoints with generous rate limit
 app.use('/api/v1/public', publicLimiter);
+app.use('/api/v1/public/portal', portalRoutes);
 
 // Public settings endpoint (no auth required)
 app.get('/api/v1/public/settings', async (req, res) => {
@@ -182,13 +191,13 @@ app.use('/api/v1/core/tenant', tenantRoutes);
 app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
 app.use('/api/v1/core/kirana', kiranaRoutes);
-app.use('/api/v1/core/subscription', paymentLimiter, subscriptionRoutes);
+app.use('/api/v1/core/subscription', apiLimiter, subscriptionRoutes);
 app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/api/v1/core/retention', retentionRoutes);
 app.use('/api/v1/core/dashboard', dashboardRoutes);
 app.use('/api/v1/core/email-logs', emailLogRoutes);
-app.use('/api/v1/core/products', planGate(2), productRoutes);
-app.use('/api/v1/core/stock', planGate(2), stockRoutes);
+app.use('/api/v1/core/products', planGate(1), productRoutes);
+app.use('/api/v1/core/stock', planGate(1), stockRoutes);
 app.use('/api/v1/core/compliance', complianceRoutes);
 app.use('/api/v1/core/search', searchRoutes);
 app.use('/api/v1/core/recurring-invoices', planGate(1), recurringInvoiceRoutes);
@@ -201,6 +210,12 @@ app.use('/api/v1/core/gst-returns', planGate(1), gstReturnRoutes);
 app.use('/api/v1/core/ewaybill', planGate(1), ewaybillRoutes);
 app.use('/api/v1/core/gstr2b', planGate(1), gstr2bRoutes);
 app.use('/api/v1/core/tds', planGate(1), tdsRoutes);
+app.use('/api/v1/core/tally', tallyRoutes);
+app.use('/api/v1/core/bulk-import', planGate(1), bulkImportRoutes);
+app.use('/api/v1/core/cash-flow', planGate(1), cashFlowRoutes);
+app.use('/api/v1/core/khata', khataRoutes);
+app.use('/api/v1/core/entities', entityRoutes);
+app.use('/api/v1/core/reports/consolidated', planGate(1), consolidatedRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 
@@ -233,5 +248,6 @@ app.listen(PORT, () => {
     startExpiryCron(10 * 60 * 1000);
     startRecurringInvoiceCron(86400000);
     startWhatsAppCron(86400000);
+    startAuditCleanupCron(86400000);
   }
 });

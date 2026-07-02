@@ -215,13 +215,11 @@ const Employees = () => {
         </div>
       </div>
     )},
-    { key: 'email', label: 'Email', render: (v) => <span className="text-gray-500">{v}</span> },
     { key: 'phone', label: 'Phone', render: (v) => <span className="text-gray-500">{formatPhone(v) || '—'}</span> },
     { key: 'role', label: 'Role', render: (v) => {
       const b = v === 'tenant_admin' ? 'badge-info' : 'badge-success';
       return <span className={b}>{v === 'tenant_admin' ? 'Admin' : 'Employee'}</span>;
     }},
-    { key: 'job_type', label: 'Type', render: (v) => <span className={`badge ${v === 'adhoc' ? 'badge-warning' : 'badge-primary'}`}>{v === 'adhoc' ? 'Adhoc' : 'Permanent'}</span> },
     { key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
     { key: 'actions', label: 'Actions', render: (_, emp) => (
@@ -253,7 +251,7 @@ const Employees = () => {
       <UpgradeBanner type="feature" feature="Staff Management" plan="pro" />
 
       {/* Welcome hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-primary p-6 md:p-8 text-white">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-primary p-6 md:p-8 text-white hidden sm:block">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 25% 50%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 75% 50%, rgba(255,255,255,0.15) 0%, transparent 50%)' }} />
         <div className="relative">
           <p className="text-sm font-medium text-indigo-200 mb-1">Welcome back,</p>
@@ -263,26 +261,26 @@ const Employees = () => {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="stat-card flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">{Icons.users}</div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="stat-card flex items-center gap-2 sm:gap-4 p-3 sm:p-4">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-indigo-50 items-center justify-center text-indigo-600 shrink-0 hidden sm:flex">{Icons.users}</div>
           <div>
-            <p className="text-sm text-gray-500">Total Staff</p>
-            <p className="text-2xl font-bold text-gray-900">{employees.length}</p>
+            <p className="text-xs sm:text-sm text-gray-500">Total</p>
+            <p className="text-base sm:text-2xl font-bold text-gray-900">{employees.length}</p>
           </div>
         </div>
-        <div className="stat-card flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">{Icons.userCheck}</div>
+        <div className="stat-card flex items-center gap-2 sm:gap-4 p-3 sm:p-4">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 items-center justify-center text-emerald-600 shrink-0 hidden sm:flex">{Icons.userCheck}</div>
           <div>
-            <p className="text-sm text-gray-500">Active</p>
-            <p className="text-2xl font-bold text-emerald-600">{activeCount}</p>
+            <p className="text-xs sm:text-sm text-gray-500">Active</p>
+            <p className="text-base sm:text-2xl font-bold text-emerald-600">{activeCount}</p>
           </div>
         </div>
-        <div className="stat-card flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-500 shrink-0">{Icons.userX}</div>
+        <div className="stat-card flex items-center gap-2 sm:gap-4 p-3 sm:p-4">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-red-50 items-center justify-center text-red-500 shrink-0 hidden sm:flex">{Icons.userX}</div>
           <div>
-            <p className="text-sm text-gray-500">Deactivated</p>
-            <p className="text-2xl font-bold text-red-500">{deactivatedCount}</p>
+            <p className="text-xs sm:text-sm text-gray-500">Deactivated</p>
+            <p className="text-base sm:text-2xl font-bold text-red-500">{deactivatedCount}</p>
           </div>
         </div>
       </div>
@@ -292,18 +290,18 @@ const Employees = () => {
         <div className="card-header">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Staff Directory</h3>
-              <p className="text-sm text-gray-500 mt-0.5">{activeCount} active &middot; {employees.length} total</p>
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">Staff Directory</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mt-0.5">{activeCount} active &middot; {employees.length} total</p>
             </div>
             {isAdmin && (
               <div className="flex items-center gap-2">
                 <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' }); setShowOnboard(true); }} className="btn-primary">
                   {Icons.userAdd}
-                  Onboard Staff
+                  <span className="hidden sm:inline">Onboard Staff</span>
                 </button>
                 <button onClick={() => setShowImport(true)} className="btn-secondary">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-                  Import Staff
+                  <span className="hidden sm:inline">Import Staff</span>
                 </button>
               </div>
             )}
@@ -311,19 +309,19 @@ const Employees = () => {
         </div>
 
         {/* Search & filters */}
-        <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
+        <div className="px-4 sm:px-6 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 w-full sm:max-w-xs">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{Icons.search}</span>
             <input
               type="text"
-              placeholder="Search by name or email..."
+              placeholder="Search by name or phone..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="input-field pl-9"
             />
           </div>
           {isAdmin && (
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none hover:text-gray-800 transition-colors">
+            <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 cursor-pointer select-none hover:text-gray-800 transition-colors ml-auto sm:ml-0">
               <input
                 type="checkbox"
                 checked={includeDeactivated}
@@ -341,7 +339,6 @@ const Employees = () => {
               columns={columns}
               data={filtered}
               keyField="id"
-              searchable={true}
               searchKeys={['first_name', 'last_name', 'email', 'phone']}
               loading={loading}
               mobilePrimary="name"
@@ -358,10 +355,8 @@ const Employees = () => {
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-200">
                     <th className="table-header">Staff</th>
-                    <th className="table-header">Email</th>
                     <th className="table-header">Phone</th>
                     <th className="table-header">Role</th>
-                    <th className="table-header">Type</th>
                     <th className="table-header">Monthly Salary</th>
                     <th className="table-header">Status</th>
                     <th className="table-header text-right">Actions</th>
@@ -369,7 +364,7 @@ const Employees = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map(emp => (
-                    <tr key={emp.id} className={`table-row-hover ${emp.status === 'deactivated' ? 'opacity-60' : ''}`}>
+                    <tr key={emp.id} className={`table-row-hover cursor-pointer ${emp.status === 'deactivated' ? 'opacity-60' : ''}`} onClick={() => setSelectedRecord(emp)}>
                       <td className="table-cell">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
@@ -380,16 +375,10 @@ const Employees = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="table-cell text-gray-500">{emp.email}</td>
                       <td className="table-cell text-gray-500">{formatPhone(emp.phone) || '—'}</td>
                       <td className="table-cell">
                         <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
                           {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                        </span>
-                      </td>
-                      <td className="table-cell">
-                        <span className={`badge ${emp.job_type === 'adhoc' ? 'badge-warning' : 'badge-primary'}`}>
-                          {emp.job_type === 'adhoc' ? 'Adhoc' : 'Permanent'}
                         </span>
                       </td>
                       <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
@@ -400,15 +389,15 @@ const Employees = () => {
                       </td>
                       <td className="table-cell text-right">
                         <div className="flex gap-1.5 justify-end">
-                          <button onClick={() => mobileEdit(emp)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
+                          <button onClick={(e) => { e.stopPropagation(); mobileEdit(emp); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
                           {isAdmin && emp.status === 'active' && (
-                            <button onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
                           )}
                           {isAdmin && emp.status === 'deactivated' && (
-                            <button onClick={() => handleActivate(emp.id)} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleActivate(emp.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
                           )}
                           {isAdmin && (
-                            <button onClick={() => handleDelete(emp.id, `${emp.first_name} ${emp.last_name}`)} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
                           )}
                         </div>
                       </td>
@@ -524,7 +513,7 @@ const Employees = () => {
         onCancel={() => setModal(null)}
       />
 
-      {isMobile && (
+      {isMobile ? (
         <BottomSheet
           open={!!selectedRecord}
           onClose={() => setSelectedRecord(null)}
@@ -547,10 +536,8 @@ const Employees = () => {
           {selectedRecord && (
             <div className="space-y-3">
               <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
-              <DetailRow label="Email" value={selectedRecord.email} />
               <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
               <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />
-              <DetailRow label="Job Type" value={selectedRecord.job_type === 'adhoc' ? 'Adhoc' : 'Permanent'} />
               <DetailRow label="Profession" value={selectedRecord.profession || '—'} />
               <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>
               <DetailRow label="Status">
@@ -558,9 +545,47 @@ const Employees = () => {
                   {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}
                 </span>
               </DetailRow>
+              <DetailRow label="Onboarded" value={selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
             </div>
           )}
         </BottomSheet>
+      ) : !!selectedRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedRecord(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.first_name} {selectedRecord.last_name}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Staff Details</p>
+              </div>
+              <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
+              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
+              <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />
+              <DetailRow label="Profession" value={selectedRecord.profession || '—'} />
+              <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>
+              <DetailRow label="Status">
+                <span className={statusBadge(selectedRecord.status)}>
+                  {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}
+                </span>
+              </DetailRow>
+              <DetailRow label="Onboarded" value={selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => mobileEdit(selectedRecord)} className="btn-primary">{Icons.edit} Edit</button>
+              {isAdmin && selectedRecord.status === 'active' && (
+                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="btn-warning">Deactivate</button>
+              )}
+              {isAdmin && selectedRecord.status === 'deactivated' && (
+                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }} className="btn-success">Activate</button>
+              )}
+              {isAdmin && (
+                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, `${r.first_name} ${r.last_name}`); }} className="btn-danger">Delete</button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showImport && (

@@ -71,9 +71,8 @@ const AuditLogs = () => {
     { key: 'action', label: 'Action', render: (v) => <span className={actionBadge(v)}>{ACTION_LABELS[v] || v}</span> },
     { key: 'actor_name', label: 'Actor' },
     { key: 'entity_type', label: 'Entity', render: (v) => v && <span className="capitalize">{v}</span> },
-    ...(isMobile ? [] : [{ key: 'entity_id', label: 'Entity ID', render: (v) => v ? <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{v.slice(0, 8)}...</code> : '—' }]),
     { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleString() : '—' },
-  ], [isMobile]);
+  ], []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -111,40 +110,68 @@ const AuditLogs = () => {
           columns={columns}
           data={logs}
           loading={loading}
-          empty="No audit logs found."
+          emptyMessage="No audit logs found."
+          mobilePrimary="action"
+          mobileSecondary="actor_name"
           onRowClick={(row) => setSelectedLog(row)}
+          total={total}
+          page={page}
+          totalPages={totalPages}
+          onPrevPage={() => setPage(p => p - 1)}
+          onNextPage={() => setPage(p => p + 1)}
         />
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
-            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
-            <div className="flex items-center gap-2">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-ghost text-sm">Prev</button>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="btn-ghost text-sm">Next</button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {isMobile && selectedLog && (
+      {selectedLog && (isMobile ? (
         <BottomSheet open={!!selectedLog} onClose={() => setSelectedLog(null)} title={ACTION_LABELS[selectedLog.action] || selectedLog.action}>
-          <div className="space-y-3">
-            <div className="flex items-start gap-3"><span className="text-sm text-gray-500 w-24 shrink-0">Actor</span><span className="text-sm text-gray-900">{selectedLog.actor_name || '—'}</span></div>
-            <div className="flex items-start gap-3"><span className="text-sm text-gray-500 w-24 shrink-0">Entity</span><span className="text-sm text-gray-900 capitalize">{selectedLog.entity_type || '—'}</span></div>
-            <div className="flex items-start gap-3"><span className="text-sm text-gray-500 w-24 shrink-0">Entity ID</span><span className="text-sm text-gray-900 font-mono">{selectedLog.entity_id || '—'}</span></div>
-            <div className="flex items-start gap-3"><span className="text-sm text-gray-500 w-24 shrink-0">Date</span><span className="text-sm text-gray-900">{selectedLog.created_at ? new Date(selectedLog.created_at).toLocaleString() : '—'}</span></div>
-            <div className="flex items-start gap-3"><span className="text-sm text-gray-500 w-24 shrink-0">IP</span><span className="text-sm text-gray-900">{selectedLog.ip_address || '—'}</span></div>
-            {selectedLog.changes && (
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-sm font-medium text-gray-700 mb-1">Changes</p>
-                <pre className="text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-40">{JSON.stringify(typeof selectedLog.changes === 'string' ? JSON.parse(selectedLog.changes) : selectedLog.changes, null, 2)}</pre>
-              </div>
-            )}
-          </div>
+          <DetailContent log={selectedLog} />
         </BottomSheet>
-      )}
+      ) : (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedLog(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{ACTION_LABELS[selectedLog.action] || selectedLog.action}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Audit Log Details</p>
+              </div>
+              <button onClick={() => setSelectedLog(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
+            </div>
+            <div className="p-6">
+              <DetailContent log={selectedLog} />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
+
+function DetailContent({ log }) {
+  return (
+    <div className="space-y-3">
+      <DetailRow label="Actor" value={log.actor_name || '—'} />
+      <DetailRow label="Action" value={ACTION_LABELS[log.action] || log.action} />
+      <DetailRow label="Entity" value={log.entity_type ? log.entity_type.charAt(0).toUpperCase() + log.entity_type.slice(1) : '—'} />
+      <DetailRow label="Entity ID" value={log.entity_id ? <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{log.entity_id}</code> : '—'} />
+      <DetailRow label="Date" value={log.created_at ? new Date(log.created_at).toLocaleString() : '—'} />
+      <DetailRow label="IP Address" value={log.ip_address || '—'} />
+      {log.changes && (
+        <div className="pt-3 border-t border-gray-100">
+          <p className="text-sm font-medium text-gray-700 mb-2">Changes</p>
+          <pre className="text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-48">{JSON.stringify(typeof log.changes === 'string' ? JSON.parse(log.changes) : log.changes, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-sm text-gray-500 w-24 shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    </div>
+  );
+}
 
 export default AuditLogs;

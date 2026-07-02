@@ -22,7 +22,8 @@ async function getNextNumber(tenantId, type) {
 
 exports.list = async (req, res) => {
   const tenantId = req.tenantId;
-  const { type, status, page = 1, limit = 20 } = req.query;
+  const { status, page = 1, limit = 20 } = req.query;
+  const { type } = req.params;
   if (!type || !TYPES[type]) return res.status(400).json({ error: 'Invalid type. Must be "credit" or "debit".' });
 
   const table = TABLE(type);
@@ -91,7 +92,7 @@ exports.create = async (req, res) => {
   const { type } = req.params;
   if (!type || !TYPES[type]) return res.status(400).json({ error: 'Invalid type.' });
 
-  const { invoice_id, date, reason, notes, items, gst_type, place_of_supply } = req.body;
+  const { invoice_id, invoice_number, date, reason, notes, items, gst_type, place_of_supply } = req.body;
   if (!items || !items.length) return res.status(400).json({ error: 'At least one item required.' });
 
   const table = TABLE(type);
@@ -101,13 +102,21 @@ exports.create = async (req, res) => {
   const dateCol = DATE_COL(type);
 
   try {
+    let resolvedInvoiceId = invoice_id || null;
+    if (!resolvedInvoiceId && invoice_number) {
+      const [inv] = await db.query(
+        `SELECT id FROM hris_saas.invoices WHERE tenant_id = $1 AND invoice_number = $2`,
+        [tenantId, invoice_number]
+      );
+      if (inv.length > 0) resolvedInvoiceId = inv[0].id;
+    }
     const docNumber = await getNextNumber(tenantId, type);
     const docId = uuidv4();
 
     let subtotal = 0, taxAmount = 0;
     const lineItems = items.map(item => {
       const qty = parseFloat(item.quantity) || 1;
-      const unitPrice = Math.round(parseFloat(item.unit_price) || 0);
+      const unitPrice = Math.round((parseFloat(item.unit_price) || 0) * 100);
       const totalPrice = Math.round(qty * unitPrice);
       const cgstRate = parseFloat(item.cgst_rate) || 0;
       const sgstRate = parseFloat(item.sgst_rate) || 0;
@@ -125,7 +134,7 @@ exports.create = async (req, res) => {
     await db.query(
       `INSERT INTO ${table} (id, tenant_id, invoice_id, ${numberCol}, ${dateCol}, status, subtotal, tax_amount, total_amount, reason, gst_type, place_of_supply, notes)
        VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12)`,
-      [docId, tenantId, invoice_id || null, docNumber, date || new Date().toISOString().split('T')[0],
+      [docId, tenantId, resolvedInvoiceId, docNumber, date || new Date().toISOString().split('T')[0],
        subtotal, taxAmount, totalAmount, reason || null, gst_type || null, place_of_supply || null, notes || null]
     );
 
@@ -166,7 +175,7 @@ exports.updateStatus = async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `UPDATE ${table} SET status = $1 WHERE id = $2 AND tenant_id = $3`,
+      `UPDATE ${table} SET status = $1 WHERE id = $2 AND tenant_id = $3 RETURNING id`,
       [status, id, tenantId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Note not found.' });

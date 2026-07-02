@@ -53,7 +53,7 @@ const PlanSelection = () => {
       const result = await hrService.selectPlan(selectedPlan, phone);
       const tenantData = { ...tenant, subscriptionPlan: result.plan, phone: result.phone };
       login(user, localStorage.getItem('auth_token'), tenantData);
-      navigate('/admin/dashboard');
+      navigate('/admin');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save plan.');
     }
@@ -95,7 +95,7 @@ const PlanSelection = () => {
             {loading ? (
               <div className="text-center text-gray-400 py-8">Loading plans...</div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-stretch">
                 {plans.map(plan => {
                   const colors = PLAN_COLORS[plan.id];
                   const isSelected = selectedPlan === plan.id;
@@ -104,7 +104,7 @@ const PlanSelection = () => {
                       key={plan.id}
                       type="button"
                       onClick={() => setSelectedPlan(plan.id)}
-                      className={`relative p-5 rounded-xl border-2 text-left transition-all duration-200 ${
+                      className={`relative p-5 rounded-xl border-2 text-left transition-all duration-200 flex flex-col h-full ${
                         isSelected ? colors.selected + ' shadow-md' : colors.border + ' ' + colors.hover + ' shadow-sm'
                       }`}
                     >
@@ -118,13 +118,18 @@ const PlanSelection = () => {
                       </div>
                       <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        {plan.price === 0 ? 'Free' : `₹${plan.price}/yr`}
+                        {parseFloat(plan.price_inr ?? plan.price) === 0 ? 'Free' : `₹${parseFloat(plan.price_inr ?? plan.price)}/yr`}
                       </p>
-                      <ul className="mt-3 space-y-1.5">
-                        {plan.features?.map((f, i) => (
+                      <ul className="mt-3 space-y-1.5 flex-1">
+                        {(Array.isArray(plan.features) ? plan.features : Object.entries(plan.features || {}).filter(([,v]) => v === true || typeof v === 'string' || (typeof v === 'number' && v !== 0)).map(([k, v]) => {
+                          const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                          if (typeof v === 'number') return `${label}: ${v === -1 ? 'Unlimited' : v}`;
+                          if (typeof v === 'string') return `${label}: ${v.charAt(0).toUpperCase() + v.slice(1)}`;
+                          return label;
+                        })).map((f, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                             <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                            {typeof f === 'string' ? f : f.text || f}
+                            {f}
                           </li>
                         ))}
                       </ul>

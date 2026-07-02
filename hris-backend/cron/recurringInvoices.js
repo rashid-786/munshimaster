@@ -7,7 +7,7 @@ async function processRecurringInvoices() {
       `SELECT r.*, t.settings
        FROM recurring_invoice_templates r
        JOIN tenants t ON r.tenant_id = t.id
-       WHERE r.is_active = true AND r.next_generation_date <= CURDATE()`
+       WHERE r.is_active = true AND r.next_generation_date <= CURRENT_DATE`
     );
 
     for (const template of templates) {
@@ -16,7 +16,7 @@ async function processRecurringInvoices() {
         const nextDate = calcNextDate(template);
         await db.query(
           `UPDATE recurring_invoice_templates
-           SET last_generated_date = CURDATE(), next_generation_date = ?
+           SET last_generated_date = CURRENT_DATE, next_generation_date = ?
            WHERE id = ?`,
           [nextDate, template.id]
         );

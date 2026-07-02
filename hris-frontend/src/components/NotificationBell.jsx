@@ -15,7 +15,13 @@ const NotificationBell = ({ role = 'admin' }) => {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetch(); const t = setInterval(fetch, 30000); return () => clearInterval(t); }, [fetch]);
+  useEffect(() => { fetch(); }, [fetch]);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(fetch, 60000);
+    return () => clearInterval(t);
+  }, [open, fetch]);
 
   useEffect(() => {
     const handleClick = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false); };

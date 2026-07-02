@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export default function BottomSheet({ open, onClose, title, children, actions, stickyActions = true }) {
+export default function BottomSheet({ open, onClose, title, children, actions }) {
   const sheetRef = useRef(null);
   const startY = useRef(0);
   const currentY = useRef(0);
@@ -65,7 +65,7 @@ export default function BottomSheet({ open, onClose, title, children, actions, s
       />
       <div
         ref={sheetRef}
-        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col"
+        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[90dvh] flex flex-col"
       >
         <div className="flex items-center justify-center pt-2 pb-1 shrink-0">
           <div className="w-10 h-1 rounded-full bg-gray-300" />
@@ -84,12 +84,12 @@ export default function BottomSheet({ open, onClose, title, children, actions, s
           </button>
         </div>
 
-        <div className="bottom-sheet-body flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="bottom-sheet-body flex-1 overflow-y-auto min-h-0 px-5 py-4">
           {children}
         </div>
 
         {actions && (
-          <div className={`${stickyActions ? 'sticky bottom-0' : ''} px-5 py-4 border-t border-gray-100 bg-white flex gap-3 shrink-0`}>
+          <div className="px-5 py-4 border-t border-gray-100 bg-white flex gap-3 shrink-0">
             {actions}
           </div>
         )}

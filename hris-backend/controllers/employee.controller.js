@@ -31,8 +31,8 @@ exports.createEmployee = async (req, res) => {
     const salaryInCents = Math.round(parseFloat(baseSalary) * 100);
 
     await db.execute(
-      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, status, profession, other_profession)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, status, profession, other_profession, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
       [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, profession || null, otherProfession || null]
     );
 

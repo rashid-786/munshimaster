@@ -298,7 +298,7 @@ const Products = () => {
         columns={columns}
         data={products}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['name', 'sku', 'hsn_code']}
         onRowClick={(p) => {
           if (isMobile) setMobileDetail(p);

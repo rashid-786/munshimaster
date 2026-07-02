@@ -132,7 +132,7 @@ async function fetchARAging(tenantId, { asOnDate }) {
             (SELECT name FROM customers WHERE id = i.customer_id AND tenant_id = i.tenant_id) as customer_name,
             invoice_date, due_date, total_amount, amount_paid,
             (total_amount - amount_paid) as outstanding,
-            DATE_PART('day', ?::date - due_date) as days_overdue
+            (?::date - due_date) as days_overdue
      FROM invoices i
      WHERE i.tenant_id = ? AND i.status IN ('sent','partial','overdue') AND i.due_date < ?
      ORDER BY days_overdue DESC`,
@@ -156,10 +156,10 @@ async function fetchAPAging(tenantId, { asOnDate }) {
   const asOn = asOnDate || new Date().toISOString().split('T')[0];
   // Outstanding POs that are approved/sent (received but not fully paid)
   const [poRows] = await db.execute(
-    `SELECT po.id, po.order_number, po.supplier_id,
+    `SELECT po.id, po.po_number as order_number, po.supplier_id,
             (SELECT name FROM suppliers WHERE id = po.supplier_id AND tenant_id = po.tenant_id) as supplier_name,
             po.order_date, po.expected_date, po.total_amount,
-            DATE_PART('day', ?::date - COALESCE(po.expected_date, po.order_date)) as days_overdue
+            (?::date - COALESCE(po.expected_date, po.order_date)) as days_overdue
      FROM purchase_orders po
      WHERE po.tenant_id = ? AND po.status IN ('approved','sent','received')
        AND COALESCE(po.expected_date, po.order_date) < ?

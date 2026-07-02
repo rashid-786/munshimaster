@@ -41,7 +41,14 @@ const Suppliers = () => {
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setShowForm(true); };
 
-  const openEdit = (s) => { setEditing(s.id); setForm(s); setShowForm(true); setSelectedRecord(null); };
+  const openEdit = (s) => {
+    setEditing(s.id);
+    const cleaned = {};
+    for (const key of Object.keys(emptyForm)) cleaned[key] = s[key] ?? '';
+    setForm(cleaned);
+    setShowForm(true);
+    setSelectedRecord(null);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -115,11 +122,8 @@ const Suppliers = () => {
     { key: 'name', label: 'Name', render: (v) => <span className="font-medium">{v}</span> },
     { key: 'contact_person', label: 'Contact', render: (v) => <span className="text-gray-500">{v || '—'}</span> },
     { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
-    { key: 'email', label: 'Email', render: (v) => v || '—' },
-    { key: 'city', label: 'City', render: (v) => v || '—' },
-    { key: 'gstin', label: 'GSTIN', render: (v) => <span className="text-xs font-mono">{v || '—'}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={v === 'active' ? 'badge-success' : 'badge-danger'}>{v}</span> },
-    { key: 'actions', label: 'Actions', render: (_, s) => (
+    { key: 'actions', label: 'Actions', className: 'text-center', render: (_, s) => (
       <div className="flex gap-1.5 justify-end">
         <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
         {s.status === 'active' ? (
@@ -149,7 +153,7 @@ const Suppliers = () => {
         columns={columns}
         data={suppliers}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['name', 'contact_person', 'email', 'phone']}
         loading={loading}
         mobilePrimary="name"
@@ -252,7 +256,7 @@ const Suppliers = () => {
         onCancel={() => setModal(null)}
       />
 
-      {isMobile && (
+      {selectedRecord && (isMobile ? (
         <BottomSheet
           open={!!selectedRecord}
           onClose={() => setSelectedRecord(null)}
@@ -289,29 +293,77 @@ const Suppliers = () => {
             </>
           }
         >
-          {selectedRecord && (
-            <div className="space-y-3">
-              <DetailRow label="Name" value={selectedRecord.name} />
-              <DetailRow label="Contact Person" value={selectedRecord.contact_person} />
-              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              <DetailRow label="Email" value={selectedRecord.email} />
-              <DetailRow label="City" value={selectedRecord.city} />
-              <DetailRow label="State" value={selectedRecord.state} />
-              <DetailRow label="Pincode" value={selectedRecord.pincode} />
-              <DetailRow label="GSTIN" value={selectedRecord.gstin} />
-              <DetailRow label="Status">
-                <span className={selectedRecord.status === 'active' ? 'badge-success' : 'badge-danger'}>{selectedRecord.status}</span>
-              </DetailRow>
-              <DetailRow label="Payment Terms" value={selectedRecord.payment_terms} />
-              <DetailRow label="Address" value={selectedRecord.address} />
-              <DetailRow label="Notes" value={selectedRecord.notes} />
-            </div>
-          )}
+          <SupplierDetailContent supplier={selectedRecord} />
         </BottomSheet>
-      )}
+      ) : (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedRecord(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.name || 'Supplier Details'}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Supplier Details</p>
+              </div>
+              <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
+            </div>
+            <div className="p-6">
+              <SupplierDetailContent supplier={selectedRecord} />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
+                className="btn-primary text-sm"
+              >
+                Edit
+              </button>
+              {selectedRecord?.status === 'active' ? (
+                <button
+                  onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, r.name); }}
+                  className="btn-warning text-sm"
+                >
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }}
+                  className="btn-success text-sm"
+                >
+                  Activate
+                </button>
+              )}
+              <button
+                onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, r.name); }}
+                className="btn-danger text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
+
+function SupplierDetailContent({ supplier }) {
+  return (
+    <div className="space-y-3">
+      <DetailRow label="Name" value={supplier.name} />
+      <DetailRow label="Contact Person" value={supplier.contact_person} />
+      <DetailRow label="Phone" value={formatPhone(supplier.phone)} />
+      <DetailRow label="Email" value={supplier.email} />
+      <DetailRow label="City" value={supplier.city} />
+      <DetailRow label="State" value={supplier.state} />
+      <DetailRow label="Pincode" value={supplier.pincode} />
+      <DetailRow label="GSTIN" value={supplier.gstin} />
+      <DetailRow label="Status">
+        <span className={supplier.status === 'active' ? 'badge-success' : 'badge-danger'}>{supplier.status}</span>
+      </DetailRow>
+      <DetailRow label="Payment Terms" value={supplier.payment_terms} />
+      <DetailRow label="Address" value={supplier.address} />
+      <DetailRow label="Notes" value={supplier.notes} />
+    </div>
+  );
+}
 
 function DetailRow({ label, value, children }) {
   return (

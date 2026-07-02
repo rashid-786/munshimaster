@@ -27,8 +27,8 @@ function getTdsPeriod(dateStr) {
   const d = new Date(dateStr);
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
-  // TDS period is quarter-based: Q1(Apr-Jun), Q2(Jul-Sep), Q3(Oct-Dec), Q4(Jan-Mar)
-  const q = Math.ceil(month / 3);
+  // TDS period is financial year quarter: Q1(Apr-Jun), Q2(Jul-Sep), Q3(Oct-Dec), Q4(Jan-Mar)
+  const q = month <= 3 ? 4 : Math.ceil((month - 3) / 3);
   return `Q${q}${String(year).slice(-2)}`;
 }
 

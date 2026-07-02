@@ -544,6 +544,10 @@ export const hrService = {
     const response = await api.get('/core/dashboard');
     return response.data;
   },
+  getBusinessDashboard: async (period) => {
+    const response = await api.get('/core/dashboard/business', { params: { period } });
+    return response.data;
+  },
   globalSearch: async (q) => {
     const response = await api.get('/core/search', { params: { q } });
     return response.data;
@@ -763,6 +767,75 @@ export const hrService = {
   },
   getTdsSummary: async (period) => {
     const response = await api.get('/core/tds/summary', { params: period ? { period } : {} });
+    return response.data;
+  },
+  tallyExport: async (type, params) => {
+    const response = await api.get(`/core/tally/${type}`, { params, responseType: 'blob' });
+    return response.data;
+  },
+  bulkImportPreview: async (entityType, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/core/bulk-import/${entityType}/preview`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+    return response.data;
+  },
+  bulkImportConfirm: async (entityType, rows) => {
+    const response = await api.post(`/core/bulk-import/${entityType}/confirm`, { rows }, { timeout: 60000 });
+    return response.data;
+  },
+  getCashFlow: async (from, to) => {
+    const response = await api.get('/core/cash-flow', { params: { from, to } });
+    return response.data;
+  },
+  getKhataSummary: async () => {
+    const response = await api.get('/core/khata/summary');
+    return response.data;
+  },
+  getKhataCustomers: async (search) => {
+    const response = await api.get('/core/khata/customers', { params: search ? { search } : {} });
+    return response.data;
+  },
+  getKhataCustomerDetail: async (id) => {
+    const response = await api.get(`/core/khata/customers/${id}`);
+    return response.data;
+  },
+  generatePortalLink: async (customerId) => {
+    const response = await api.post(`/core/khata/customers/${customerId}/token`);
+    return response.data;
+  },
+  sendKhataReminder: async (customerId, type) => {
+    const response = await api.post(`/core/khata/customers/${customerId}/reminder`, { type });
+    return response.data;
+  },
+  verifyPortalToken: async (token) => {
+    const response = await api.get(`/public/portal/${token}`);
+    return response.data;
+  },
+  getEntities: async () => {
+    const response = await api.get('/core/entities');
+    return response.data;
+  },
+  createEntity: async (data) => {
+    const response = await api.post('/core/entities', data);
+    return response.data;
+  },
+  switchEntity: async (targetTenantId) => {
+    const response = await api.post('/core/entities/switch', { targetTenantId });
+    return response.data;
+  },
+  updateEntity: async (id, data) => {
+    const response = await api.put(`/core/entities/${id}`, data);
+    return response.data;
+  },
+  deleteEntity: async (id) => {
+    const response = await api.delete(`/core/entities/${id}`);
+    return response.data;
+  },
+  getConsolidatedPL: async (from, to) => {
+    const response = await api.get('/core/reports/consolidated/pl', { params: { from, to } });
     return response.data;
   },
 };

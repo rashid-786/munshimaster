@@ -21,6 +21,7 @@ const LeaveApprovals = () => {
   const [leaves, setLeaves] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
@@ -118,9 +119,14 @@ const LeaveApprovals = () => {
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         if (ym !== filterMonth) return false;
       }
+      if (search) {
+        const q = search.toLowerCase();
+        const name = `${l.first_name} ${l.last_name}`.toLowerCase();
+        if (!name.includes(q)) return false;
+      }
       return true;
     });
-  }, [leaves, filterStatus, filterType, filterMonth]);
+  }, [leaves, filterStatus, filterType, filterMonth, search]);
 
   const handleReview = async (id, status) => {
     try {
@@ -182,7 +188,7 @@ const LeaveApprovals = () => {
         columns={columns}
         data={filteredLeaves}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['first_name', 'last_name', 'leave_type', 'status']}
         loading={loading}
         mobilePrimary="employee_name"
@@ -190,21 +196,31 @@ const LeaveApprovals = () => {
         onRowClick={(r) => setSelectedRecord(r)}
         emptyMessage="No leave applications"
         header={
-          <div className="flex flex-wrap gap-2">
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field max-w-[130px] text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[140px] max-w-[200px]">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                type="text"
+                placeholder="Search staff..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="input-field pl-8 text-sm"
+              />
+            </div>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field max-w-[120px] text-sm">
               <option value="">All Status</option>
               <option value="pending">Pending</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
             </select>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="input-field max-w-[130px] text-sm">
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="input-field max-w-[120px] text-sm">
               <option value="">All Types</option>
               <option value="Annual">Annual</option>
               <option value="Sick">Sick</option>
               <option value="Casual">Casual</option>
               <option value="Unpaid">Unpaid</option>
             </select>
-            <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="input-field max-w-[150px] text-sm">
+            <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="input-field max-w-[140px] text-sm">
               <option value="">All Months</option>
               {monthOptions.map(m => {
                 const [y, mo] = m.split('-');

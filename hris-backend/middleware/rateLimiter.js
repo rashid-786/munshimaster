@@ -1,9 +1,9 @@
 const rateLimit = require('express-rate-limit');
 
-// General API limiter: 200 requests per 15 min
+// General API limiter: 500 requests per 15 min
 exports.apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },

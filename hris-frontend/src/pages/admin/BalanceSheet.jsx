@@ -232,7 +232,7 @@ const BalanceSheet = () => {
         columns={columns}
         data={entries}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['description', 'type', 'payment_method']}
         loading={loading}
         mobilePrimary="entry_date"

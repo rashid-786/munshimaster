@@ -97,8 +97,7 @@ const EmployeeCalendar = () => {
     setSelectedDay(null);
   };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const fmtClock = (d) => {
     if (!d) return '09:00';
@@ -259,7 +258,7 @@ const EmployeeCalendar = () => {
                       const isIdle = day.type === 'idle';
                       const isWeekend = day.type === 'weekend';
                       const hasColor = !isIdle && !isWeekend;
-                      const isFuture = new Date(day.date) > today;
+                      const isFuture = day.date > todayStr;
                       const key = `${emp.employee.id}-${idx}`;
                       return (
                         <td
@@ -326,7 +325,7 @@ const EmployeeCalendar = () => {
               </p>
             </div>
 
-            {new Date(selectedDay.day.date) > today ? (
+            {selectedDay.day.date > todayStr ? (
               <div className="py-6 text-center">
                 <p className="text-sm text-amber-600 font-medium">Cannot manage attendance for future dates.</p>
               </div>

@@ -353,7 +353,7 @@ const PurchaseOrders = () => {
         columns={columns}
         data={orders}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['po_number', 'supplier_name', 'status']}
         loading={loading}
         onRowClick={async (po) => {
@@ -394,52 +394,57 @@ const PurchaseOrders = () => {
       />
 
       {!isMobile && detail && (
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h3 className="text-lg font-semibold text-gray-900">{detail.po_number}</h3>
-              <span className={statusBadge[detail.status]}>{detail.status}</span>
-              {emailLogs[detail.id]?.length > 0 && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  emailLogs[detail.id][0].status === 'sent' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                }`}>
-                  {emailLogs[detail.id][0].status === 'sent' ? '✓ Emailed' : '✗ Failed'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => hrService.downloadPurchaseOrderPDF(detail.id)}
-                className="btn-secondary text-xs px-3 py-1.5">Download PDF</button>
-              <button
-                onClick={() => handleEmailPO(detail.id)}
-                disabled={emailSending === detail.id || !detail.supplier_email}
-                className="btn-secondary text-xs px-3 py-1.5"
-                title={!detail.supplier_email ? 'Supplier has no email' : ''}
-              >
-                {emailSending === detail.id ? 'Sending...' : 'Email PO'}
-              </button>
-              <button
-                onClick={() => handleWhatsAppPO(detail.id)}
-                disabled={whatsappSending === detail.id || !detail.supplier_phone}
-                className="btn-secondary text-xs px-3 py-1.5"
-                title={!detail.supplier_phone ? 'Supplier has no phone' : ''}
-              >
-                {whatsappSending === detail.id ? 'Sending...' : 'WhatsApp'}
-              </button>
-              {statusFlow.indexOf(detail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(detail.status) === -1 && (
-                <button onClick={() => handleStatus(detail.id, statusFlow[statusFlow.indexOf(detail.status) + 1])}
-                  className="btn-primary text-xs px-3 py-1.5">
-                  Mark as {statusFlow[statusFlow.indexOf(detail.status) + 1]}
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
+             onClick={() => setDetail(null)}
+        >
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 animate-scale-in"
+               onClick={e => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold text-gray-900">{detail.po_number}</h3>
+                <span className={statusBadge[detail.status]}>{detail.status}</span>
+                {emailLogs[detail.id]?.length > 0 && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    emailLogs[detail.id][0].status === 'sent' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                  }`}>
+                    {emailLogs[detail.id][0].status === 'sent' ? '✓ Emailed' : '✗ Failed'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => hrService.downloadPurchaseOrderPDF(detail.id)}
+                  className="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap">PDF</button>
+                <button
+                  onClick={() => handleEmailPO(detail.id)}
+                  disabled={emailSending === detail.id || !detail.supplier_email}
+                  className="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap"
+                  title={!detail.supplier_email ? 'Supplier has no email' : ''}
+                >
+                  {emailSending === detail.id ? '...' : 'Email'}
                 </button>
-              )}
-              {detail.status !== 'cancelled' && (
-                <button onClick={() => handleStatus(detail.id, 'cancelled')}
-                  className="btn-danger text-xs px-3 py-1.5">Cancel</button>
-              )}
-              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+                <button
+                  onClick={() => handleWhatsAppPO(detail.id)}
+                  disabled={whatsappSending === detail.id || !detail.supplier_phone}
+                  className="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap"
+                  title={!detail.supplier_phone ? 'Supplier has no phone' : ''}
+                >
+                  {whatsappSending === detail.id ? '...' : 'WA'}
+                </button>
+                {statusFlow.indexOf(detail.status) < statusFlow.length - 1 && ['cancelled'].indexOf(detail.status) === -1 && (
+                  <button onClick={() => handleStatus(detail.id, statusFlow[statusFlow.indexOf(detail.status) + 1])}
+                    className="btn-primary text-xs px-3 py-1.5 whitespace-nowrap">
+                    {statusFlow[statusFlow.indexOf(detail.status) + 1]}
+                  </button>
+                )}
+                {detail.status !== 'cancelled' && (
+                  <button onClick={() => handleStatus(detail.id, 'cancelled')}
+                    className="btn-danger text-xs px-3 py-1.5 whitespace-nowrap">Cancel</button>
+                )}
+                <button onClick={() => { setDetail(null); setAttachments([]); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-1">&times;</button>
+              </div>
             </div>
-          </div>
-          <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <p className="text-xs text-gray-500 font-medium">Supplier</p>
@@ -536,6 +541,7 @@ const PurchaseOrders = () => {
             )}
           </div>
         </div>
+      </div>
       )}
 
       <BottomSheet

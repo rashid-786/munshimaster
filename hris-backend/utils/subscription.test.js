@@ -1,3 +1,13 @@
+const mockPool = {
+  query: jest.fn().mockResolvedValue({ rows: [] }),
+  on: jest.fn(),
+};
+
+jest.mock('pg', () => {
+  const Pool = jest.fn(() => mockPool);
+  return { Pool };
+});
+
 const { planRank, PLAN_RANK } = require('./subscription');
 
 describe('planRank', () => {

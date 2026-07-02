@@ -20,10 +20,6 @@ exports.updateTenantSettings = async (req, res) => {
   const tenantId = req.tenantId;
   const { companyName, settings } = req.body; // settings structure target: { primaryColor: '#XXXXXX' }
 
-  if (req.user.role !== 'tenant_admin') {
-    return res.status(403).json({ error: 'Administrative clearance access required.' });
-  }
-
   try {
     const existingSettings = settings ? JSON.stringify(settings) : undefined;
     if (existingSettings) {

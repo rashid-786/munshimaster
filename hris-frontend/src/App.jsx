@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import PublicRoute from './components/PublicRoute';
 import { applyTheme } from './utils/currency';
 
 import LandingLayout from './layouts/LandingLayout';
@@ -17,7 +18,6 @@ import Blogs from './pages/landing/Blogs';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import Pricing from './pages/landing/Pricing';
-import PlanSelection from './pages/auth/PlanSelection';
 import Employees from './pages/admin/Employees';
 import EmployeeCalendar from './pages/admin/EmployeeCalendar';
 import LeaveApprovals from './pages/admin/LeaveApprovals';
@@ -28,7 +28,11 @@ import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
 import Reports from './pages/admin/Reports';
 import PLStatement from './pages/admin/PLStatement';
+import CashFlowStatement from './pages/admin/CashFlowStatement';
 import KiranaStore from './pages/admin/KiranaStore';
+import LedgerDashboard from './pages/admin/LedgerDashboard';
+import BusinessDashboard from './pages/admin/BusinessDashboard';
+import HrDashboard from './pages/admin/HrDashboard';
 import Suppliers from './pages/admin/Suppliers';
 import Customers from './pages/admin/Customers';
 import PurchaseOrders from './pages/admin/PurchaseOrders';
@@ -43,6 +47,10 @@ import CreditDebitNotes from './pages/admin/CreditDebitNotes';
 import GstReturns from './pages/admin/GstReturns';
 import Gstr2bReconciliation from './pages/admin/Gstr2bReconciliation';
 import TDSManagement from './pages/admin/TDSManagement';
+import TallyExport from './pages/admin/TallyExport';
+import BulkImport from './pages/admin/BulkImport';
+import Entities from './pages/admin/Entities';
+import CustomerPortal from './pages/portal/CustomerPortal';
 import Workspace from './pages/employee/Workspace';
 import Attendance from './pages/employee/Attendance';
 import Profile from './pages/employee/Profile';
@@ -91,7 +99,7 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="dashboard" element={<Dashboard />} />
+            <Route index element={<Navigate to="ledger" replace />} />
             <Route path="employees" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
             <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
             <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
@@ -102,8 +110,11 @@ function App() {
             <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />
             <Route path="reports" element={<PlanRoute minPlan="business"><Reports /></PlanRoute>} />
             <Route path="pl" element={<PlanRoute minPlan="business"><PLStatement /></PlanRoute>} />
-            <Route path="ledger" element={<KiranaStore />} />
+            <Route path="cash-flow" element={<PlanRoute minPlan="business"><CashFlowStatement /></PlanRoute>} />
+            <Route path="ledger" element={<LedgerDashboard />} />
             <Route path="ledger/:tab" element={<KiranaStore />} />
+            <Route path="business" element={<PlanRoute minPlan="business"><BusinessDashboard /></PlanRoute>} />
+            <Route path="hr" element={<PlanRoute minPlan="pro"><HrDashboard /></PlanRoute>} />
             <Route path="suppliers" element={<PlanRoute minPlan="business"><Suppliers /></PlanRoute>} />
             <Route path="customers" element={<PlanRoute minPlan="business"><Customers /></PlanRoute>} />
             <Route path="purchase-orders" element={<PlanRoute minPlan="business"><PurchaseOrders /></PlanRoute>} />
@@ -114,10 +125,14 @@ function App() {
             <Route path="gst-returns" element={<PlanRoute minPlan="business"><GstReturns /></PlanRoute>} />
             <Route path="gstr2b" element={<PlanRoute minPlan="business"><Gstr2bReconciliation /></PlanRoute>} />
             <Route path="tds" element={<PlanRoute minPlan="business"><TDSManagement /></PlanRoute>} />
-            <Route path="products" element={<PlanRoute minPlan="pro"><Products /></PlanRoute>} />
+            <Route path="tally" element={<PlanRoute minPlan="business"><TallyExport /></PlanRoute>} />
+            <Route path="bulk-import" element={<PlanRoute minPlan="business"><BulkImport /></PlanRoute>} />
+            <Route path="entities" element={<Entities />} />
+            <Route path="products" element={<PlanRoute minPlan="business"><Products /></PlanRoute>} />
             <Route path="payments" element={<PaymentHistory />} />
             <Route path="referrals" element={<Referrals />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="settings/:tab" element={<Settings />} />
           </Route>
 
           <Route
@@ -135,7 +150,7 @@ function App() {
             <Route path="advances" element={<MyAdvances />} />
           </Route>
 
-          <Route element={<LandingLayout />}>
+          <Route element={<PublicRoute><LandingLayout /></PublicRoute>}>
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/services" element={<Services />} />
@@ -146,7 +161,7 @@ function App() {
             <Route path="/pricing" element={<Pricing />} />
           </Route>
 
-          <Route path="/select-plan" element={<ProtectedRoute allowedRoles={['tenant_admin']}><PlanSelection /></ProtectedRoute>} />
+          <Route path="/portal/:token" element={<CustomerPortal />} />
           <Route path="/unauthorized" element={<div className="min-h-screen flex items-center justify-center text-gray-500 text-xl">Unauthorized Access</div>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

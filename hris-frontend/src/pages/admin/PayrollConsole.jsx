@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -10,10 +10,17 @@ const PayrollConsole = () => {
   const [payPeriod, setPayPeriod] = useState({ startDate: '', endDate: '' });
   const [history, setHistory] = useState([]);
   const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
   const [payrun, setPayrun] = useState(null);
   const [selectedPayrun, setSelectedPayrun] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const filteredHistory = useMemo(() => {
+    if (!search) return history;
+    const q = search.toLowerCase();
+    return history.filter(r => `${r.first_name} ${r.last_name}`.toLowerCase().includes(q));
+  }, [history, search]);
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -81,7 +88,6 @@ const PayrollConsole = () => {
             columns={payrunColumns}
             data={payrunData}
             keyField="_key"
-            searchable={true}
             searchKeys={['employeeName']}
             mobilePrimary="employeeName"
             mobileSecondary="net"
@@ -113,12 +119,23 @@ const PayrollConsole = () => {
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Payroll History</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Payroll History</h3>
+          <div className="relative max-w-xs w-full sm:w-auto">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <input
+              type="text"
+              placeholder="Search staff..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="input-field pl-9 text-sm w-full"
+            />
+          </div>
+        </div>
         <ResponsiveTable
           columns={historyColumns}
-          data={history}
+          data={filteredHistory}
           keyField="id"
-          searchable={true}
           searchKeys={['first_name', 'last_name']}
           mobilePrimary="employee_name"
           mobileSecondary="net_salary"

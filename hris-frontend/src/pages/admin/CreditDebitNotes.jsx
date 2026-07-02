@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import ConfirmModal from '../../components/ConfirmModal';
 import { formatINR } from '../../utils/currency';
 
 const statusBadge = {
@@ -31,6 +32,11 @@ const CreditDebitNotes = () => {
     items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }],
   });
   const [formSaving, setFormSaving] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const [invSearch, setInvSearch] = useState('');
+  const [showInvDropdown, setShowInvDropdown] = useState(false);
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -43,6 +49,10 @@ const CreditDebitNotes = () => {
   }, [tab, page]);
 
   useEffect(() => { fetch(); }, [fetch]);
+
+  useEffect(() => {
+    hrService.getInvoices({ limit: 500 }).then(res => setInvoices(res.data || [])).catch(() => {});
+  }, []);
 
   const openDetail = async (id) => {
     setDetailLoading(true);
@@ -66,15 +76,25 @@ const CreditDebitNotes = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this draft note?')) return;
-    try {
-      await hrService.deleteNote(tab, id);
-      setDetail(null);
-      fetch();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to delete.');
-    }
+  const handleDelete = (id) => {
+    setModal({
+      variant: 'danger',
+      title: `Delete ${tab === 'credit' ? 'Credit' : 'Debit'} Note`,
+      message: `Permanently delete this draft ${tab} note? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setModalLoading(true);
+        try {
+          await hrService.deleteNote(tab, id);
+          setDetail(null);
+          setModal(null);
+          fetch();
+        } catch (err) {
+          setError(err.response?.data?.error || 'Failed to delete.');
+          setModal(null);
+        } finally { setModalLoading(false); }
+      },
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -84,6 +104,7 @@ const CreditDebitNotes = () => {
     try {
       await hrService.createNote(tab, {
         invoice_id: form.invoice_id || undefined,
+        invoice_number: form.invoice_number || (invSearch && !form.invoice_id ? invSearch : undefined),
         date: form.date,
         reason: form.reason || undefined,
         notes: form.notes || undefined,
@@ -100,7 +121,8 @@ const CreditDebitNotes = () => {
         })),
       });
       setShowForm(false);
-      setForm({ ...form, invoice_id: '', reason: '', notes: '', items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }] });
+      setInvSearch('');
+      setForm({ ...form, invoice_id: '', invoice_number: '', reason: '', notes: '', items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }] });
       fetch();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create.');
@@ -129,11 +151,20 @@ const CreditDebitNotes = () => {
     { key: tab === 'credit' ? 'credit_note_number' : 'debit_note_number', label: 'Number', render: (v) => <span className="font-mono text-sm">{v}</span> },
     { key: 'ref_invoice', label: 'Ref Invoice', render: (v) => v || '-' },
     { key: tab === 'credit' ? 'cn_date' : 'dn_date', label: 'Date', render: (v) => v ? v.split('T')[0] : '-' },
-    { key: 'total_amount', label: 'Amount', render: (v) => <span className="font-semibold">{formatINR((v || 0) / 100)}</span> },
+    { key: 'total_amount', label: 'Amount', render: (v) => <span className="font-semibold">{formatINR(v || 0)}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge[v]}`}>{v}</span> },
     {
-      key: 'actions', label: '', render: (v, r) => (
-        <button onClick={() => openDetail(r.id)} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">View</button>
+      key: 'actions', label: 'Actions', className: 'text-center',
+      render: (v, r) => (
+        <div className="flex gap-1.5 justify-end">
+          <button onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} className="btn-secondary !py-1 !px-3 text-xs">View</button>
+          {r.status === 'draft' && (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+            </>
+          )}
+        </div>
       ),
     },
   ];
@@ -171,9 +202,22 @@ const CreditDebitNotes = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
                   <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="input-field" required />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Invoice ID</label>
-                  <input type="text" value={form.invoice_id} onChange={e => setForm({ ...form, invoice_id: e.target.value })} className="input-field" placeholder="Optional" />
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Invoice</label>
+                  <input type="text" value={invSearch} onChange={e => { setInvSearch(e.target.value); setForm({ ...form, invoice_id: '', invoice_number: '' }); setShowInvDropdown(true); }}
+                    onFocus={() => setShowInvDropdown(true)} onBlur={() => setTimeout(() => setShowInvDropdown(false), 200)}
+                    className="input-field" placeholder="Search by invoice number..." />
+                  {showInvDropdown && (
+                    <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {invoices.filter(inv => !invSearch || inv.invoice_number?.toLowerCase().includes(invSearch.toLowerCase())).map(inv => (
+                        <button key={inv.id} type="button" onClick={() => { setInvSearch(inv.invoice_number); setForm({ ...form, invoice_id: inv.id, invoice_number: inv.invoice_number }); setShowInvDropdown(false); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 text-gray-700">{inv.invoice_number}</button>
+                      ))}
+                      {invoices.filter(inv => !invSearch || inv.invoice_number?.toLowerCase().includes(invSearch.toLowerCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400">No invoices found</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -233,26 +277,31 @@ const CreditDebitNotes = () => {
       )}
 
       {detail && (
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h3 className="text-lg font-semibold">{detail[tab === 'credit' ? 'credit_note_number' : 'debit_note_number']}</h3>
-              <span className={statusBadge[detail.status]}>{detail.status}</span>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
+             onClick={() => setDetail(null)}
+        >
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 animate-scale-in"
+               onClick={e => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">{detail[tab === 'credit' ? 'credit_note_number' : 'debit_note_number']}</h3>
+                <span className={statusBadge[detail.status]}>{detail.status}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {detail.status === 'draft' && (
+                  <>
+                    <button onClick={() => handleStatus(detail.id, 'issued')} className="btn-primary text-xs px-3 py-1.5 whitespace-nowrap">Issue</button>
+                    <button onClick={() => handleDelete(detail.id)} className="btn-danger text-xs px-3 py-1.5 whitespace-nowrap">Delete</button>
+                  </>
+                )}
+                {detail.status === 'issued' && (
+                  <button onClick={() => handleStatus(detail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5 whitespace-nowrap">Cancel</button>
+                )}
+                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-1">&times;</button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              {detail.status === 'draft' && (
-                <>
-                  <button onClick={() => handleStatus(detail.id, 'issued')} className="btn-primary text-xs px-3 py-1.5">Issue</button>
-                  <button onClick={() => handleDelete(detail.id)} className="btn-danger text-xs px-3 py-1.5">Delete</button>
-                </>
-              )}
-              {detail.status === 'issued' && (
-                <button onClick={() => handleStatus(detail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5">Cancel</button>
-              )}
-              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
-          </div>
-          <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <p className="text-xs text-gray-500 font-medium">Customer</p>
@@ -288,8 +337,8 @@ const CreditDebitNotes = () => {
                       <td className="table-cell text-gray-400">{i + 1}</td>
                       <td className="table-cell">{item.description}</td>
                       <td className="table-cell text-right">{item.quantity}</td>
-                      <td className="table-cell text-right">{formatINR((item.unit_price || 0) / 100)}</td>
-                      <td className="table-cell text-right font-medium">{formatINR((item.total_price || 0) / 100)}</td>
+                      <td className="table-cell text-right">{formatINR(item.unit_price || 0)}</td>
+                      <td className="table-cell text-right font-medium">{formatINR(item.total_price || 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -297,13 +346,14 @@ const CreditDebitNotes = () => {
             )}
 
             <div className="border-t border-gray-200 pt-3 space-y-1 text-sm">
-              <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{formatINR((detail.subtotal || 0) / 100)}</span></div>
-              <div className="flex justify-between text-gray-500"><span>Tax</span><span>{formatINR((detail.tax_amount || 0) / 100)}</span></div>
-              <div className="flex justify-between text-lg font-bold text-gray-900"><span>Total</span><span>{formatINR((detail.total_amount || 0) / 100)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{formatINR(detail.subtotal || 0)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>Tax</span><span>{formatINR(detail.tax_amount || 0)}</span></div>
+              <div className="flex justify-between text-lg font-bold text-gray-900"><span>Total</span><span>{formatINR(detail.total_amount || 0)}</span></div>
             </div>
             {detail.notes && <p className="text-xs text-gray-400">Notes: {detail.notes}</p>}
           </div>
         </div>
+      </div>
       )}
 
       <ResponsiveTable columns={columns} data={data} keyField="id" loading={loading}
@@ -318,6 +368,17 @@ const CreditDebitNotes = () => {
           <button disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)} className="btn-secondary !py-1 !px-3 text-xs">Next</button>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!modal}
+        title={modal?.title}
+        message={modal?.message}
+        confirmLabel={modal?.confirmLabel}
+        variant={modal?.variant}
+        loading={modalLoading}
+        onConfirm={modal?.onConfirm || (() => {})}
+        onCancel={() => setModal(null)}
+      />
     </div>
   );
 };

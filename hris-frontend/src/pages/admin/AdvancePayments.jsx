@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -12,8 +12,15 @@ const AdvancePayments = () => {
   const [loading, setLoading] = useState(true);
   const [showGrant, setShowGrant] = useState(false);
   const [form, setForm] = useState({ employeeId: '', amount: '', reason: '' });
+  const [search, setSearch] = useState('');
   const [message, setMessage] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
+
+  const filteredAdvances = useMemo(() => {
+    if (!search) return advances;
+    const q = search.toLowerCase();
+    return advances.filter(a => `${a.first_name} ${a.last_name}`.toLowerCase().includes(q));
+  }, [advances, search]);
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -142,11 +149,20 @@ const AdvancePayments = () => {
         </form>
       )}
 
+      <div className="relative max-w-xs">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        <input
+          type="text"
+          placeholder="Search by staff name..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="input-field pl-9 text-sm mb-4"
+        />
+      </div>
       <ResponsiveTable
         columns={columns}
-        data={advances}
+        data={filteredAdvances}
         keyField="id"
-        searchable={true}
         searchKeys={['first_name', 'last_name', 'amount', 'reason']}
         loading={loading}
         mobilePrimary="employee_name"

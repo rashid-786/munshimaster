@@ -121,12 +121,9 @@ const Customers = () => {
     { key: 'name', label: 'Name', render: (v) => <span className="font-medium">{v}</span> },
     { key: 'contact_person', label: 'Contact', render: (v) => <span className="text-gray-500">{v || '—'}</span> },
     { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
-    { key: 'email', label: 'Email', render: (v) => v || '—' },
-    { key: 'city', label: 'City', render: (v) => v || '—' },
-    { key: 'gstin', label: 'GSTIN', render: (v) => <span className="text-xs font-mono">{v || '—'}</span> },
     { key: 'credit_limit', label: 'Credit Limit', render: (v) => (v ? formatINR(v) : '—') },
     { key: 'status', label: 'Status', render: (v) => <span className={v === 'active' ? 'badge-success' : 'badge-danger'}>{v}</span> },
-    { key: 'actions', label: 'Actions', render: (_, c) => (
+    { key: 'actions', label: 'Actions', className: 'text-center', render: (_, c) => (
       <div className="flex gap-1.5 justify-end">
         <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
         {c.status === 'active' ? (
@@ -156,7 +153,7 @@ const Customers = () => {
         columns={columns}
         data={customers}
         keyField="id"
-        searchable={true}
+       
         searchKeys={['name', 'contact_person', 'email', 'phone']}
         loading={loading}
         mobilePrimary="name"
@@ -263,7 +260,7 @@ const Customers = () => {
         onCancel={() => setModal(null)}
       />
 
-      {isMobile && (
+      {selectedRecord && (isMobile ? (
         <BottomSheet
           open={!!selectedRecord}
           onClose={() => setSelectedRecord(null)}
@@ -300,29 +297,77 @@ const Customers = () => {
             </>
           }
         >
-          {selectedRecord && (
-            <div className="space-y-3">
-              <DetailRow label="Name" value={selectedRecord.name} />
-              <DetailRow label="Contact Person" value={selectedRecord.contact_person} />
-              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              <DetailRow label="Email" value={selectedRecord.email} />
-              <DetailRow label="City" value={selectedRecord.city} />
-              <DetailRow label="State" value={selectedRecord.state} />
-              <DetailRow label="Pincode" value={selectedRecord.pincode} />
-              <DetailRow label="GSTIN" value={selectedRecord.gstin} />
-              <DetailRow label="Credit Limit" value={selectedRecord.credit_limit ? formatINR(selectedRecord.credit_limit) : '—'}>
-                <span className={selectedRecord.status === 'active' ? 'badge-success' : 'badge-danger'}>{selectedRecord.status}</span>
-              </DetailRow>
-              <DetailRow label="Payment Terms" value={selectedRecord.payment_terms} />
-              <DetailRow label="Address" value={selectedRecord.address} />
-              <DetailRow label="Notes" value={selectedRecord.notes} />
-            </div>
-          )}
+          <CustomerDetailContent customer={selectedRecord} />
         </BottomSheet>
-      )}
+      ) : (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedRecord(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.name || 'Customer Details'}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Customer Details</p>
+              </div>
+              <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
+            </div>
+            <div className="p-6">
+              <CustomerDetailContent customer={selectedRecord} />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button
+                onClick={() => { const c = selectedRecord; setSelectedRecord(null); openEdit(c); }}
+                className="btn-primary text-sm"
+              >
+                Edit
+              </button>
+              {selectedRecord?.status === 'active' ? (
+                <button
+                  onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDeactivate(c.id, c.name); }}
+                  className="btn-warning text-sm"
+                >
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleActivate(c.id); }}
+                  className="btn-success text-sm"
+                >
+                  Activate
+                </button>
+              )}
+              <button
+                onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDelete(c.id, c.name); }}
+                className="btn-danger text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
+
+function CustomerDetailContent({ customer }) {
+  return (
+    <div className="space-y-3">
+      <DetailRow label="Name" value={customer.name} />
+      <DetailRow label="Contact Person" value={customer.contact_person} />
+      <DetailRow label="Phone" value={formatPhone(customer.phone)} />
+      <DetailRow label="Email" value={customer.email} />
+      <DetailRow label="City" value={customer.city} />
+      <DetailRow label="State" value={customer.state} />
+      <DetailRow label="Pincode" value={customer.pincode} />
+      <DetailRow label="GSTIN" value={customer.gstin} />
+      <DetailRow label="Credit Limit" value={customer.credit_limit ? formatINR(customer.credit_limit) : '—'}>
+        <span className={customer.status === 'active' ? 'badge-success' : 'badge-danger'}>{customer.status}</span>
+      </DetailRow>
+      <DetailRow label="Payment Terms" value={customer.payment_terms} />
+      <DetailRow label="Address" value={customer.address} />
+      <DetailRow label="Notes" value={customer.notes} />
+    </div>
+  );
+}
 
 function DetailRow({ label, value, children }) {
   return (

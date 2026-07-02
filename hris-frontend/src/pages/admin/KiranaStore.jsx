@@ -74,10 +74,10 @@ const KiranaStore = () => {
 
   const fetchSummary = useCallback(async () => {
     try {
-      const data = await hrService.kirana.getSummary({});
+      const data = await hrService.kirana.getSummary({ type: partyType });
       setSummary(data);
     } catch {}
-  }, []);
+  }, [partyType]);
 
   useEffect(() => { fetchParties(); fetchSummary(); }, [fetchParties, fetchSummary]);
 
@@ -126,7 +126,7 @@ const KiranaStore = () => {
     setSaving(true);
     try {
       if (editingParty) {
-        await hrService.kirana.updateParty(editingParty.id, partyForm);
+        await hrService.kirana.updateParty(editingParty.id, { name: partyForm.name, phone: partyForm.phone, address: partyForm.address });
       } else {
         await hrService.kirana.createParty({ type: partyForm.partyType || partyType, ...partyForm });
       }
@@ -176,8 +176,11 @@ const KiranaStore = () => {
       setDetail(data);
       fetchParties();
       fetchSummary();
-    } catch {}
-    setModal(null);
+      setModal(null);
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to delete transaction.');
+      setModal(null);
+    }
   };
 
   // Cashbook handlers
@@ -217,9 +220,12 @@ const KiranaStore = () => {
   const handleDeleteCash = async (id) => {
     try {
       await hrService.kirana.deleteCashEntry(id);
-      fetchCashbook();
-    } catch {}
-    setModal(null);
+      await fetchCashbook();
+      setModal(null);
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to delete entry.');
+      setModal(null);
+    }
   };
 
   // Mobile handlers
@@ -259,8 +265,11 @@ const KiranaStore = () => {
       }
       fetchParties();
       fetchSummary();
-    } catch {}
-    setModal(null);
+      setModal(null);
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to delete transaction.');
+      setModal(null);
+    }
   };
 
   const handleCashRowClick = (entry) => {
@@ -292,12 +301,9 @@ const KiranaStore = () => {
       </span>
     )},
     { key: 'actions', label: 'Actions', render: (_, p) => (
-      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
-        <button onClick={() => openEditParty(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-        </button>
-        <button onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+      <div onClick={e => e.stopPropagation()}>
+        <button onClick={() => openDetail(p)} className="btn-ghost !py-1.5 !px-3 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+          View Transaction
         </button>
       </div>
     )},
@@ -484,11 +490,7 @@ const KiranaStore = () => {
       </div>
 
       <div className="card">
-        <div className="card-header flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex gap-2">
-            <button onClick={() => setPartyType('buyer')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${partyType === 'buyer' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>Buyers</button>
-            <button onClick={() => setPartyType('seller')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${partyType === 'seller' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>Sellers</button>
-          </div>
+        <div className="card-header flex items-center justify-end gap-3">
           <div className="flex gap-2 items-center">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
@@ -507,7 +509,6 @@ const KiranaStore = () => {
           columns={partyColumns}
           data={parties}
           keyField="id"
-          searchable={true}
           searchKeys={['name', 'phone', 'email']}
           loading={loading}
           onRowClick={handlePartyRowClick}
@@ -525,33 +526,47 @@ const KiranaStore = () => {
               <button onClick={() => setShowPartyForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <form onSubmit={handleAddParty} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Party Type</label>
-                  <select value={partyForm.partyType || partyType} onChange={e => setPartyForm({ ...partyForm, partyType: e.target.value })} className="input-field" required>
-                    <option value="buyer">Buyer</option>
-                    <option value="seller">Seller</option>
-                  </select>
+              {editingParty && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg mb-2">
+                  <span className="text-sm text-gray-600">Current Balance:</span>
+                  <span className={`text-lg font-bold ${(editingParty.balance || 0) <= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {formatINR(editingParty.balance || 0)}
+                  </span>
                 </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {!editingParty && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Party Type</label>
+                    <select value={partyForm.partyType || partyType} onChange={e => setPartyForm({ ...partyForm, partyType: e.target.value })} className="input-field" required>
+                      <option value="buyer">Buyer</option>
+                      <option value="seller">Seller</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                   <input type="text" value={partyForm.name} onChange={e => setPartyForm({ ...partyForm, name: e.target.value })} className="input-field" required />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
-                  <input type="number" min="0" step="0.01" value={partyForm.amount} onChange={e => setPartyForm({ ...partyForm, amount: e.target.value })} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Direction</label>
-                  <select value={partyForm.direction} onChange={e => setPartyForm({ ...partyForm, direction: e.target.value })} className="input-field">
-                    <option value="to_receive">To Receive</option>
-                    <option value="to_give">To Give</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                  <input type="date" value={partyForm.entryDate} onChange={e => setPartyForm({ ...partyForm, entryDate: e.target.value })} className="input-field" />
-                </div>
+                {!editingParty && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+                      <input type="number" min="0" step="0.01" value={partyForm.amount} onChange={e => setPartyForm({ ...partyForm, amount: e.target.value })} className="input-field" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Direction</label>
+                      <select value={partyForm.direction} onChange={e => setPartyForm({ ...partyForm, direction: e.target.value })} className="input-field">
+                        <option value="to_receive">To Receive</option>
+                        <option value="to_give">To Give</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                      <input type="date" value={partyForm.entryDate} onChange={e => setPartyForm({ ...partyForm, entryDate: e.target.value })} className="input-field" />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                   <input type="text" value={partyForm.phone} onChange={e => setPartyForm({ ...partyForm, phone: e.target.value })} className="input-field" />
@@ -561,13 +576,15 @@ const KiranaStore = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
                 <textarea value={partyForm.address} onChange={e => setPartyForm({ ...partyForm, address: e.target.value })} className="input-field" rows={2} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-                <input type="text" value={partyForm.note} onChange={e => setPartyForm({ ...partyForm, note: e.target.value })} className="input-field" placeholder="Optional note for the transaction" />
-              </div>
+              {!editingParty && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
+                  <input type="text" value={partyForm.note} onChange={e => setPartyForm({ ...partyForm, note: e.target.value })} className="input-field" placeholder="Optional note for the transaction" />
+                </div>
+              )}
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setShowPartyForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Adding...' : 'Add'}</button>
+                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingParty ? 'Save Changes' : 'Add'}</button>
               </div>
             </form>
           </div>
@@ -623,7 +640,6 @@ const KiranaStore = () => {
         columns={cashbookColumns}
         data={cashEntries}
         keyField="id"
-        searchable={true}
         searchKeys={['note', 'type']}
         loading={loading}
         onRowClick={handleCashRowClick}
@@ -782,18 +798,20 @@ const KiranaStore = () => {
             <input type="date" value={reportStart} onChange={e => { setReportPeriod(''); setReportStart(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
             <span className="text-gray-500 shrink-0">To:</span>
             <input type="date" value={reportEnd} onChange={e => { setReportPeriod(''); setReportEnd(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
-            {(reportStart || reportEnd || (reportTab === 'parties' ? reportPartyType : reportEntryType)) && (
-              <button onClick={() => { handleReportPeriod('this_month'); setReportEntryType(''); setReportPartyType(''); }} className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0 whitespace-nowrap">Clear</button>
-            )}
           </div>
           {reportTab === 'parties' ? (
-            <div className="w-full sm:w-auto flex items-center gap-2">
+            <div className="w-full sm:w-auto flex items-center gap-1">
               <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
               <select value={reportPartyType} onChange={e => setReportPartyType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
                 <option value="">All Parties</option>
                 <option value="buyer">Buyers</option>
                 <option value="seller">Sellers</option>
               </select>
+              {reportPartyType && (
+                <button onClick={() => setReportPartyType('')} className="text-gray-400 hover:text-gray-600 p-1" title="Clear party filter">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
             </div>
           ) : (
             <div className="w-full sm:w-auto flex items-center gap-2">
@@ -812,7 +830,6 @@ const KiranaStore = () => {
         columns={reportTab === 'parties' ? partyReportColumns : cashReportColumns}
         data={reportData}
         keyField="id"
-        searchable={true}
         searchKeys={['name', 'phone', 'note', 'type']}
         onRowClick={handleReportRowClick}
         mobilePrimary={reportTab === 'parties' ? 'name' : 'amount'}
@@ -977,20 +994,19 @@ const KiranaStore = () => {
         </BottomSheet>
       )}
 
-      {modal && (
-        <ConfirmModal
-          title={modal.action === 'deleteParty' ? `Delete ${modal.name}?` : undefined}
-          message={modal.action === 'deleteParty' ? `Permanently delete ${modal.name}? All transactions will be removed.` : 'Are you sure you want to delete this?'}
-          onConfirm={() => {
-            if (modal.action === 'deleteTx') handleDeleteTx(modal.id);
-            else if (modal.action === 'mobileDeleteTx') handleMobileDeleteTx(modal.id);
-            else if (modal.action === 'deleteParty') hrService.kirana.deleteParty(modal.id).then(() => { fetchParties(); fetchSummary(); setModal(null); });
-            else if (modal.action === 'deleteCash') handleDeleteCash(modal.id);
-            else setModal(null);
-          }}
-          onCancel={() => setModal(null)}
-        />
-      )}
+      <ConfirmModal
+        open={!!modal}
+        title={modal?.action === 'deleteParty' ? `Delete ${modal.name}?` : undefined}
+        message={modal?.action === 'deleteParty' ? `Permanently delete ${modal.name}? All transactions will be removed.` : 'Are you sure you want to delete this?'}
+        onConfirm={() => {
+          if (modal?.action === 'deleteTx') handleDeleteTx(modal.id);
+          else if (modal?.action === 'mobileDeleteTx') handleMobileDeleteTx(modal.id);
+          else if (modal?.action === 'deleteParty') hrService.kirana.deleteParty(modal.id).then(() => { fetchParties(); fetchSummary(); setModal(null); });
+          else if (modal?.action === 'deleteCash') handleDeleteCash(modal.id);
+          else setModal(null);
+        }}
+        onCancel={() => setModal(null)}
+      />
     </div>
   );
 };

@@ -80,6 +80,7 @@ const Reports = () => {
   const isMobile = useIsMobile();
   const [tab, setTab] = useState('customers');
   const [data, setData] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState('this_month');
@@ -125,7 +126,10 @@ const Reports = () => {
       }
       const res = await hrService.getReportData(params);
       setData(res);
-    } catch {}
+      setError('');
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load report');
+    }
     setLoading(false);
   }, [tab, search, startDate, endDate, entryType, paymentMethod]);
 
@@ -266,6 +270,52 @@ const Reports = () => {
         </div>
       </div>
 
+      {/* Filters — visible for all tabs */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {!['sales_by_customer', 'purchases_by_supplier'].includes(tab) && (
+          <div className="w-full sm:w-auto">
+            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="input-field w-full sm:max-w-[180px] text-sm" />
+          </div>
+        )}
+        {needsDateRange && (
+          <>
+            <div className="w-full sm:w-auto flex items-center gap-2">
+              <span className="text-gray-500 shrink-0">Period:</span>
+              <select value={period} onChange={e => handlePeriod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[150px]">
+                {PERIODS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
+              <span className="text-gray-500 shrink-0">From:</span>
+              <input type="date" value={startDate} onChange={e => { setPeriod(''); setStartDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+              <span className="text-gray-500 shrink-0">To:</span>
+              <input type="date" value={endDate} onChange={e => { setPeriod(''); setEndDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
+              {(startDate || endDate) && (
+                <button onClick={() => { setPeriod('this_month'); const { start, end } = calcPeriod('this_month'); setStartDate(start); setEndDate(end); }} className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0 whitespace-nowrap">Clear</button>
+              )}
+            </div>
+          </>
+        )}
+        {tab === 'balance' && (
+          <div className="w-full sm:w-auto flex items-center gap-2">
+            <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
+            <select value={entryType} onChange={e => setEntryType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+              <option value="">All Types</option>
+              <option value="IN">IN (Income)</option>
+              <option value="OUT">OUT (Expense)</option>
+            </select>
+            <span className="text-gray-500 shrink-0 hidden sm:inline">Method:</span>
+            <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
+              <option value="">All Methods</option>
+              <option value="cash">Cash</option>
+              <option value="online">Online</option>
+            </select>
+          </div>
+        )}
+      </div>
+
       {summary && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="stat-card flex items-center gap-4">
@@ -345,7 +395,6 @@ const Reports = () => {
             ]}
             data={Object.entries(data.buckets || {}).flatMap(([bucket, items]) => items.map(r => ({ ...r, bucket })))}
             keyField="id"
-            searchable={true}
             searchKeys={['invoice_number', 'customer_name', 'order_number', 'supplier_name']}
             loading={loading}
             emptyMessage="No outstanding items"
@@ -374,7 +423,6 @@ const Reports = () => {
             ]}
             data={data.rows}
             keyField="status"
-            searchable={false}
             loading={loading}
             emptyMessage="No invoices"
           />
@@ -382,46 +430,65 @@ const Reports = () => {
       )}
 
       {/* GST Summary */}
-      {tab === 'gst_summary' && data?.output && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="stat-card bg-green-50 border border-green-100">
-              <p className="text-sm text-green-700 font-medium">Total Output Tax</p>
-              <p className="text-2xl font-bold text-green-700">{formatINR(data.output?.totalOutput || 0)}</p>
-              <p className="text-xs text-green-500 mt-1">{data.output?.invoiceCount || 0} invoices</p>
+      {tab === 'gst_summary' && (
+        <>
+          {error ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-lg font-medium mb-1">Unable to load GST Summary</p>
+              <p className="text-sm">{error}</p>
             </div>
-            <div className="stat-card bg-red-50 border border-red-100">
-              <p className="text-sm text-red-700 font-medium">Total Input Tax</p>
-              <p className="text-2xl font-bold text-red-700">{formatINR(data.input?.totalInput || 0)}</p>
-              <p className="text-xs text-red-500 mt-1">{data.input?.poCount || 0} purchases</p>
-            </div>
-            <div className="stat-card bg-blue-50 border border-blue-100">
-              <p className="text-sm text-blue-700 font-medium">Net Tax Liability</p>
-              <p className={`text-2xl font-bold ${data.netTax >= 0 ? 'text-red-700' : 'text-green-700'}`}>{formatINR(Math.abs(data.netTax || 0))}</p>
-              <p className="text-xs text-blue-500 mt-1">{data.netTax >= 0 ? 'Payable' : 'Refundable'}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Output Tax (Sales)</p>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.output?.cgst || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.output?.sgst || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.output?.igst || 0)}</span></div>
-                <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.output?.totalOutput || 0)}</span></div>
+          ) : data?.output && (data.output.totalOutput > 0 || data.input?.totalInput > 0) ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="stat-card bg-green-50 border border-green-100">
+                  <p className="text-sm text-green-700 font-medium">Total Output Tax</p>
+                  <p className="text-2xl font-bold text-green-700">{formatINR(data.output?.totalOutput || 0)}</p>
+                  <p className="text-xs text-green-500 mt-1">{data.output?.invoiceCount || 0} invoices</p>
+                </div>
+                <div className="stat-card bg-red-50 border border-red-100">
+                  <p className="text-sm text-red-700 font-medium">Total Input Tax</p>
+                  <p className="text-2xl font-bold text-red-700">{formatINR(data.input?.totalInput || 0)}</p>
+                  <p className="text-xs text-red-500 mt-1">{data.input?.poCount || 0} purchases</p>
+                </div>
+                <div className="stat-card bg-blue-50 border border-blue-100">
+                  <p className="text-sm text-blue-700 font-medium">Net Tax Liability</p>
+                  <p className={`text-2xl font-bold ${data.netTax >= 0 ? 'text-red-700' : 'text-green-700'}`}>{formatINR(Math.abs(data.netTax || 0))}</p>
+                  <p className="text-xs text-blue-500 mt-1">{data.netTax >= 0 ? 'Payable' : 'Refundable'}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="bg-white border rounded-xl p-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">Output Tax (Sales)</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.output?.cgst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.output?.sgst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.output?.igst || 0)}</span></div>
+                    <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.output?.totalOutput || 0)}</span></div>
+                  </div>
+                </div>
+                <div className="bg-white border rounded-xl p-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">Input Tax (Purchases)</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.input?.cgst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.input?.sgst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.input?.igst || 0)}</span></div>
+                    <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.input?.totalInput || 0)}</span></div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Input Tax (Purchases)</p>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.input?.cgst || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.input?.sgst || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.input?.igst || 0)}</span></div>
-                <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.input?.totalInput || 0)}</span></div>
-              </div>
+          ) : !error && data?.output ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-lg font-medium mb-1">No GST data</p>
+              <p className="text-sm">No tax transactions found for the selected period. Try a different date range.</p>
             </div>
-          </div>
-        </div>
+          ) : loading ? null : !error && !loading ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-lg font-medium mb-1">GST Summary</p>
+              <p className="text-sm">Select a period and date range to view tax liability.</p>
+            </div>
+          ) : null}
+        </>
       )}
 
       {/* Standard table for array-based reports */}
@@ -436,52 +503,6 @@ const Reports = () => {
             onRowClick={(r) => setSelectedRecord(r)}
             emptyMessage="No data found"
             loading={loading}
-            header={
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                {!isAggTab && tab !== 'balance' && (
-                  <div className="w-full sm:w-auto">
-                    <input type="text" placeholder="Search by name, email, phone..." value={search} onChange={e => setSearch(e.target.value)} className="input-field w-full sm:max-w-[180px] text-sm" />
-                  </div>
-                )}
-                {needsDateRange && (
-                  <>
-                    <div className="w-full sm:w-auto flex items-center gap-2">
-                      <span className="text-gray-500 shrink-0">Period:</span>
-                      <select value={period} onChange={e => handlePeriod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[150px]">
-                        {PERIODS.map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
-                      <span className="text-gray-500 shrink-0">From:</span>
-                      <input type="date" value={startDate} onChange={e => { setPeriod(''); setStartDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
-                      <span className="text-gray-500 shrink-0">To:</span>
-                      <input type="date" value={endDate} onChange={e => { setPeriod(''); setEndDate(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
-                      {(startDate || endDate) && (
-                        <button onClick={() => { setPeriod('this_month'); const { start, end } = calcPeriod('this_month'); setStartDate(start); setEndDate(end); }} className="text-xs text-gray-500 hover:text-gray-700 underline shrink-0 whitespace-nowrap">Clear</button>
-                      )}
-                    </div>
-                  </>
-                )}
-                {tab === 'balance' && (
-                  <div className="w-full sm:w-auto flex items-center gap-2">
-                    <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
-                    <select value={entryType} onChange={e => setEntryType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
-                      <option value="">All Types</option>
-                      <option value="IN">IN (Income)</option>
-                      <option value="OUT">OUT (Expense)</option>
-                    </select>
-                    <span className="text-gray-500 shrink-0 hidden sm:inline">Method:</span>
-                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
-                      <option value="">All Methods</option>
-                      <option value="cash">Cash</option>
-                      <option value="online">Online</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            }
           />
 
           {isMobile && (

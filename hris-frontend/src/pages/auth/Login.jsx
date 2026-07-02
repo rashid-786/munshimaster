@@ -77,9 +77,9 @@ const Login = () => {
 
       if (data.user.role === 'tenant_admin') {
         if (!data.tenant?.phone) {
-          navigate('/select-plan');
+          navigate('/admin');
         } else if (data.tenant?.subscriptionPlan === 'enterprise') {
-          navigate('/admin/dashboard');
+          navigate('/admin');
         } else {
           navigate('/admin/customers');
         }
