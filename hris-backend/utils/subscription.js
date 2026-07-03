@@ -111,15 +111,18 @@ async function getSubscriptionStatus(tenantId) {
 }
 
 /**
- * Plan rank for comparison (free=0, business=1, pro=2)
+ * Plan rank for comparison
+ * New plans: FREE=0, MANAGE=1, BUSINESS=2, BUSINESS_PRO=3
+ * Legacy: free=0, business=1, pro=2
  */
 const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
+const NEW_PLAN_RANK = { FREE: 0, MANAGE: 1, BUSINESS: 2, BUSINESS_PRO: 3 };
 
 // Backward compat: old plan names used in existing data
 const LEGACY_RANK = { free: 0, pro: 1, enterprise: 2 };
 
 function planRank(planId) {
-  return PLAN_RANK[planId] ?? LEGACY_RANK[planId] ?? 0;
+  return NEW_PLAN_RANK[planId] ?? PLAN_RANK[planId] ?? LEGACY_RANK[planId] ?? 0;
 }
 
 module.exports = {

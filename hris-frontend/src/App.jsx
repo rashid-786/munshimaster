@@ -64,6 +64,8 @@ import TenantManagement from './pages/super/TenantManagement';
 import TenantDetail from './pages/super/TenantDetail';
 import SuperSettings from './pages/super/SuperSettings';
 import PlanRoute from './components/PlanRoute';
+import UsageDashboard from './pages/admin/UsageDashboard';
+import SubscriptionSettings from './pages/admin/SubscriptionSettings';
 
 function App() {
   useEffect(() => {
@@ -131,6 +133,8 @@ function App() {
             <Route path="products" element={<PlanRoute minPlan="business"><Products /></PlanRoute>} />
             <Route path="payments" element={<PaymentHistory />} />
             <Route path="referrals" element={<Referrals />} />
+            <Route path="usage" element={<UsageDashboard />} />
+            <Route path="subscription" element={<SubscriptionSettings />} />
             <Route path="settings" element={<Settings />} />
             <Route path="settings/:tab" element={<Settings />} />
           </Route>

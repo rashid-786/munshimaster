@@ -2,6 +2,7 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../utils/audit');
+const { incrementUsage } = require('../services/usage.service');
 
 exports.createEmployee = async (req, res) => {
   const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType } = req.body;
@@ -35,6 +36,8 @@ exports.createEmployee = async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
       [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, profession || null, otherProfession || null]
     );
+
+    incrementUsage(tenantId, 'staff_count').catch(() => {});
 
     await log({ tenantId, actorId: req.user.id, actorName: req.user.name, action: 'employee.created', entityType: 'employee', entityId: employeeId, req });
 

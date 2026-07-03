@@ -11,7 +11,7 @@ const PLAN_COLORS = { free: 'bg-gray-100 text-gray-700', business: 'bg-indigo-10
 
 const MODULE_SECTIONS = [
   {
-    key: 'ledger', label: 'My Ledger Book', icon: 'M3 10h18M3 14h18M3 18h18M3 6h18',
+    key: 'ledger', label: 'My Bahi Book', icon: 'M3 10h18M3 14h18M3 18h18M3 6h18',
     plan: 'free', to: '/admin/ledger',
     desc: 'Track income, expenses, receivables & payables',
   },
@@ -21,7 +21,7 @@ const MODULE_SECTIONS = [
     desc: 'Sales, purchases, inventory, GST, TDS & reports',
   },
   {
-    key: 'hr', label: 'My HR', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+    key: 'hr', label: 'My Staff', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
     plan: 'pro', to: '/admin/hr',
     desc: 'Staff, attendance, payroll, leaves & advances',
   },

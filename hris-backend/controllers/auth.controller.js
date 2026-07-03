@@ -320,8 +320,8 @@ exports.updateProfile = async (req, res) => {
   const employeeId = req.user.id;
   const tenantId = req.user.tenantId;
 
-  if (!first_name || !last_name || !email) {
-    return res.status(400).json({ error: 'First name, last name, and email are required.' });
+  if (!first_name || !email) {
+    return res.status(400).json({ error: 'First name and email are required.' });
   }
 
   try {
@@ -345,7 +345,7 @@ exports.updateProfile = async (req, res) => {
 
     await db.execute(
       'UPDATE employees SET first_name = ?, last_name = ?, email = ?, phone = ? WHERE id = ? AND tenant_id = ?',
-      [first_name, last_name, email, phone || null, employeeId, tenantId]
+      [first_name, last_name || '', email, phone || null, employeeId, tenantId]
     );
 
     res.json({

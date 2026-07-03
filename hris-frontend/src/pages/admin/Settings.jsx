@@ -35,9 +35,10 @@ const Settings = () => {
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [groupLabels, setGroupLabels] = useState({
-    'My Ledger Book': 'My Ledger Book',
+    'Entities': 'Entities',
+    'My Bahi Book': 'My Bahi Book',
     'My Business': 'My Business',
-    'My HR': 'My HR',
+    'My Staff': 'My Staff',
   });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
@@ -276,13 +277,13 @@ const Settings = () => {
               <p className="text-xs text-gray-400 mb-3">Customize the names of sidebar sections.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Entities</label>
+                  <label className="block text-xs text-gray-500 mb-1">{planRank <= 1 ? 'My Stores' : 'Entities'}</label>
                   <input type="text" value={groupLabels['Entities']} onChange={e => setGroupLabels({ ...groupLabels, 'Entities': e.target.value })}
                     className="input-field max-w-[240px]" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Ledger Book Section</label>
-                  <input type="text" value={groupLabels['My Ledger Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Ledger Book': e.target.value })}
+                  <label className="block text-xs text-gray-500 mb-1">Bahi Book Section</label>
+                  <input type="text" value={groupLabels['My Bahi Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Bahi Book': e.target.value })}
                     className="input-field max-w-[240px]" />
                 </div>
                 {planRank >= 1 && (
@@ -294,8 +295,8 @@ const Settings = () => {
                 )}
                 {planRank >= 2 && (
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">HR Section</label>
-                    <input type="text" value={groupLabels['My HR']} onChange={e => setGroupLabels({ ...groupLabels, 'My HR': e.target.value })}
+                    <label className="block text-xs text-gray-500 mb-1">Staff Section</label>
+                    <input type="text" value={groupLabels['My Staff']} onChange={e => setGroupLabels({ ...groupLabels, 'My Staff': e.target.value })}
                       className="input-field max-w-[240px]" />
                   </div>
                 )}
@@ -307,9 +308,9 @@ const Settings = () => {
               <div className="space-y-2">
                 {planRank >= 1 && (
                   <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
+                    <input type="checkbox" checked={!!hiddenGroups['My Bahi Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Bahi Book': e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
-                    <span className="text-sm text-gray-700">Hide {groupLabels['My Ledger Book']}</span>
+                    <span className="text-sm text-gray-700">Hide {groupLabels['My Bahi Book']}</span>
                   </label>
                 )}
                 {planRank >= 2 && (

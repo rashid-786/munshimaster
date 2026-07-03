@@ -4,7 +4,7 @@ import { superService } from '../../services/super.service';
 import { formatINR } from '../../utils/currency';
 import useIsMobile from '../../hooks/useIsMobile';
 
-const TABS = ['Employees', 'Calendar', 'Leaves', 'Payroll', 'Settings'];
+const TABS = ['Employees', 'Calendar', 'Leaves', 'Payroll', 'Overrides', 'Audit Log', 'Settings'];
 
 const TenantDetail = () => {
   const { id } = useParams();
@@ -31,6 +31,29 @@ const TenantDetail = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminMsg, setAdminMsg] = useState('');
   const isMobile = useIsMobile();
+
+  // Override state
+  const [overrides, setOverrides] = useState([]);
+  const [overrideHistory, setOverrideHistory] = useState([]);
+  const [newOverrideKey, setNewOverrideKey] = useState('');
+  const [newOverrideValue, setNewOverrideValue] = useState('');
+  const [newOverrideExpiry, setNewOverrideExpiry] = useState('');
+  const [overrideMsg, setOverrideMsg] = useState('');
+  const [extraQuotaKey, setExtraQuotaKey] = useState('');
+  const [extraQuotaAmount, setExtraQuotaAmount] = useState('');
+  const [extraQuotaDays, setExtraQuotaDays] = useState('');
+  const [extraQuotaMsg, setExtraQuotaMsg] = useState('');
+  const [forcePlan, setForcePlan] = useState('');
+  const [forcePlanReason, setForcePlanReason] = useState('');
+  const [forcePlanMsg, setForcePlanMsg] = useState('');
+
+  // Audit log state
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLogTotal, setAuditLogTotal] = useState(0);
+  const [auditLogLimit, setAuditLogLimit] = useState(50);
+  const [auditLogOffset, setAuditLogOffset] = useState(0);
+  const [auditLogFilter, setAuditLogFilter] = useState('');
+  const [auditLogLoading, setAuditLogLoading] = useState(false);
 
   useEffect(() => {
     superService.getTenantDetail(id)
@@ -62,7 +85,27 @@ const TenantDetail = () => {
     if (activeTab === 'Payroll') {
       superService.getTenantPayroll(id).then(setPayroll).catch(() => {});
     }
+    if (activeTab === 'Overrides') {
+      superService.listOverrides(id).then(d => setOverrides(d.overrides)).catch(() => {});
+      superService.getOverrideHistory(id).then(d => setOverrideHistory(d.history)).catch(() => {});
+    }
+    if (activeTab === 'Audit Log') {
+      fetchAuditLogs();
+    }
   }, [activeTab, id, calendarMonth, calendarYear]);
+
+  const fetchAuditLogs = async (offset = 0) => {
+    setAuditLogLoading(true);
+    try {
+      const params = { limit: auditLogLimit, offset };
+      if (auditLogFilter) params.action = auditLogFilter;
+      const data = await superService.getTenantAuditLog(id, params);
+      setAuditLogs(data.logs);
+      setAuditLogTotal(data.total);
+      setAuditLogOffset(offset);
+    } catch {}
+    setAuditLogLoading(false);
+  };
 
   const PLANS = [
     { value: 'free', label: 'Free (Ledger)' },
@@ -372,6 +415,251 @@ const TenantDetail = () => {
             )
           )}
 
+          {activeTab === 'Overrides' && (
+            <div className="max-w-3xl space-y-8">
+              {/* ── Current Overrides ── */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Feature Limit Overrides</h4>
+                {overrides.length === 0 ? (
+                  <p className="text-sm text-gray-400">No overrides configured.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {overrides.map(ov => (
+                      <div key={ov.featureKey} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
+                        <div>
+                          <span className="font-medium text-gray-700">{ov.featureKey}</span>
+                          <span className="text-gray-500 ml-3">Max: <strong>{ov.maxValue ?? 'Unlimited'}</strong></span>
+                          {ov.expiresAt && <span className="text-gray-400 ml-3">Expires: {new Date(ov.expiresAt).toLocaleDateString()}</span>}
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Remove this override?')) return;
+                            try {
+                              await superService.removeOverride(id, ov.featureKey);
+                              setOverrides(overrides.filter(o => o.featureKey !== ov.featureKey));
+                              setOverrideMsg('Override removed.');
+                            } catch (e) { setOverrideMsg(e.response?.data?.error || 'Failed.'); }
+                          }}
+                          className="text-red-500 hover:text-red-700 text-xs font-medium"
+                        >Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* ── Add / Edit Override ── */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Add / Update Override</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <select value={newOverrideKey} onChange={e => setNewOverrideKey(e.target.value)} className="input-field">
+                    <option value="">Select feature...</option>
+                    {['customers','suppliers','staff_members','branches','monthly_transactions','products','entities'].map(k => (
+                      <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                  <input type="number" placeholder="Max value (-1 = unlimited)" value={newOverrideValue} onChange={e => setNewOverrideValue(e.target.value)} className="input-field" />
+                  <input type="date" value={newOverrideExpiry} onChange={e => setNewOverrideExpiry(e.target.value)} className="input-field" />
+                  <button
+                    onClick={async () => {
+                      if (!newOverrideKey) return;
+                      try {
+                        const data = { featureKey: newOverrideKey, maxValue: newOverrideValue === '' ? null : Number(newOverrideValue) };
+                        if (newOverrideExpiry) data.expiresAt = new Date(newOverrideExpiry).toISOString();
+                        await superService.setOverride(id, data);
+                        const res = await superService.listOverrides(id);
+                        setOverrides(res.overrides);
+                        setOverrideMsg(`Override for "${newOverrideKey}" saved.`);
+                        setNewOverrideKey(''); setNewOverrideValue(''); setNewOverrideExpiry('');
+                      } catch (e) { setOverrideMsg(e.response?.data?.error || 'Failed.'); }
+                    }}
+                    className="btn-primary text-sm"
+                  >Save</button>
+                </div>
+              </div>
+
+              {overrideMsg && <p className="text-sm text-emerald-600">{overrideMsg}</p>}
+
+              <hr className="border-gray-200" />
+
+              {/* ── Grant Extra Quota ── */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Grant Extra Quota</h4>
+                <p className="text-sm text-gray-500 mb-3">Temporarily increase a limit beyond the plan allowance.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <select value={extraQuotaKey} onChange={e => setExtraQuotaKey(e.target.value)} className="input-field">
+                    <option value="">Select feature...</option>
+                    {['customers','suppliers','staff_members','branches','monthly_transactions','products','entities'].map(k => (
+                      <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                  <input type="number" placeholder="Extra amount" value={extraQuotaAmount} onChange={e => setExtraQuotaAmount(e.target.value)} className="input-field" />
+                  <input type="number" placeholder="Duration (days)" value={extraQuotaDays} onChange={e => setExtraQuotaDays(e.target.value)} className="input-field" />
+                  <button
+                    onClick={async () => {
+                      if (!extraQuotaKey || !extraQuotaAmount) return;
+                      try {
+                        await superService.grantExtraQuota(id, {
+                          featureKey: extraQuotaKey,
+                          extraAmount: Number(extraQuotaAmount),
+                          durationDays: extraQuotaDays ? Number(extraQuotaDays) : null,
+                        });
+                        setExtraQuotaMsg(`+${extraQuotaAmount} ${extraQuotaKey} granted.`);
+                        const res = await superService.listOverrides(id);
+                        setOverrides(res.overrides);
+                        setExtraQuotaKey(''); setExtraQuotaAmount(''); setExtraQuotaDays('');
+                      } catch (e) { setExtraQuotaMsg(e.response?.data?.error || 'Failed.'); }
+                    }}
+                    className="btn-primary text-sm"
+                  >Grant</button>
+                </div>
+                {extraQuotaMsg && <p className="text-sm text-emerald-600 mt-2">{extraQuotaMsg}</p>}
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* ── Force Plan Change ── */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Force Plan Change</h4>
+                <p className="text-sm text-gray-500 mb-3">Immediately change this tenant's subscription plan.</p>
+                <div className="flex items-end gap-3 flex-wrap">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">New Plan</label>
+                    <select value={forcePlan} onChange={e => setForcePlan(e.target.value)} className="input-field">
+                      <option value="">Select plan...</option>
+                      <option value="FREE">Free</option>
+                      <option value="MANAGE">Manage</option>
+                      <option value="BUSINESS">Business</option>
+                      <option value="BUSINESS_PRO">Business Pro</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-500 mb-1">Reason</label>
+                    <input type="text" placeholder="Optional reason" value={forcePlanReason} onChange={e => setForcePlanReason(e.target.value)} className="input-field" />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!forcePlan) return;
+                      try {
+                        await superService.forcePlanChange(id, { plan: forcePlan, reason: forcePlanReason || undefined });
+                        setForcePlanMsg(`Plan changed to ${forcePlan}.`);
+                        setForcePlan(''); setForcePlanReason('');
+                      } catch (e) { setForcePlanMsg(e.response?.data?.error || 'Failed.'); }
+                    }}
+                    className="btn-primary text-sm"
+                  >Apply</button>
+                </div>
+                {forcePlanMsg && <p className="text-sm text-emerald-600 mt-2">{forcePlanMsg}</p>}
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* ── Override History ── */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Override Change History</h4>
+                {overrideHistory.length === 0 ? (
+                  <p className="text-sm text-gray-400">No changes recorded.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="table-header">Action</th>
+                          <th className="table-header">Feature</th>
+                          <th className="table-header">Old Value</th>
+                          <th className="table-header">New Value</th>
+                          <th className="table-header">Admin</th>
+                          <th className="table-header">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {overrideHistory.map(h => (
+                          <tr key={h.id}>
+                            <td className="table-cell"><span className={`badge ${h.action === 'deleted' ? 'badge-danger' : h.action === 'created' ? 'badge-success' : 'badge-warning'}`}>{h.action}</span></td>
+                            <td className="table-cell font-medium">{h.feature_key}</td>
+                            <td className="table-cell text-gray-500">{h.old_value ?? '—'}</td>
+                            <td className="table-cell text-gray-500">{h.new_value ?? '—'}</td>
+                            <td className="table-cell text-gray-500">{h.admin_name || '—'}</td>
+                            <td className="table-cell text-gray-500">{new Date(h.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Audit Log' && (
+            <div className="max-w-4xl">
+              <div className="flex items-center gap-3 mb-4">
+                <h4 className="text-base font-semibold text-gray-900">Subscription Audit Log</h4>
+                <select value={auditLogFilter} onChange={e => { setAuditLogFilter(e.target.value); fetchAuditLogs(0); }} className="input-field max-w-xs text-sm">
+                  <option value="">All actions</option>
+                  <option value="plan.upgrade">Upgrades</option>
+                  <option value="plan.downgrade">Downgrades</option>
+                  <option value="plan.cancel">Cancellations</option>
+                  <option value="plan.suspend">Suspensions</option>
+                  <option value="plan.reactivate">Reactivations</option>
+                  <option value="plan.force_upgrade">Force Upgrades</option>
+                  <option value="limit.violation">Limit Violations</option>
+                  <option value="quota.extra_granted">Extra Quota Grants</option>
+                  <option value="limit.override.created">Override Created</option>
+                  <option value="limit.override.deleted">Override Deleted</option>
+                  <option value="admin.action">Admin Actions</option>
+                </select>
+              </div>
+
+              {auditLogLoading ? (
+                <div className="flex justify-center py-8"><div className="animate-spin h-6 w-6 border-4 border-indigo-500 border-t-transparent rounded-full" /></div>
+              ) : auditLogs.length === 0 ? (
+                <p className="text-sm text-gray-400">No audit logs found.</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="table-header">Action</th>
+                          <th className="table-header">Entity</th>
+                          <th className="table-header">Changes</th>
+                          <th className="table-header">Actor</th>
+                          <th className="table-header">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {auditLogs.map(log => (
+                          <tr key={log.id}>
+                            <td className="table-cell">
+                              <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-700">{log.action}</span>
+                            </td>
+                            <td className="table-cell text-gray-500">{log.entity_type}{log.entity_id ? `:${log.entity_id}` : ''}</td>
+                            <td className="table-cell text-gray-500 text-xs max-w-[200px] truncate">{log.changes ? JSON.stringify(log.changes).slice(0, 80) : '—'}</td>
+                            <td className="table-cell text-gray-500">{log.actor_name || 'System'}</td>
+                            <td className="table-cell text-gray-500 text-xs">{new Date(log.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
+                    <span>Showing {auditLogs.length} of {auditLogTotal} entries</span>
+                    <div className="flex gap-2">
+                      <button disabled={auditLogOffset === 0} onClick={() => fetchAuditLogs(Math.max(0, auditLogOffset - auditLogLimit))}
+                        className="btn-secondary !py-1 !px-3 text-xs disabled:opacity-50">Prev</button>
+                      <button disabled={auditLogOffset + auditLogLimit >= auditLogTotal} onClick={() => fetchAuditLogs(auditLogOffset + auditLogLimit)}
+                        className="btn-secondary !py-1 !px-3 text-xs disabled:opacity-50">Next</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {activeTab === 'Settings' && (
             <div className="max-w-2xl space-y-8">
               <div>
@@ -413,9 +701,9 @@ const TenantDetail = () => {
                 <p className="text-sm text-gray-500 mb-3">Hide modules from this tenant's sidebar navigation.</p>
                 <div className="space-y-2">
                   <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Ledger Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Ledger Book': e.target.checked })}
+                    <input type="checkbox" checked={!!hiddenGroups['My Bahi Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Bahi Book': e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                    <span className="text-sm text-gray-700">Hide My Ledger Book</span>
+                    <span className="text-sm text-gray-700">Hide My Bahi Book</span>
                   </label>
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
@@ -423,9 +711,9 @@ const TenantDetail = () => {
                     <span className="text-sm text-gray-700">Hide My Business</span>
                   </label>
                   <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My HR']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My HR': e.target.checked })}
+                    <input type="checkbox" checked={!!hiddenGroups['My Staff']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Staff': e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                    <span className="text-sm text-gray-700">Hide My HR</span>
+                    <span className="text-sm text-gray-700">Hide My Staff</span>
                   </label>
                 </div>
               </div>

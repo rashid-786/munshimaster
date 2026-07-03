@@ -1,40 +1,55 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { subscriptionService } from '../services/subscription.service';
-import PromoBanner from './PromoBanner';
+import { PLANS, getRank, resolvePlan, PLAN_LABELS } from '../config/subscriptionPlans';
 
-const PLANS = {
-  trial: { name: 'Try Business Free', monthly: 0, yearly: 0, popular: false, isTrial: true },
-  business: { name: 'Business', monthly: 99, yearly: 1069, popular: true },
-  pro: { name: 'Pro', monthly: 149, yearly: 1609, popular: false },
+const PLAN_ID_MAP = {
+  MANAGE: 'manage',
+  BUSINESS: 'business',
+  BUSINESS_PRO: 'pro',
 };
 
-export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'business' }) {
-  const { refreshTenant } = useAuth();
+export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'BUSINESS' }) {
+  const { tenant, refreshTenant } = useAuth();
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
-  const [billing, setBilling] = useState('year');
+  const [billing, setBilling] = useState('month');
   const [selectedPlan, setSelectedPlan] = useState(null);
 
+  const currentPlan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+
   const getPlanId = (key) => {
-    if (key === 'trial') return billing === 'month' ? 'business_monthly' : 'business';
-    return billing === 'month' ? `${key}_monthly` : key;
+    const base = PLAN_ID_MAP[key];
+    if (!base) return null;
+    return billing === 'month' ? `${base}_monthly` : base;
   };
 
-  const handleContinue = async () => {
+  const handleStartTrial = async () => {
     if (!selectedPlan) return;
     const planId = getPlanId(selectedPlan);
-    setLoading(planId);
+    if (!planId) return;
+    setLoading(`trial_${planId}`);
     setError('');
 
     try {
-      if (selectedPlan === 'trial') {
-        await subscriptionService.startTrial(planId);
-        await refreshTenant();
-        onClose();
-        return;
-      }
+      await subscriptionService.startTrial(planId);
+      await refreshTenant();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to start trial.');
+    } finally {
+      setLoading('');
+    }
+  };
 
+  const handlePayNow = async () => {
+    if (!selectedPlan) return;
+    const planId = getPlanId(selectedPlan);
+    if (!planId) return;
+    setLoading(`pay_${planId}`);
+    setError('');
+
+    try {
       const order = await subscriptionService.createOrder(planId);
 
       const plan = PLANS[selectedPlan];
@@ -87,7 +102,14 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
     ?.replace(/_/g, ' ')
     .replace(/\b\w/g, l => l.toUpperCase());
 
-  const selectedIsTrial = selectedPlan === 'trial';
+  const required = resolvePlan(requiredPlan);
+
+  const UPGRADE_PLANS = {};
+  for (const [key, plan] of Object.entries(PLANS)) {
+    if (getRank(key) > getRank(currentPlan)) {
+      UPGRADE_PLANS[key] = plan;
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
@@ -101,7 +123,7 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
           </div>
           <p className="text-sm text-gray-500 mt-1">
             {featureName
-              ? `The ${featureName} feature requires the ${PLANS[requiredPlan]?.name || requiredPlan} plan.`
+              ? `The ${featureName} feature requires the ${PLAN_LABELS[required] || required} plan.`
               : 'Choose the plan that fits your business.'}
           </p>
         </div>
@@ -111,7 +133,10 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
             <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
           )}
 
-          {/* Billing toggle */}
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            Current: <span className="font-semibold text-gray-700">{PLAN_LABELS[currentPlan]}</span>
+          </div>
+
           <div className="flex items-center justify-center gap-3 bg-gray-100 rounded-xl p-1">
             <button
               onClick={() => { setBilling('month'); setSelectedPlan(null); }}
@@ -127,54 +152,23 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
             </button>
           </div>
 
-          <PromoBanner onApply={(code) => setPromoCode(code)} />
-
           <div className="grid gap-3">
-            {Object.entries(PLANS).map(([key, plan]) => {
-              const planId = getPlanId(key);
+            {Object.entries(UPGRADE_PLANS).map(([key, plan]) => {
+              const priceMonthly = plan.metadata.priceMonthly;
+              const priceYearly = plan.metadata.priceYearly;
+              const price = billing === 'month' ? priceMonthly : priceYearly;
               const isSelected = selectedPlan === key;
+              const perMonth = billing === 'year' && priceYearly ? `₹${Math.round(priceYearly / 12)}/mo` : null;
 
-              if (plan.isTrial) {
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedPlan(key)}
-                    disabled={!!loading}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      isSelected
-                        ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20'
-                        : 'border-indigo-200 bg-indigo-50/50 hover:border-indigo-400 hover:bg-indigo-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-semibold text-gray-900">{plan.name}</span>
-                        <span className="text-sm text-gray-500 ml-2">14 days free, then ₹{billing === 'month' ? `${PLANS.business.monthly}/mo` : `${PLANS.business.yearly}/yr`}</span>
-                      </div>
-                      <span className="text-indigo-600 text-sm font-medium">Free</span>
-                    </div>
-                    {isSelected && (
-                      <div className="mt-2 text-xs text-indigo-600 font-medium flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                        Selected
-                      </div>
-                    )}
-                  </button>
-                );
-              }
-
-              const price = billing === 'month' ? plan.monthly : plan.yearly;
-              const periodLabel = billing === 'month' ? '/mo' : '/yr';
-              const perMonth = billing === 'year' ? `₹${Math.round(plan.yearly / 12)}/mo` : null;
               return (
                 <button
-                  key={planId}
+                  key={key}
                   onClick={() => setSelectedPlan(key)}
                   disabled={!!loading}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${
                     isSelected
                       ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20'
-                      : key === requiredPlan
+                      : key === required
                       ? 'border-indigo-200'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
@@ -182,9 +176,14 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="font-semibold text-gray-900">{plan.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{plan.metadata.description}</span>
                       {perMonth && <span className="text-xs text-gray-400 ml-2">{perMonth}</span>}
                     </div>
-                    <span className="text-indigo-600 font-bold">₹{price}{periodLabel}</span>
+                    {price > 0 ? (
+                      <span className="text-indigo-600 font-bold">₹{price}{billing === 'month' ? '/mo' : '/yr'}</span>
+                    ) : (
+                      <span className="text-emerald-600 font-semibold text-sm">Free</span>
+                    )}
                   </div>
                   {isSelected && (
                     <div className="mt-2 text-xs text-indigo-600 font-medium flex items-center gap-1">
@@ -197,25 +196,36 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'b
             })}
           </div>
 
-          {/* Info message when trial is selected */}
-          {selectedIsTrial && (
-            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
-              Start your 14-day free trial with full Business features. No payment required.
+          {Object.keys(UPGRADE_PLANS).length === 0 && (
+            <div className="p-4 bg-gray-50 rounded-xl text-center text-sm text-gray-500">
+              You're already on the highest plan.
             </div>
           )}
 
-          {/* Continue button */}
-          <button
-            onClick={handleContinue}
-            disabled={!selectedPlan || !!loading}
-            className={`w-full py-2.5 rounded-xl font-medium text-sm transition-all ${
-              selectedPlan
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            {loading ? 'Processing...' : selectedIsTrial ? 'Start Free Trial' : 'Continue'}
-          </button>
+          {selectedPlan && (
+            <>
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
+                Try <strong>{PLANS[selectedPlan].name}</strong> free for 14 days. No payment required.
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleStartTrial}
+                  disabled={!!loading}
+                  className="py-2.5 rounded-xl font-medium text-sm border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition-all"
+                >
+                  {loading?.startsWith('trial_') ? 'Starting...' : 'Start Free Trial'}
+                </button>
+                <button
+                  onClick={handlePayNow}
+                  disabled={!!loading}
+                  className="py-2.5 rounded-xl font-medium text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition-all"
+                >
+                  {loading?.startsWith('pay_') ? 'Processing...' : 'Pay Now'}
+                </button>
+              </div>
+            </>
+          )}
 
           <button onClick={onClose} className="btn-secondary w-full text-sm">
             Maybe later

@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { incrementUsage } = require('../services/usage.service');
 
 // ── Parties (Buyers / Sellers) ──
 
@@ -21,6 +22,7 @@ exports.createParty = async (req, res) => {
         'INSERT INTO kirana_transactions (id, tenant_id, party_id, type, amount, note, entry_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [txId, req.tenantId, id, txType, amountCents, note || null, entryDate, req.user.id]
       );
+      incrementUsage(req.tenantId, 'transactions').catch(() => {});
     }
 
     res.status(201).json({ message: `${type} added successfully.`, id });
@@ -115,6 +117,7 @@ exports.createTransaction = async (req, res) => {
       'INSERT INTO kirana_transactions (id, tenant_id, party_id, type, amount, note, entry_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [id, req.tenantId, partyId, type, amountCents, note || null, entryDate, req.user.id]
     );
+    incrementUsage(req.tenantId, 'transactions').catch(() => {});
     res.status(201).json({ message: 'Transaction added.', id });
   } catch (error) {
     console.error(error);
@@ -172,6 +175,7 @@ exports.createCashEntry = async (req, res) => {
       'INSERT INTO kirana_cashbook (id, tenant_id, type, category, amount, note, entry_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [id, req.tenantId, type, category || null, amountCents, note || null, entryDate, req.user.id]
     );
+    incrementUsage(req.tenantId, 'cashbook_entries').catch(() => {});
     res.status(201).json({ message: 'Entry added.', id });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add entry.' });
@@ -232,20 +236,25 @@ exports.deleteCashEntry = async (req, res) => {
 
 // ── Reports ──
 
-async function fetchKiranaParties(tenantId) {
-  const [parties] = await db.execute('SELECT * FROM kirana_parties WHERE tenant_id = ? ORDER BY name', [tenantId]);
+async function fetchKiranaParties(tenantId, { partyType, startDate, endDate } = {}) {
+  let query = 'SELECT * FROM kirana_parties WHERE tenant_id = ?';
+  const params = [tenantId];
+  if (partyType) { query += ' AND type = ?'; params.push(partyType); }
+  query += ' ORDER BY name';
+  const [parties] = await db.execute(query, params);
   const result = [];
   for (const p of parties) {
-    const [txns] = await db.execute(
-      "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END),0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END),0) as g FROM kirana_transactions WHERE party_id=?",
-      [p.id]
-    );
+    let txnQuery = "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END),0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END),0) as g FROM kirana_transactions WHERE party_id=?";
+    const txnParams = [p.id];
+    if (startDate) { txnQuery += ' AND entry_date >= ?'; txnParams.push(startDate); }
+    if (endDate) { txnQuery += ' AND entry_date <= ?'; txnParams.push(endDate); }
+    const [txns] = await db.execute(txnQuery, txnParams);
     result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g });
   }
   return result;
 }
 
-async function fetchKiranaCashbook(tenantId, startDate, endDate) {
+async function fetchKiranaCashbook(tenantId, { startDate, endDate } = {}) {
   let query = 'SELECT * FROM kirana_cashbook WHERE tenant_id = ?';
   const params = [tenantId];
   if (startDate) { query += ' AND entry_date >= ?'; params.push(startDate); }
@@ -256,14 +265,14 @@ async function fetchKiranaCashbook(tenantId, startDate, endDate) {
 }
 
 exports.getReport = async (req, res) => {
-  const { type, startDate, endDate } = req.query;
+  const { type, startDate, endDate, partyType } = req.query;
   try {
     if (type === 'parties') {
-      const result = await fetchKiranaParties(req.tenantId);
+      const result = await fetchKiranaParties(req.tenantId, { partyType, startDate, endDate });
       return res.json(result);
     }
     if (type === 'cashbook') {
-      const rows = await fetchKiranaCashbook(req.tenantId, startDate, endDate);
+      const rows = await fetchKiranaCashbook(req.tenantId, { startDate, endDate });
       return res.json(rows);
     }
     res.status(400).json({ error: 'Invalid report type.' });
@@ -274,7 +283,7 @@ exports.getReport = async (req, res) => {
 
 exports.downloadReportExcel = async (req, res) => {
   const tenantId = req.tenantId;
-  const { type, startDate, endDate } = req.query;
+  const { type, startDate, endDate, partyType } = req.query;
 
   try {
     const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
@@ -282,11 +291,11 @@ exports.downloadReportExcel = async (req, res) => {
 
     let data, title, columns;
     if (type === 'parties') {
-      data = await fetchKiranaParties(tenantId);
+      data = await fetchKiranaParties(tenantId, { partyType, startDate, endDate });
       title = 'Kirana Parties Report';
       columns = ['Type', 'Name', 'Phone', 'Total Received', 'Total Given', 'Balance'];
     } else if (type === 'cashbook') {
-      data = await fetchKiranaCashbook(tenantId, startDate, endDate);
+      data = await fetchKiranaCashbook(tenantId, { startDate, endDate });
       title = 'Kirana Cashbook Report';
       columns = ['Date', 'Type', 'Category', 'Amount', 'Note'];
     } else {

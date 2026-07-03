@@ -64,6 +64,11 @@ export const subscriptionService = {
     return res.data;
   },
 
+  getUsage: async () => {
+    const res = await api.get('/core/subscription/usage');
+    return res.data;
+  },
+
   getOnboardingStatus: async () => {
     const res = await api.get('/core/retention/onboarding');
     return res.data;

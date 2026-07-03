@@ -3,6 +3,20 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const { getSubscriptionStatus, invalidateCache } = require('../utils/subscription');
+const TenantUsageRepository = require('../repositories/TenantUsageRepository');
+const { getLimit, isUnlimited, LIMIT_KEY_MAP, resolvePlan } = require('../config/planLimits');
+
+const usageRepo = new TenantUsageRepository(db);
+const lifecycle = require('../services/subscriptionLifecycle.service');
+const audit = require('../services/audit.service');
+
+// Map tenant_usage DB columns to user-facing usage type keys
+const USAGE_DIMENSIONS = [
+  { key: 'transactions',     dbColumn: 'transactionCount',  limitDim: 'transactions' },
+  { key: 'cashbook_entries', dbColumn: 'cashbookEntryCount', limitDim: 'cashbook_entries' },
+  { key: 'staff_count',      dbColumn: 'staffCount',         limitDim: 'staff_count' },
+  { key: 'entities',         dbColumn: 'entityCount',        limitDim: 'entities' },
+];
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_00000000000000',
@@ -38,18 +52,47 @@ exports.getSubscription = async (req, res) => {
 };
 
 // =============================================
+// Get current month usage with plan limits
+// =============================================
+exports.getUsage = async (req, res) => {
+  try {
+    const [tenantRows] = await db.execute(
+      'SELECT subscription_plan FROM tenants WHERE id = ?', [req.tenantId]
+    );
+    if (tenantRows.length === 0) return res.status(404).json({ error: 'Tenant not found.' });
+
+    const plan = resolvePlan(tenantRows[0].subscription_plan);
+    const usage = await usageRepo.findCurrent(req.tenantId);
+
+    const dimensions = USAGE_DIMENSIONS.map(({ key, dbColumn, limitDim }) => {
+      const current = usage?.[dbColumn] ?? 0;
+      const limit = getLimit(plan, LIMIT_KEY_MAP[limitDim]);
+      return { key, current, limit };
+    });
+
+    res.json({ plan, usage: dimensions });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch usage.' });
+  }
+};
+
+// =============================================
 // Legacy: select plan on first onboarding
 // =============================================
 exports.selectPlan = async (req, res) => {
   const tenantId = req.tenantId;
   const { plan } = req.body;
 
-  const validPlans = ['free', 'business', 'pro', 'business_monthly', 'pro_monthly'];
-  if (!validPlans.includes(plan)) {
-    return res.status(400).json({ error: 'Invalid plan. Choose free, business, or pro.' });
-  }
+  if (!plan) return res.status(400).json({ error: 'Plan is required.' });
 
   try {
+    // Verify plan exists
+    const [found] = await db.execute(
+      'SELECT id FROM subscription_plans WHERE id = ?', [plan]
+    );
+    if (found.length === 0) return res.status(400).json({ error: 'Invalid plan.' });
+
     // Deactivate existing subscription
     await db.execute(
       `UPDATE subscriptions SET status = 'expired', ended_at = NOW()
@@ -59,9 +102,10 @@ exports.selectPlan = async (req, res) => {
 
     // Create new subscription
     const subId = uuidv4();
-    const periodEnd = plan === 'free' ? '2099-12-31' : new Date(Date.now() + 14 * 86400000).toISOString();
-    const status = plan === 'free' ? 'active' : 'trialing';
-    const trialEnd = plan === 'free' ? null : new Date(Date.now() + 14 * 86400000);
+    const isFree = plan === 'free';
+    const periodEnd = isFree ? '2099-12-31' : new Date(Date.now() + 14 * 86400000).toISOString();
+    const status = isFree ? 'active' : 'trialing';
+    const trialEnd = isFree ? null : new Date(Date.now() + 14 * 86400000);
 
     await db.execute(
       `INSERT INTO subscriptions (id, tenant_id, plan_id, status, trial_ends_at, current_period_start, current_period_end)
@@ -140,8 +184,8 @@ exports.createOrder = async (req, res) => {
   const tenantId = req.tenantId;
   const { planId } = req.body;
 
-  if (!planId || !['business', 'pro', 'business_monthly', 'pro_monthly'].includes(planId)) {
-    return res.status(400).json({ error: 'Invalid plan.' });
+  if (!planId) {
+    return res.status(400).json({ error: 'Plan ID is required.' });
   }
 
   try {
@@ -414,8 +458,8 @@ exports.startTrial = async (req, res) => {
   const tenantId = req.tenantId;
   const { planId } = req.body;
 
-  if (!planId || !['business', 'pro', 'business_monthly', 'pro_monthly'].includes(planId)) {
-    return res.status(400).json({ error: 'Invalid plan for trial.' });
+  if (!planId) {
+    return res.status(400).json({ error: 'Plan ID is required.' });
   }
 
   try {
@@ -424,7 +468,7 @@ exports.startTrial = async (req, res) => {
     );
     if (plan.length === 0) return res.status(404).json({ error: 'Plan not found.' });
 
-    const trialDays = plan[0].trial_days;
+    const trialDays = plan[0].trial_days || 14;
     const trialEnd = new Date(Date.now() + trialDays * 86400000);
     const periodEnd = new Date(Date.now() + trialDays * 86400000);
 
@@ -573,6 +617,16 @@ exports.cancelSubscription = async (req, res) => {
 
     invalidateCache(sub[0].plan_id);
 
+    // Audit log
+    await audit.log({
+      tenantId: req.tenantId,
+      action: audit.AUDIT_ACTIONS.PLAN_CANCEL,
+      actorId: req.user?.id,
+      entityType: 'subscription',
+      changes: { plan: sub[0].plan_id, status: 'cancelled', validUntil: sub[0].current_period_end },
+      req,
+    });
+
     res.json({
       message: 'Subscription cancelled. You retain access until ' + new Date(sub[0].current_period_end).toLocaleDateString(),
       plan: sub[0].plan_id,
@@ -601,6 +655,8 @@ exports.downgradeToFree = async (req, res) => {
       return res.status(400).json({ error: 'Already on Free plan.' });
     }
 
+    const oldPlan = sub[0].plan_id;
+
     // Deactivate current
     await db.execute(
       `UPDATE subscriptions SET status = 'expired', ended_at = NOW()
@@ -623,10 +679,102 @@ exports.downgradeToFree = async (req, res) => {
 
     invalidateCache('free');
 
+    // Audit log
+    await audit.logPlanChange({
+      tenantId: req.tenantId,
+      fromPlan: oldPlan,
+      toPlan: 'FREE',
+      reason: 'User requested downgrade to Free',
+      actorId: req.user?.id,
+      req,
+    });
+
     res.json({ message: 'Downgraded to Free plan.', plan: 'free' });
   } catch (error) {
     console.error('downgradeToFree error:', error);
     res.status(500).json({ error: 'Failed to downgrade.' });
+  }
+};
+
+// =============================================
+// SUSPEND — immediate suspension (e.g. payment failure)
+// =============================================
+exports.suspendSubscription = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const result = await lifecycle.suspend(req.tenantId, reason || 'Payment failure');
+
+    await audit.log({
+      tenantId: req.tenantId,
+      action: audit.AUDIT_ACTIONS.PLAN_SUSPEND,
+      actorId: req.user?.id,
+      entityType: 'subscription',
+      changes: { reason: result.reason, plan: result.tenant.subscriptionPlan },
+      req,
+    });
+
+    res.json({
+      message: 'Subscription suspended.',
+      status: result.tenant.subscriptionStatus,
+      reason: result.reason,
+    });
+  } catch (error) {
+    console.error('suspendSubscription error:', error);
+    res.status(400).json({ error: error.message || 'Failed to suspend subscription.' });
+  }
+};
+
+// =============================================
+// REACTIVATE — reactivate a suspended/cancelled/expired sub
+// =============================================
+exports.reactivateSubscription = async (req, res) => {
+  try {
+    const { planId, periodEnd } = req.body;
+    const result = await lifecycle.reactivate(
+      req.tenantId,
+      planId || null,
+      periodEnd || null
+    );
+
+    await audit.log({
+      tenantId: req.tenantId,
+      action: audit.AUDIT_ACTIONS.PLAN_REACTIVATE,
+      actorId: req.user?.id,
+      entityType: 'subscription',
+      changes: { plan: result.tenant.subscriptionPlan, validUntil: result.subscription?.current_period_end },
+      req,
+    });
+
+    res.json({
+      message: 'Subscription reactivated.',
+      plan: result.tenant.subscriptionPlan,
+      status: result.tenant.subscriptionStatus,
+      validUntil: result.subscription?.current_period_end || null,
+    });
+  } catch (error) {
+    console.error('reactivateSubscription error:', error);
+    res.status(400).json({ error: error.message || 'Failed to reactivate subscription.' });
+  }
+};
+
+// =============================================
+// EVENT HISTORY — get subscription event log
+// =============================================
+exports.getEventHistory = async (req, res) => {
+  try {
+    const SubscriptionEventRepository = require('../repositories/SubscriptionEventRepository');
+    const eventRepo = new SubscriptionEventRepository(db);
+    const limit = parseInt(req.query.limit) || 50;
+    const events = await eventRepo.findByTenant(req.tenantId, limit);
+
+    res.json({ events: events.map(e => ({
+      ...e.toDB(),
+      description: e.description,
+      createdAt: e.createdAt,
+    })) });
+  } catch (error) {
+    console.error('getEventHistory error:', error);
+    res.status(500).json({ error: 'Failed to fetch event history.' });
   }
 };
 

@@ -83,4 +83,40 @@ export const superService = {
     const response = await api.get('/super/analytics');
     return response.data;
   },
+
+  // ─── Feature Overrides ───────────────────────
+  listOverrides: async (tenantId) => {
+    const response = await api.get(`/super/tenants/${tenantId}/overrides`);
+    return response.data;
+  },
+  setOverride: async (tenantId, data) => {
+    const response = await api.post(`/super/tenants/${tenantId}/overrides`, data);
+    return response.data;
+  },
+  removeOverride: async (tenantId, featureKey) => {
+    const response = await api.delete(`/super/tenants/${tenantId}/overrides/${featureKey}`);
+    return response.data;
+  },
+  getOverrideHistory: async (tenantId) => {
+    const response = await api.get(`/super/tenants/${tenantId}/overrides/history`);
+    return response.data;
+  },
+
+  // ─── Extra Quota ─────────────────────────────
+  grantExtraQuota: async (tenantId, data) => {
+    const response = await api.post(`/super/tenants/${tenantId}/extra-quota`, data);
+    return response.data;
+  },
+
+  // ─── Force Plan ──────────────────────────────
+  forcePlanChange: async (tenantId, data) => {
+    const response = await api.post(`/super/tenants/${tenantId}/force-plan`, data);
+    return response.data;
+  },
+
+  // ─── Audit Log ───────────────────────────────
+  getTenantAuditLog: async (tenantId, params = {}) => {
+    const response = await api.get(`/super/tenants/${tenantId}/audit-log`, { params });
+    return response.data;
+  },
 };

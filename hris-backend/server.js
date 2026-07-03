@@ -48,6 +48,7 @@ const gstReturnRoutes = require('./routes/gstReturn.routes');
 const gstr2bRoutes = require('./routes/gstr2b.routes');
 const tdsRoutes = require('./routes/tds.routes');
 const tallyRoutes = require('./routes/tally.routes');
+const brandingRoutes = require('./routes/branding.routes');
 const bulkImportRoutes = require('./routes/bulkImport.routes');
 const cashFlowRoutes = require('./routes/cashFlow.routes');
 const khataRoutes = require('./routes/khata.routes');
@@ -55,7 +56,9 @@ const portalRoutes = require('./routes/portal.routes');
 const entityRoutes = require('./routes/entity.routes');
 const consolidatedRoutes = require('./routes/consolidated.routes');
 const { planGate } = require('./middleware/planGate');
-const { startExpiryCron } = require('./cron/subscriptionExpiry');
+const { attachTenant } = require('./middleware/attachTenant');
+const { requireFeature } = require('./middleware/requireFeature');
+const { startLifecycleCron } = require('./cron/subscriptionLifecycle');
 const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
 const { startWhatsAppCron } = require('./cron/whatsappReminders');
 const { startAuditCleanupCron } = require('./cron/auditCleanup');
@@ -168,21 +171,27 @@ app.post('/api/v1/public/contact', async (req, res) => {
 // ==========================================
 // 2. PROTECTED MULTI-TENANT ROUTES
 // ==========================================
-app.use('/api/v1/core', tenantResolver, apiLimiter);
-// Staff management (Enterprise only, rank 2)
-app.use('/api/v1/core/employees', planGate(2), employeeRoutes);
-app.use('/api/v1/core/time', planGate(2), timeRoutes);
+app.use('/api/v1/core', tenantResolver, apiLimiter, attachTenant);
+// Staff & attendance feature-gated routes
+app.use('/api/v1/core/employees', requireFeature('staff_directory'), employeeRoutes);
+app.use('/api/v1/core/time', requireFeature('attendance'), timeRoutes);
+app.use('/api/v1/core/employees/import', requireFeature('staff_directory'), importRoutes);
+
+// Payroll & HR (still plan-gated until feature config evolves)
 app.use('/api/v1/core/payroll', planGate(2), payrollRoutes);
 app.use('/api/v1/core/advances', planGate(2), advanceRoutes);
-app.use('/api/v1/core/employees/import', planGate(2), importRoutes);
-app.use('/api/v1/core/audit-logs', planGate(2), auditRoutes);
 app.use('/api/v1/core/replacements', planGate(2), replacementRoutes);
+app.use('/api/v1/core/audit-logs', planGate(2), auditRoutes);
 
-// Business module (Pro+, rank 1)
-app.use('/api/v1/core/suppliers', planGate(1), supplierRoutes);
-app.use('/api/v1/core/customers', planGate(1), customerRoutes);
+// Business module (feature-gated)
+app.use('/api/v1/core/customers', requireFeature('customers'), customerRoutes);
+app.use('/api/v1/core/invoices', requireFeature('invoices'), invoiceRoutes);
+app.use('/api/v1/core/products', requireFeature('inventory'), productRoutes);
+app.use('/api/v1/core/stock', requireFeature('inventory'), stockRoutes);
+
+// Business module (still plan-gated)
+app.use('/api/v1/core/suppliers', planGate(0), supplierRoutes);
 app.use('/api/v1/core/purchase-orders', planGate(1), purchaseRoutes);
-app.use('/api/v1/core/invoices', planGate(1), invoiceRoutes);
 app.use('/api/v1/core/balance', planGate(1), balanceRoutes);
 app.use('/api/v1/core/reports', planGate(1), reportRoutes);
 
@@ -192,12 +201,11 @@ app.use('/api/v1/core/uploads', uploadRoutes);
 app.use('/api/v1/core/profile', profileRoutes);
 app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/api/v1/core/subscription', apiLimiter, subscriptionRoutes);
+app.use('/api/v1/core/branding', brandingRoutes);
 app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/api/v1/core/retention', retentionRoutes);
 app.use('/api/v1/core/dashboard', dashboardRoutes);
 app.use('/api/v1/core/email-logs', emailLogRoutes);
-app.use('/api/v1/core/products', planGate(1), productRoutes);
-app.use('/api/v1/core/stock', planGate(1), stockRoutes);
 app.use('/api/v1/core/compliance', complianceRoutes);
 app.use('/api/v1/core/search', searchRoutes);
 app.use('/api/v1/core/recurring-invoices', planGate(1), recurringInvoiceRoutes);
@@ -245,7 +253,7 @@ app.listen(PORT, () => {
   console.log(`SaaS Backend running securely on port ${PORT}`);
   // Start subscription expiry checker (every 10 minutes)
   if (process.env.NODE_ENV !== 'test') {
-    startExpiryCron(10 * 60 * 1000);
+    startLifecycleCron(10 * 60 * 1000);
     startRecurringInvoiceCron(86400000);
     startWhatsAppCron(86400000);
     startAuditCleanupCron(86400000);

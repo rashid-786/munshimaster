@@ -2,6 +2,11 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const overrideService = require('../services/override.service');
+const customPlanService = require('../services/customPlan.service');
+const whiteLabelService = require('../services/whiteLabel.service');
+const analyticsService = require('../services/subscriptionAnalytics.service');
+const audit = require('../services/audit.service');
 
 exports.seedSuperAdmin = async (req, res) => {
   const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -600,6 +605,205 @@ exports.updateSystemSettings = async (req, res) => {
 };
 
 // =============================================
+// OVERRIDES — List all feature overrides for a tenant
+// =============================================
+exports.listOverrides = async (req, res) => {
+  try {
+    const overrides = await overrideService.listOverrides(req.params.id);
+    res.json({ overrides });
+  } catch (error) {
+    console.error('listOverrides error:', error);
+    res.status(500).json({ error: 'Failed to list overrides.' });
+  }
+};
+
+// =============================================
+// OVERRIDES — Create or update a feature override
+// =============================================
+exports.setOverride = async (req, res) => {
+  try {
+    const { featureKey, maxValue, expiresAt, reason } = req.body;
+    const result = await overrideService.setOverride({
+      tenantId: req.params.id,
+      featureKey,
+      maxValue: maxValue !== undefined ? maxValue : null,
+      expiresAt: expiresAt || null,
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      reason: reason || 'Super admin override',
+    });
+
+    await audit.logAdminAction({
+      tenantId: req.params.id,
+      actorId: req.user?.id,
+      actorName: req.user?.name || 'Super Admin',
+      action: audit.AUDIT_ACTIONS.LIMIT_OVERRIDE_CREATED,
+      details: { featureKey, maxValue, expiresAt, reason },
+      req,
+    });
+
+    res.json({ message: 'Override saved.', override: result });
+  } catch (error) {
+    console.error('setOverride error:', error);
+    res.status(400).json({ error: error.message || 'Failed to set override.' });
+  }
+};
+
+// =============================================
+// OVERRIDES — Remove a feature override
+// =============================================
+exports.removeOverride = async (req, res) => {
+  try {
+    const { featureKey } = req.params;
+    const result = await overrideService.removeOverride({
+      tenantId: req.params.id,
+      featureKey,
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      reason: req.body?.reason || 'Super admin removed override',
+    });
+
+    await audit.logAdminAction({
+      tenantId: req.params.id,
+      actorId: req.user?.id,
+      actorName: req.user?.name || 'Super Admin',
+      action: audit.AUDIT_ACTIONS.LIMIT_OVERRIDE_DELETED,
+      details: { featureKey, reason: req.body?.reason },
+      req,
+    });
+
+    res.json({ message: 'Override removed.', result });
+  } catch (error) {
+    console.error('removeOverride error:', error);
+    res.status(400).json({ error: error.message || 'Failed to remove override.' });
+  }
+};
+
+// =============================================
+// EXTRA QUOTA — Grant extra usage quota to a tenant
+// =============================================
+exports.grantExtraQuota = async (req, res) => {
+  try {
+    const { featureKey, extraAmount, durationDays, reason } = req.body;
+
+    if (!featureKey || extraAmount === undefined) {
+      return res.status(400).json({ error: 'featureKey and extraAmount are required.' });
+    }
+
+    const result = await overrideService.grantExtraQuota({
+      tenantId: req.params.id,
+      featureKey,
+      extraAmount: Number(extraAmount),
+      durationDays: durationDays ? Number(durationDays) : null,
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      reason: reason || `Extra quota granted by super admin`,
+    });
+
+    await audit.logAdminAction({
+      tenantId: req.params.id,
+      actorId: req.user?.id,
+      actorName: req.user?.name || 'Super Admin',
+      action: audit.AUDIT_ACTIONS.EXTRA_QUOTA_GRANTED,
+      details: { featureKey, extraAmount, durationDays, reason },
+      req,
+    });
+
+    res.json({ message: 'Extra quota granted.', override: result });
+  } catch (error) {
+    console.error('grantExtraQuota error:', error);
+    res.status(400).json({ error: error.message || 'Failed to grant extra quota.' });
+  }
+};
+
+// =============================================
+// OVERRIDES — Get override change history
+// =============================================
+exports.getOverrideHistory = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const history = await overrideService.getOverrideHistory(req.params.id, limit);
+    res.json({ history });
+  } catch (error) {
+    console.error('getOverrideHistory error:', error);
+    res.status(500).json({ error: 'Failed to fetch override history.' });
+  }
+};
+
+// =============================================
+// FORCE PLAN — Force-change a tenant's plan
+// =============================================
+exports.forcePlanChange = async (req, res) => {
+  try {
+    const { plan, reason } = req.body;
+    if (!plan) {
+      return res.status(400).json({ error: 'Plan is required.' });
+    }
+    const validPlans = ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'];
+    const normalizedPlan = plan.toUpperCase();
+    if (!validPlans.includes(normalizedPlan)) {
+      return res.status(400).json({ error: `Invalid plan: ${plan}. Valid: ${validPlans.join(', ')}` });
+    }
+
+    const result = await overrideService.forcePlanChange({
+      tenantId: req.params.id,
+      newPlan: normalizedPlan,
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      reason: reason || `Force changed to ${normalizedPlan} by super admin`,
+    });
+
+    res.json({
+      message: `Tenant forced to ${normalizedPlan} plan.`,
+      plan: normalizedPlan,
+      status: result.tenant.subscriptionStatus,
+    });
+  } catch (error) {
+    console.error('forcePlanChange error:', error);
+    res.status(400).json({ error: error.message || 'Failed to force plan change.' });
+  }
+};
+
+// =============================================
+// AUDIT LOG — Get audit log for a tenant
+// =============================================
+exports.getTenantAuditLog = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const action = req.query.action || null;
+
+    let sql = `SELECT * FROM hris_saas.audit_logs WHERE tenant_id = ?`;
+    const params = [req.params.id];
+
+    if (action) {
+      sql += ` AND action = ?`;
+      params.push(action);
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    params.push(String(limit), String(offset));
+
+    const [rows] = await db.execute(sql, params);
+
+    const [countResult] = await db.execute(
+      `SELECT COUNT(*) as count FROM hris_saas.audit_logs WHERE tenant_id = ?${action ? ' AND action = ?' : ''}`,
+      action ? [req.params.id, action] : [req.params.id]
+    );
+
+    res.json({
+      logs: rows,
+      total: parseInt(countResult[0]?.count || 0),
+      limit,
+      offset,
+    });
+  } catch (error) {
+    console.error('getTenantAuditLog error:', error);
+    res.status(500).json({ error: 'Failed to fetch audit logs.' });
+  }
+};
+
+// =============================================
 // ANALYTICS — Retention & business metrics
 // =============================================
 exports.getAnalytics = async (req, res) => {
@@ -679,5 +883,142 @@ exports.getAnalytics = async (req, res) => {
   } catch (error) {
     console.error('getAnalytics error:', error);
     res.status(500).json({ error: 'Failed to fetch analytics.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — List all custom plans
+// =============================================
+exports.listCustomPlans = async (req, res) => {
+  try {
+    const activeOnly = req.query.active === 'true';
+    const plans = await customPlanService.listPlans(activeOnly);
+    res.json({ plans });
+  } catch (error) {
+    console.error('listCustomPlans error:', error);
+    res.status(500).json({ error: 'Failed to list custom plans.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Get single plan
+// =============================================
+exports.getCustomPlan = async (req, res) => {
+  try {
+    const plan = await customPlanService.getPlan(req.params.id);
+    if (!plan) return res.status(404).json({ error: 'Custom plan not found.' });
+    res.json({ plan });
+  } catch (error) {
+    console.error('getCustomPlan error:', error);
+    res.status(500).json({ error: 'Failed to get custom plan.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Create
+// =============================================
+exports.createCustomPlan = async (req, res) => {
+  try {
+    const plan = await customPlanService.createPlan({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+    res.status(201).json({ message: 'Custom plan created.', plan });
+  } catch (error) {
+    console.error('createCustomPlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to create plan.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Update
+// =============================================
+exports.updateCustomPlan = async (req, res) => {
+  try {
+    const plan = await customPlanService.updatePlan(req.params.id, req.body);
+    res.json({ message: 'Custom plan updated.', plan });
+  } catch (error) {
+    console.error('updateCustomPlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update plan.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Assign to tenant
+// =============================================
+exports.assignCustomPlan = async (req, res) => {
+  try {
+    const { customPlanId } = req.body;
+    if (!customPlanId) return res.status(400).json({ error: 'customPlanId is required.' });
+    const result = await customPlanService.assignToTenant(req.params.id, customPlanId, req.user?.id);
+    res.json({ message: 'Custom plan assigned.', result });
+  } catch (error) {
+    console.error('assignCustomPlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to assign plan.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Remove from tenant
+// =============================================
+exports.removeCustomPlan = async (req, res) => {
+  try {
+    await customPlanService.removeFromTenant(req.params.id);
+    res.json({ message: 'Custom plan removed from tenant.' });
+  } catch (error) {
+    console.error('removeCustomPlan error:', error);
+    res.status(500).json({ error: 'Failed to remove custom plan.' });
+  }
+};
+
+// =============================================
+// CUSTOM PLANS — Get tenant's assigned custom plan
+// =============================================
+exports.getTenantCustomPlan = async (req, res) => {
+  try {
+    const plan = await customPlanService.getTenantCustomPlan(req.params.id);
+    res.json({ plan });
+  } catch (error) {
+    console.error('getTenantCustomPlan error:', error);
+    res.status(500).json({ error: 'Failed to get tenant custom plan.' });
+  }
+};
+
+// =============================================
+// BRANDING — Get tenant branding
+// =============================================
+exports.getTenantBranding = async (req, res) => {
+  try {
+    const branding = await whiteLabelService.getBranding(req.params.id);
+    res.json({ branding });
+  } catch (error) {
+    console.error('getTenantBranding error:', error);
+    res.status(500).json({ error: 'Failed to get branding.' });
+  }
+};
+
+// =============================================
+// BRANDING — Update tenant branding
+// =============================================
+exports.updateTenantBranding = async (req, res) => {
+  try {
+    const branding = await whiteLabelService.upsertBranding(req.params.id, req.body);
+    res.json({ message: 'Branding updated.', branding });
+  } catch (error) {
+    console.error('updateTenantBranding error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update branding.' });
+  }
+};
+
+// =============================================
+// SUBSCRIPTION ANALYTICS — Full analytics dashboard
+// =============================================
+exports.getSubscriptionAnalytics = async (req, res) => {
+  try {
+    const analytics = await analyticsService.getAnalyticsDashboard();
+    res.json(analytics);
+  } catch (error) {
+    console.error('getSubscriptionAnalytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription analytics.' });
   }
 };

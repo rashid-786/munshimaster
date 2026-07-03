@@ -15,10 +15,10 @@ const INNER_TABS = [
   { key: 'reports', label: 'Reports' },
 ];
 
-const DetailRow = ({ label, value }) => (
+const DetailRow = ({ label, value, children }) => (
   <div className="flex items-center justify-between py-1.5">
     <span className="text-sm text-gray-500">{label}</span>
-    <span className="text-sm font-medium text-gray-900 text-right ml-2">{value || '—'}</span>
+    <span className="text-sm font-medium text-gray-900 text-right ml-2">{children || value || '—'}</span>
   </div>
 );
 
@@ -273,9 +273,48 @@ const KiranaStore = () => {
   };
 
   const handleCashRowClick = (entry) => {
-    if (!isMobile) return;
     setSelectedCash(entry);
     if (!cashAttachments[entry.id]) loadCashAttachments(entry.id);
+  };
+
+  const renderCashDetail = () => {
+    if (!selectedCash) return null;
+    const entry = selectedCash;
+    return (
+      <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/30" onClick={() => setSelectedCash(null)}>
+        <div className="bg-white w-full max-w-xl h-full overflow-y-auto" onClick={ev => ev.stopPropagation()}>
+          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+            <h3 className="text-lg font-semibold text-gray-900">Entry Details</h3>
+            <button onClick={() => setSelectedCash(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+          </div>
+          <div className="p-6 space-y-4">
+            <DetailRow label="Date" value={entry.entry_date ? entry.entry_date.split('T')[0] : '-'} />
+            <DetailRow label="Type">
+              <span className={entry.type === 'IN' ? 'badge-success' : 'badge-danger'}>{entry.type}</span>
+            </DetailRow>
+            <DetailRow label="Amount">
+              <span className={`font-semibold ${entry.type === 'IN' ? 'text-emerald-600' : 'text-red-500'}`}>
+                {entry.type === 'IN' ? '+' : '-'}{formatINR(entry.amount)}
+              </span>
+            </DetailRow>
+            <DetailRow label="Note" value={entry.note || '—'} />
+            <DetailRow label="Category" value={entry.category || '—'} />
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments</h4>
+              <div className="flex items-center gap-2 flex-wrap">
+                {(cashAttachments[entry.id] || []).length === 0 ? (
+                  <span className="text-sm text-gray-400">None</span>
+                ) : (
+                  (cashAttachments[entry.id] || []).map(att => (
+                    <a key={att.id} href={`${import.meta.env.VITE_API_BASE_URL}/uploads/${att.stored_name}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs bg-gray-100 rounded px-2 py-1 text-indigo-600 hover:underline">{att.original_name}</a>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const handleReportRowClick = (r) => {
@@ -301,9 +340,15 @@ const KiranaStore = () => {
       </span>
     )},
     { key: 'actions', label: 'Actions', render: (_, p) => (
-      <div onClick={e => e.stopPropagation()}>
-        <button onClick={() => openDetail(p)} className="btn-ghost !py-1.5 !px-3 text-xs font-medium text-indigo-600 hover:text-indigo-800">
-          View Transaction
+      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
+        <button onClick={() => openDetail(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="View">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+        </button>
+        <button onClick={() => openEditParty(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        </button>
+        <button onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
         </button>
       </div>
     )},
@@ -331,6 +376,9 @@ const KiranaStore = () => {
     )},
     { key: 'actions', label: 'Actions', render: (_, e) => (
       <div className="flex gap-1.5">
+        <button onClick={(ev) => { ev.stopPropagation(); handleCashRowClick(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="View">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+        </button>
         <button onClick={(ev) => { ev.stopPropagation(); openEditCash(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
         </button>
@@ -871,6 +919,9 @@ const KiranaStore = () => {
       {tab === 'buyers' || tab === 'sellers' ? renderDashboard() : null}
       {tab === 'cashbook' && renderCashbook()}
       {tab === 'reports' && renderReports()}
+
+      {/* Cash detail overlay (desktop) */}
+      {renderCashDetail()}
 
       {/* Mobile BottomSheets */}
       {isMobile && selectedParty && (

@@ -2,9 +2,15 @@ import { useState, useEffect } from 'react';
 import { hrService } from '../../services/hr.service';
 import ConfirmModal from '../../components/ConfirmModal';
 
+const PLAN_RANK = { FREE: 0, MANAGE: 1, BUSINESS: 2, BUSINESS_PRO: 3 };
+
 export default function Entities() {
   const groupLabels = JSON.parse(localStorage.getItem('group_labels') || '{}');
-  const entityLabel = groupLabels['Entities'] || 'Entities';
+  const tenantData = JSON.parse(localStorage.getItem('tenant_data') || '{}');
+  const planRank = PLAN_RANK[tenantData.subscriptionPlan] ?? 0;
+  const isLowPlan = planRank <= 1;
+  const entityLabel = groupLabels['Entities'] || (isLowPlan ? 'My Stores' : 'Entities');
+  const entitySingular = isLowPlan ? 'Store' : 'Entity';
   const [entities, setEntities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -35,17 +41,18 @@ export default function Entities() {
     try {
       if (editing) {
         await hrService.updateEntity(editing, form);
-        setMessage({ type: 'success', text: 'Entity updated successfully.' });
+        setMessage({ type: 'success', text: `${entitySingular} updated successfully.` });
       } else {
         await hrService.createEntity(form);
-        setMessage({ type: 'success', text: 'Entity created successfully.' });
+        setMessage({ type: 'success', text: `${entitySingular} created successfully.` });
       }
       setShowForm(false);
       setEditing(null);
       setForm({ companyName: '', branchName: '', gstin: '' });
       fetchEntities();
     } catch (e) {
-      setMessage({ type: 'error', text: e.response?.data?.error || 'Failed to save entity.' });
+      const data = e.response?.data;
+      setMessage({ type: 'error', text: data?.message || data?.error || `Failed to save ${entitySingular.toLowerCase()}.` });
     } finally {
       setSubmitting(false);
     }
@@ -65,18 +72,18 @@ export default function Entities() {
   const handleDelete = (id, name) => {
     setModal({
       variant: 'danger',
-      title: `Delete Entity`,
-      message: `Permanently delete "${name}"? This will deactivate the entity and all its data.`,
+      title: `Delete ${entitySingular}`,
+      message: `Permanently delete "${name}"? This will deactivate the ${entitySingular.toLowerCase()} and all its data.`,
       confirmLabel: 'Delete',
       onConfirm: async () => {
         setModalLoading(true);
         try {
           await hrService.deleteEntity(id);
           setModal(null);
-          setMessage({ type: 'success', text: 'Entity deleted.' });
+          setMessage({ type: 'success', text: `${entitySingular} deleted.` });
           fetchEntities();
         } catch (e) {
-          setMessage({ type: 'error', text: e.response?.data?.error || 'Failed to delete entity.' });
+          setMessage({ type: 'error', text: e.response?.data?.error || `Failed to delete ${entitySingular.toLowerCase()}.` });
           setModal(null);
         } finally { setModalLoading(false); }
       },
@@ -113,7 +120,7 @@ export default function Entities() {
         </div>
         {!showForm && (
           <button onClick={() => { setEditing(null); setForm({ companyName: '', branchName: '', gstin: '' }); setShowForm(true); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-            + Add Entity
+            + Add {entitySingular}
           </button>
         )}
       </div>
@@ -128,7 +135,7 @@ export default function Entities() {
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">{editing ? 'Edit Entity' : 'New Entity'}</h3>
+          <h3 className="text-base font-semibold text-gray-900 mb-4">{editing ? `Edit ${entitySingular}` : `New ${entitySingular}`}</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Company Name *</label>
@@ -150,7 +157,7 @@ export default function Entities() {
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
               <button type="submit" disabled={submitting} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                {submitting ? 'Saving...' : editing ? 'Update Entity' : 'Create Entity'}
+                {submitting ? 'Saving...' : editing ? `Update ${entitySingular}` : `Create ${entitySingular}`}
               </button>
             </div>
           </form>
@@ -161,7 +168,7 @@ export default function Entities() {
       {loading ? (
         <div className="text-center py-12 text-gray-400">Loading...</div>
       ) : entities.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">No entities yet. Add your first branch or group entity.</div>
+        <div className="text-center py-12 text-gray-400">No {entitySingular.toLowerCase()} yet. Add your first {entitySingular.toLowerCase()}.</div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
