@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
+import { resolvePlan } from '../../config/subscriptionPlans';
 import Loading from '../../components/Loading';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -96,6 +98,10 @@ const StatusPie = ({ data }) => {
 
 const BusinessDashboard = () => {
   const navigate = useNavigate();
+  const { tenant } = useAuth();
+  const rawPlan = tenant?.subscriptionPlan || 'FREE';
+  const plan = resolvePlan(rawPlan);
+  const isBusinessPro = plan === 'BUSINESS_PRO';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('year');
@@ -183,10 +189,10 @@ const BusinessDashboard = () => {
           <KpiCard title="Payables" value={`₹${(s.outstandingPayables || 0).toLocaleString()}`}
             subtitle={`${s.invoiceCounts?.overdue || 0} overdue`} color="text-red-600" icon="💳"
             onClick={() => navigate('/admin/purchase-orders')} />
-          <KpiCard title="Cash Flow" value={`₹${(s.cashFlow?.net || 0).toLocaleString()}`}
+          {isBusinessPro && <KpiCard title="Cash Flow" value={`₹${(s.cashFlow?.net || 0).toLocaleString()}`}
             subtitle={`In ₹${(s.cashFlow?.in || 0).toLocaleString()} / Out ₹${(s.cashFlow?.out || 0).toLocaleString()}`}
             color={(s.cashFlow?.net || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} icon="💵"
-            onClick={() => navigate('/admin/reports')} />
+            onClick={() => navigate('/admin/reports')} />}
           <KpiCard title="Health Score" value={`${s.businessHealthScore || 0}/100`}
             subtitle={s.businessHealthScore >= 70 ? 'Good' : s.businessHealthScore >= 40 ? 'Fair' : 'Needs Attention'}
             color={s.businessHealthScore >= 70 ? 'text-emerald-600' : s.businessHealthScore >= 40 ? 'text-amber-600' : 'text-red-600'}
@@ -434,14 +440,14 @@ const BusinessDashboard = () => {
             <p className="text-lg">🏢</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Suppliers</p>
           </button>
-          <button onClick={() => navigate('/admin/notes')} className="card p-3 hover:shadow-md transition-shadow text-center">
+          {isBusinessPro && <button onClick={() => navigate('/admin/notes')} className="card p-3 hover:shadow-md transition-shadow text-center">
             <p className="text-lg">📝</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Credit/Debit Notes</p>
-          </button>
-          <button onClick={() => navigate('/admin/cash-flow')} className="card p-3 hover:shadow-md transition-shadow text-center">
+          </button>}
+          {isBusinessPro && <button onClick={() => navigate('/admin/cash-flow')} className="card p-3 hover:shadow-md transition-shadow text-center">
             <p className="text-lg">💵</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Cash Flow</p>
-          </button>
+          </button>}
         </div>
 
         {/* Subscription */}

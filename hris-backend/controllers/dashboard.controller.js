@@ -314,20 +314,23 @@ exports.getBusinessDashboard = async (req, res) => {
     const healthScore = Math.round(profitScore + collectionScore + growthScore + cashScore + customerScore);
 
     // Build monthly trend
+    const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     const monthMap = {};
     const nowYear = now.getFullYear();
     const nowMonth = now.getMonth();
     for (let i = 11; i >= 0; i--) {
       const d = new Date(nowYear, nowMonth - i, 1);
-      const key = d.toISOString().slice(0, 7);
+      const key = monthKey(d);
       monthMap[key] = { month: key, revenue: 0, expenses: 0, profit: 0 };
     }
     for (const row of monthlyRevenue) {
-      const key = row.month.toISOString().slice(0, 7);
+      const d = new Date(row.month);
+      const key = monthKey(d);
       if (monthMap[key]) monthMap[key].revenue = Math.round(row.revenue / 100);
     }
     for (const row of monthlyExpenses) {
-      const key = row.month.toISOString().slice(0, 7);
+      const d = new Date(row.month);
+      const key = monthKey(d);
       if (monthMap[key]) monthMap[key].expenses = Math.round(row.expenses / 100);
     }
     for (const key of Object.keys(monthMap)) {
@@ -378,7 +381,7 @@ exports.getBusinessDashboard = async (req, res) => {
         period,
       },
       subscription: {
-        plan: subscriptionRes[0]?.plan_type || 'free',
+        plan: subscriptionRes[0]?.plan || 'FREE',
         status: subscriptionRes[0]?.status || 'active',
       },
       monthlyTrend: Object.values(monthMap),

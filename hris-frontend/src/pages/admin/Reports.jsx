@@ -83,7 +83,7 @@ const Reports = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [period, setPeriod] = useState('this_month');
+  const [period, setPeriod] = useState('this_year');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [entryType, setEntryType] = useState('');
@@ -101,7 +101,7 @@ const Reports = () => {
   };
 
   useEffect(() => {
-    const { start, end } = calcPeriod('this_month');
+    const { start, end } = calcPeriod(period);
     setStartDate(start);
     setEndDate(end);
   }, []);

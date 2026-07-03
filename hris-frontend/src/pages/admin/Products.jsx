@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
+import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 import { formatINR } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -228,12 +229,16 @@ const Products = () => {
     { key: 'selling_price', label: 'Sale Price', render: (v) => v ? formatINR(v) : '—' },
     { key: 'purchase_price', label: 'Cost Price', render: (v) => v ? formatINR(v) : '—' },
     { key: 'hsn_code', label: 'HSN', render: (v) => v || '—' },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
       <div className="flex gap-1.5 justify-end">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-        <button onClick={(e) => { e.stopPropagation(); openAdjust(r); }} className="btn-secondary !py-1 !px-3 text-xs">Adjust</button>
-        <button onClick={(e) => { e.stopPropagation(); openMovements(r); }} className="btn-secondary !py-1 !px-3 text-xs">History</button>
-        <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+        <ActionEdit onClick={(e) => { e.stopPropagation(); openEdit(r); }} />
+        <button onClick={(e) => { e.stopPropagation(); openAdjust(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Adjust">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); openMovements(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="History">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </button>
+        <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
       </div>
     )},
   ], [products, selectedIds]);

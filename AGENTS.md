@@ -32,6 +32,7 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Backend phone validation** (`hris-backend/utils/phone.js`): `validateE164()` using `libphonenumber-js`, integrated into OTP controller (sendOtp, verifyOtp) and auth controller (registerTenant)
 - **Geo country endpoint** (`GET /api/v1/public/country`): returns best country from system settings, used by `auth.service.js` `getGeoCountry()`
 - **Login.jsx phone input upgrade**: replaced raw `<input type="tel">` with `<PhoneField>` in both login and forgot-password flows, with `isValidPhoneNumber` validation
+- **Login redirect fixed (Jul 3)**: Login.jsx now navigates directly based on API response's `subscriptionPlan` (avoids React state timing race). PublicRoute.jsx updated to use plan-aware routing instead of hardcoded `/admin/ledger` — eliminating the race where PublicRoute's `<Navigate to="/admin/ledger" />` fired alongside Login.jsx's redirect in the same render cycle.
 
 ## In Progress
 - (none)

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import ConfirmModal from '../../components/ConfirmModal';
 import { formatPhone } from '../../utils/currency';
+import PhoneField from '../../components/PhoneInput';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 
 const emptyForm = { name: '', contact_person: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', gstin: '', payment_terms: '', notes: '' };
 
@@ -123,15 +125,15 @@ const Suppliers = () => {
     { key: 'contact_person', label: 'Contact', render: (v) => <span className="text-gray-500">{v || '—'}</span> },
     { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
     { key: 'status', label: 'Status', render: (v) => <span className={v === 'active' ? 'badge-success' : 'badge-danger'}>{v}</span> },
-    { key: 'actions', label: 'Actions', className: 'text-center', render: (_, s) => (
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, s) => (
       <div className="flex gap-1.5 justify-end">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
+        <ActionEdit onClick={(e) => { e.stopPropagation(); openEdit(s); }} />
         {s.status === 'active' ? (
-          <button onClick={(e) => { e.stopPropagation(); handleDeactivate(s.id, s.name); }} className="btn-warning !py-1 !px-3 text-xs">Deactivate</button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeactivate(s.id, s.name); }} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
         ) : (
-          <button onClick={(e) => { e.stopPropagation(); handleActivate(s.id); }} className="btn-success !py-1 !px-3 text-xs">Activate</button>
+          <button onClick={(e) => { e.stopPropagation(); handleActivate(s.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
         )}
-        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id, s.name); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+        <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(s.id, s.name); }} />
       </div>
     )},
   ];
@@ -195,7 +197,7 @@ const Suppliers = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field" />
+                    <PhoneField value={form.phone} onChange={v => setForm({ ...form, phone: v || '' })} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>

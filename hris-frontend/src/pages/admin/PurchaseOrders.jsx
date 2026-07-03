@@ -8,6 +8,7 @@ import useIsMobile from '../../hooks/useIsMobile';
 import useFormDraft from '../../hooks/useFormDraft';
 import DraftBanner from '../../components/DraftBanner';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '', hsn_code: '' };
 const emptyForm = { supplier_id: '', order_date: '', expected_date: '', items: [{ ...emptyItem }], notes: '', gst_type: 'intra', place_of_supply: '' };
@@ -84,10 +85,10 @@ const PurchaseOrders = () => {
     { key: 'amount', label: 'Amount', render: (_, r) => <span className="text-right font-medium">{formatINR(r.total_amount)}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge[v]}>{v}</span> },
     { key: 'attachments', label: 'Attachments', render: (_, r) => (r.attachment_count || 0) > 0 ? <span className="text-indigo-600">📎 {r.attachment_count}</span> : '—' },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
       <div className="flex gap-1.5 justify-end">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-        <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+        <ActionEdit onClick={(e) => { e.stopPropagation(); openEdit(r); }} />
+        <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
       </div>
     )},
   ], [orders, selectedIds]);

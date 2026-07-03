@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 import { applyTheme } from './utils/currency';
+import { resolvePlan } from './config/subscriptionPlans';
+import { getFirstDashboardRoute } from './config/subscriptionMenuBuilder';
 
 import LandingLayout from './layouts/LandingLayout';
 import AdminLayout from './layouts/AdminLayout';
@@ -67,6 +69,17 @@ import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
 
+function DefaultRedirect() {
+  let { tenant } = useAuth();
+  if (!tenant) {
+    try { const saved = localStorage.getItem('tenant_data'); if (saved) tenant = JSON.parse(saved); } catch {}
+  }
+  const plan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+  if (plan === 'BUSINESS' || plan === 'BUSINESS_PRO') return <Navigate to="business" replace />;
+  const route = getFirstDashboardRoute(plan);
+  return <Navigate to={route.replace('/admin/', '')} replace />;
+}
+
 function App() {
   useEffect(() => {
     const savedColor = localStorage.getItem('primary_color') || '#4f46e5';
@@ -101,7 +114,7 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="ledger" replace />} />
+            <Route index element={<DefaultRedirect />} />
             <Route path="employees" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
             <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
             <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
@@ -113,8 +126,8 @@ function App() {
             <Route path="reports" element={<PlanRoute minPlan="business"><Reports /></PlanRoute>} />
             <Route path="pl" element={<PlanRoute minPlan="business"><PLStatement /></PlanRoute>} />
             <Route path="cash-flow" element={<PlanRoute minPlan="business"><CashFlowStatement /></PlanRoute>} />
-            <Route path="ledger" element={<LedgerDashboard />} />
-            <Route path="ledger/:tab" element={<KiranaStore />} />
+            <Route path="ledger" element={<PlanRoute minPlan="free"><LedgerDashboard /></PlanRoute>} />
+            <Route path="ledger/:tab" element={<PlanRoute minPlan="free"><KiranaStore /></PlanRoute>} />
             <Route path="business" element={<PlanRoute minPlan="business"><BusinessDashboard /></PlanRoute>} />
             <Route path="hr" element={<PlanRoute minPlan="pro"><HrDashboard /></PlanRoute>} />
             <Route path="suppliers" element={<PlanRoute minPlan="business"><Suppliers /></PlanRoute>} />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
+import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 import { formatINR } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -169,10 +170,10 @@ const BalanceSheet = () => {
       );
     }},
     { key: 'added_by', label: 'Added By', render: (_, r) => <span className="text-gray-500 text-sm">{r.first_name} {r.last_name}</span> },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
-      <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
-        <button onClick={(e) => { e.stopPropagation(); setModal({ id: r.id }); }} className="text-sm text-red-600 hover:text-red-800">Delete</button>
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
+        <ActionEdit onClick={(e) => { e.stopPropagation(); openEdit(r); }} />
+        <ActionDelete onClick={(e) => { e.stopPropagation(); setModal({ id: r.id }); }} />
       </div>
     )},
   ];

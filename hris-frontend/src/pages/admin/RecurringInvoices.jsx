@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import useIsMobile from '../../hooks/useIsMobile';
 import Loading from '../../components/Loading';
+import { ActionDelete } from '../../components/ActionIcons';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '', hsn_code: '' };
 const emptyForm = { customer_id: '', template_name: '', frequency: 'monthly', interval_count: 1, day_of_week: '', day_of_month: '', next_generation_date: '', due_date_offset: 15, notes: '', gst_type: 'intra', place_of_supply: '', items: [{ ...emptyItem }] };
@@ -168,6 +169,18 @@ const RecurringInvoices = () => {
         <span className={v ? 'badge-success' : 'badge-danger'}>{v ? 'Active' : 'Inactive'}</span>
       ),
     },
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={(e) => { e.stopPropagation(); handleGenerate(r.id); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Generate">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); handleToggle(r.id, !r.is_active); }}
+          className={`btn-ghost !py-1.5 !px-2.5 text-xs ${r.is_active ? '!text-amber-500 hover:!bg-amber-50' : '!text-green-500 hover:!bg-green-50'}`} title={r.is_active ? 'Deactivate' : 'Activate'}>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={r.is_active ? 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'} /></svg>
+        </button>
+        <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
+      </div>
+    )},
   ];
 
   return (
@@ -201,18 +214,6 @@ const RecurringInvoices = () => {
         onRowClick={openEdit}
         emptyMessage="No recurring templates yet"
         loading={loading}
-        actions={(r) => (
-          <div className="flex items-center gap-1">
-            <button onClick={(e) => { e.stopPropagation(); handleGenerate(r.id); }}
-              className="btn-primary !py-1 !px-2 text-xs">Generate</button>
-            <button onClick={(e) => { e.stopPropagation(); handleToggle(r.id, !r.is_active); }}
-              className={`!py-1 !px-2 text-xs ${r.is_active ? 'btn-secondary' : 'btn-primary'}`}>
-              {r.is_active ? 'Deactivate' : 'Activate'}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }}
-              className="btn-danger !py-1 !px-2 text-xs">Delete</button>
-          </div>
-        )}
       />
 
       {showForm && (

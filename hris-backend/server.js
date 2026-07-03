@@ -178,9 +178,9 @@ app.use('/api/v1/core/time', requireFeature('attendance'), timeRoutes);
 app.use('/api/v1/core/employees/import', requireFeature('staff_directory'), importRoutes);
 
 // Payroll & HR (still plan-gated until feature config evolves)
-app.use('/api/v1/core/payroll', planGate(2), payrollRoutes);
-app.use('/api/v1/core/advances', planGate(2), advanceRoutes);
-app.use('/api/v1/core/replacements', planGate(2), replacementRoutes);
+app.use('/api/v1/core/payroll', planGate(1), payrollRoutes);
+app.use('/api/v1/core/advances', planGate(1), advanceRoutes);
+app.use('/api/v1/core/replacements', planGate(1), replacementRoutes);
 app.use('/api/v1/core/audit-logs', planGate(2), auditRoutes);
 
 // Business module (feature-gated)

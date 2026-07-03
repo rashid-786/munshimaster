@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR, formatPhone } from '../../utils/currency';
+import PhoneField from '../../components/PhoneInput';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import { ActionView, ActionEdit, ActionDelete } from '../../components/ActionIcons';
 
 const INNER_TABS = [
   { key: 'buyers', label: 'Buyers' },
@@ -339,17 +341,11 @@ const KiranaStore = () => {
         </span>
       </span>
     )},
-    { key: 'actions', label: 'Actions', render: (_, p) => (
-      <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
-        <button onClick={() => openDetail(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="View">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-        </button>
-        <button onClick={() => openEditParty(p)} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-        </button>
-        <button onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-        </button>
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, p) => (
+      <div className="flex gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
+        <ActionView onClick={() => openDetail(p)} />
+        <ActionEdit onClick={() => openEditParty(p)} />
+        <ActionDelete onClick={() => setModal({ action: 'deleteParty', id: p.id, name: p.name })} />
       </div>
     )},
   ];
@@ -374,17 +370,11 @@ const KiranaStore = () => {
         <button onClick={(ev) => { ev.stopPropagation(); const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = async (ev2) => { await hrService.uploadFiles('kirana_cashbook', e.id, Array.from(ev2.target.files), () => {}); loadCashAttachments(e.id); }; inp.click(); }} className="btn-ghost !py-1 !px-2 text-xs font-medium">+File</button>
       </div>
     )},
-    { key: 'actions', label: 'Actions', render: (_, e) => (
-      <div className="flex gap-1.5">
-        <button onClick={(ev) => { ev.stopPropagation(); handleCashRowClick(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="View">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-        </button>
-        <button onClick={(ev) => { ev.stopPropagation(); openEditCash(e); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-        </button>
-        <button onClick={(ev) => { ev.stopPropagation(); setModal({ action: 'deleteCash', id: e.id }); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-        </button>
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, e) => (
+      <div className="flex gap-1.5 justify-end">
+        <ActionView onClick={(ev) => { ev.stopPropagation(); handleCashRowClick(e); }} />
+        <ActionEdit onClick={(ev) => { ev.stopPropagation(); openEditCash(e); }} />
+        <ActionDelete onClick={(ev) => { ev.stopPropagation(); setModal({ action: 'deleteCash', id: e.id }); }} />
       </div>
     )},
   ];
@@ -617,7 +607,7 @@ const KiranaStore = () => {
                 )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input type="text" value={partyForm.phone} onChange={e => setPartyForm({ ...partyForm, phone: e.target.value })} className="input-field" />
+                  <PhoneField value={partyForm.phone} onChange={v => setPartyForm({ ...partyForm, phone: v || '' })} />
                 </div>
               </div>
               <div>

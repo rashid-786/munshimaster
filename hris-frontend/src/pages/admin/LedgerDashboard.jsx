@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
+import PhoneField from '../../components/PhoneInput';
 import Loading from '../../components/Loading';
 
 const LedgerDashboard = () => {
@@ -192,7 +193,7 @@ const LedgerDashboard = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input type="text" value={partyForm.phone} onChange={e => setPartyForm({ ...partyForm, phone: e.target.value })} className="input-field" />
+                  <PhoneField value={partyForm.phone} onChange={v => setPartyForm({ ...partyForm, phone: v || '' })} />
                 </div>
               </div>
               <div>

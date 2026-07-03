@@ -1,8 +1,16 @@
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { resolvePlan, getRank } from '../config/subscriptionPlans';
 import UpgradeModal from './UpgradeModal';
 
 export default function UpgradeBanner({ type = 'limit', feature, usage, limit, plan = 'BUSINESS' }) {
+  const { tenant } = useAuth();
+  const rawPlan = tenant?.subscriptionPlan || 'FREE';
+  const currentPlan = resolvePlan(rawPlan);
+  const requiredPlan = resolvePlan(plan);
   const [showModal, setShowModal] = useState(false);
+
+  if (type === 'feature' && getRank(currentPlan) >= getRank(requiredPlan)) return null;
 
   if (type === 'limit' && limit > 0) {
     const pct = Math.round((usage / limit) * 100);

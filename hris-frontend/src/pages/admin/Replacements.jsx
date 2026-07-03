@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { hrService } from '../../services/hr.service';
+import { ActionDelete } from '../../components/ActionIcons';
 import { formatINR } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -121,14 +122,12 @@ const Replacements = () => {
     { key: 'start_date', label: 'From', render: (v) => <span className="text-gray-500">{v ? new Date(v).toLocaleDateString() : '—'}</span> },
     { key: 'end_date', label: 'To', render: (v) => <span className="text-gray-500">{v ? new Date(v).toLocaleDateString() : '—'}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v}</span> },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
-      <div className="flex gap-1.5">
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
         {r.status === 'active' && (
-          <button onClick={(e) => { e.stopPropagation(); handleEnd(r.id); }} className="btn-warning !py-1 !px-2.5 text-xs">End</button>
+          <button onClick={(e) => { e.stopPropagation(); handleEnd(r.id); }} className="btn-warning !py-1.5 !px-2.5 text-xs">End</button>
         )}
-        <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-ghost !py-1 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-        </button>
+        <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
       </div>
     )},
   ];

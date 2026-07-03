@@ -3,6 +3,7 @@ import { hrService } from '../../services/hr.service';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import ConfirmModal from '../../components/ConfirmModal';
 import { formatINR } from '../../utils/currency';
+import { ActionView, ActionEdit, ActionDelete } from '../../components/ActionIcons';
 
 const statusBadge = {
   draft: 'text-yellow-600 bg-yellow-50',
@@ -154,14 +155,14 @@ const CreditDebitNotes = () => {
     { key: 'total_amount', label: 'Amount', render: (v) => <span className="font-semibold">{formatINR(v || 0)}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge[v]}`}>{v}</span> },
     {
-      key: 'actions', label: 'Actions', className: 'text-center',
+      key: 'actions', label: 'Actions', className: 'text-right',
       render: (v, r) => (
         <div className="flex gap-1.5 justify-end">
-          <button onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} className="btn-secondary !py-1 !px-3 text-xs">View</button>
+          <ActionView onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} />
           {r.status === 'draft' && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>
-              <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-danger !py-1 !px-3 text-xs">Delete</button>
+              <ActionEdit onClick={(e) => { e.stopPropagation(); openDetail(r.id); }} />
+              <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
             </>
           )}
         </div>

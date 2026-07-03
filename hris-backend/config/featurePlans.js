@@ -37,9 +37,9 @@ const FEATURE_PLANS = {
   gstr2b_reco: 2,
   sidepanel_customization: 2,
 
-  payroll: 3,
-  advances: 3,
-  replacements: 3,
+  payroll: 1,
+  advances: 1,
+  replacements: 1,
   audit_logs: 3,
   api_access: 3,
   white_label: 3,

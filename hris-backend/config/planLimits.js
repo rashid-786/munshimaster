@@ -14,7 +14,7 @@ const PLAN_LIMITS = {
     staff_members: 0,
   },
   MANAGE: {
-    branches: 1,
+    branches: 2,
     monthly_transactions: 3000,
     cashbook_entries: 3000,
     staff_members: 10,

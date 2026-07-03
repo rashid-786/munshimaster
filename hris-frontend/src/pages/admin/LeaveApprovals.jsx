@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { hrService } from '../../services/hr.service';
+import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -9,10 +10,7 @@ import useIsMobile from '../../hooks/useIsMobile';
 
 const LEAVE_TYPES = ['Annual', 'Sick', 'Casual', 'Unpaid'];
 
-const Icons = {
-  edit: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
-  trash: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
-};
+
 
 const LeaveApprovals = () => {
   const isMobile = useIsMobile();
@@ -152,20 +150,20 @@ const LeaveApprovals = () => {
     { key: 'start_date', label: 'Start Date', render: (v) => <span className="text-gray-500">{new Date(v).toLocaleDateString()}</span> },
     { key: 'end_date', label: 'End Date', render: (v) => <span className="text-gray-500">{new Date(v).toLocaleDateString()}</span> },
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v}</span> },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
-      <div className="flex gap-1.5">
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+      <div className="flex gap-1.5 justify-end">
         {isAdmin && r.status === 'pending' ? (
           <>
             <button onClick={(e) => { e.stopPropagation(); handleReview(r.id, 'approved'); }} className="btn-success text-xs !px-3 !py-1">Approve</button>
             <button onClick={(e) => { e.stopPropagation(); handleReview(r.id, 'rejected'); }} className="btn-danger text-xs !px-3 !py-1">Reject</button>
           </>
         ) : (
-          <span className="text-gray-400 text-sm self-center">{r.status === 'pending' ? 'Awaiting approval' : 'Done'}</span>
+          <span className="text-gray-400 text-sm self-center">{r.status === 'pending' ? 'Awaiting' : 'Done'}</span>
         )}
         {isAdmin && (
           <>
-            <button onClick={(e) => { e.stopPropagation(); handleEdit(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
-            <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-red-500 hover:!bg-red-50" title="Delete">{Icons.trash}</button>
+            <ActionEdit onClick={(e) => { e.stopPropagation(); handleEdit(r); }} />
+            <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
           </>
         )}
       </div>

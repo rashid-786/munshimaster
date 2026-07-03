@@ -25,10 +25,10 @@ import { MENU_SECTIONS, PLANS, getRank, hasFeature, FEATURE_LABELS, resolvePlan 
  * `hiddenOn`   — these plans never see the section (takes precedence).
  */
 const VISIBILITY_OVERRIDES = {
-  ledger: {
+  my_bahi_book: {
     visibleOn: ['FREE', 'MANAGE'],
   },
-  hr: {
+  my_staff: {
     visibleOn: ['MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
   },
 };
@@ -230,11 +230,8 @@ export function getFirstDashboardRoute(plan) {
   const menu = buildMenu(plan);
   if (menu.length === 0) return '/admin/ledger';
 
-  const first = menu[0];
-  if (first.type === 'group') {
-    return first.items?.[0]?.route || first.route;
-  }
-  return first.route;
+  const dashboard = menu.find(m => m.type === 'group') || menu[0];
+  return dashboard.route;
 }
 
 /**

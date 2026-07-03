@@ -4,26 +4,26 @@ import { hrService } from '../../services/hr.service';
 import { subscriptionService } from '../../services/subscription.service';
 import { useAuth } from '../../context/AuthContext';
 import Loading from '../../components/Loading';
-
-const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
-const PLAN_LABELS = { free: 'Free', business: 'Business', business_monthly: 'Business Monthly', pro: 'Pro', pro_monthly: 'Pro Monthly' };
-const PLAN_COLORS = { free: 'bg-gray-100 text-gray-700', business: 'bg-indigo-100 text-indigo-700', business_monthly: 'bg-indigo-100 text-indigo-700', pro: 'bg-purple-100 text-purple-700', pro_monthly: 'bg-purple-100 text-purple-700' };
+import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../../config/subscriptionPlans';
 
 const MODULE_SECTIONS = [
   {
     key: 'ledger', label: 'My Bahi Book', icon: 'M3 10h18M3 14h18M3 18h18M3 6h18',
-    plan: 'free', to: '/admin/ledger',
+    to: '/admin/ledger',
     desc: 'Track income, expenses, receivables & payables',
+    minPlan: 'FREE', hiddenPlans: ['BUSINESS', 'BUSINESS_PRO'],
   },
   {
     key: 'business', label: 'My Business', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-    plan: 'business', to: '/admin/business',
+    to: '/admin/business',
     desc: 'Sales, purchases, inventory, GST, TDS & reports',
+    minPlan: 'BUSINESS',
   },
   {
     key: 'hr', label: 'My Staff', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
-    plan: 'pro', to: '/admin/hr',
+    to: '/admin/hr',
     desc: 'Staff, attendance, payroll, leaves & advances',
+    minPlan: 'MANAGE',
   },
 ];
 
@@ -35,8 +35,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const currentPlan = tenant?.subscriptionPlan || 'free';
-  const planRank = PLAN_RANK[currentPlan] ?? 0;
+  const currentPlan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+  const planRank = getRank(currentPlan);
 
   useEffect(() => {
     Promise.all([
@@ -91,7 +91,10 @@ export default function Dashboard() {
     { label: 'Net Profit', value: netProfit, color: netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' },
   ];
 
-  const accessibleModules = MODULE_SECTIONS.filter(m => planRank >= (PLAN_RANK[m.plan] ?? 0));
+  const accessibleModules = MODULE_SECTIONS.filter(m => {
+    if (m.hiddenPlans?.includes(currentPlan)) return false;
+    return planRank >= getRank(m.minPlan);
+  });
 
   return (
     <div className="space-y-6">

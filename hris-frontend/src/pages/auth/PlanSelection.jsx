@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { hrService } from '../../services/hr.service';
-import { getDefaultCountryCode } from '../../services/auth.service';
+import PhoneField from '../../components/PhoneInput';
 
 const PLAN_ICONS = {
   free: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
@@ -22,16 +22,11 @@ const PlanSelection = () => {
   const navigate = useNavigate();
   const { user, tenant, login } = useAuth();
   const [plans, setPlans] = useState([]);
-  const [countryCode, setCountryCode] = useState('+965');
   const [phone, setPhone] = useState(tenant?.phone || '');
   const [selectedPlan, setSelectedPlan] = useState(tenant?.subscriptionPlan || 'free');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    getDefaultCountryCode().then(setCountryCode);
-  }, []);
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -75,20 +70,7 @@ const PlanSelection = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium pointer-events-none">{countryCode}</span>
-                <input
-                  type="tel"
-                  value={phone.replace(countryCode, '')}
-                  onChange={e => {
-                    const val = e.target.value.replace(/\s/g, '');
-                    if (val === '' || /^\d+$/.test(val)) setPhone(countryCode + val);
-                  }}
-                  placeholder="5xxxxxxxx"
-                  className="input-field pl-16"
-                  required
-                />
-              </div>
+              <PhoneField value={phone} onChange={setPhone} />
               <p className="text-xs text-gray-400 mt-1">Your phone number helps us verify your account.</p>
             </div>
 

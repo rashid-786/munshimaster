@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/auth.service';
 import { applyTheme } from '../../utils/currency';
 import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
+import { resolvePlan } from '../../config/subscriptionPlans';
+import { getFirstDashboardRoute } from '../../config/subscriptionMenuBuilder';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -76,15 +78,15 @@ const Login = () => {
       applyTheme(data.tenant?.settings?.primaryColor || '#4f46e5');
 
       if (data.user.role === 'tenant_admin') {
-        if (!data.tenant?.phone) {
-          navigate('/admin');
-        } else if (data.tenant?.subscriptionPlan === 'enterprise') {
-          navigate('/admin');
+        const rawPlan = data.tenant?.subscriptionPlan || 'free';
+        const plan = resolvePlan(rawPlan);
+        if (plan === 'BUSINESS' || plan === 'BUSINESS_PRO') {
+          navigate('/admin/business', { replace: true });
         } else {
-          navigate('/admin/customers');
+          navigate(getFirstDashboardRoute(plan), { replace: true });
         }
       } else {
-        navigate('/employee/profile');
+        navigate('/employee/profile', { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid credentials.');

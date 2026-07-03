@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
+import PhoneField from '../../components/PhoneInput';
 
 const Workspace = () => {
   const { user, login, logout } = useAuth();
@@ -70,7 +71,7 @@ const Workspace = () => {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-          <input type="tel" value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value })} className="input-field" />
+          <PhoneField value={profile.phone} onChange={v => setProfile({ ...profile, phone: v || '' })} />
         </div>
           <button type="submit" disabled={profileSaving} className="btn-primary">{profileSaving ? 'Saving...' : 'Update Profile'}</button>
         </form>

@@ -61,47 +61,47 @@ const TEST_TENANTS = [
 
 async function ensureSubscriptionPlans(client) {
   const { rows } = await client.query(
-    `SELECT id FROM hris_saas.subscription_plans WHERE id IN ('manage', 'business_pro')`
+    `SELECT id FROM subscription_plans WHERE id IN ('manage', 'manage_monthly')`
   );
   const existing = new Set(rows.map(r => r.id));
 
   if (!existing.has('manage')) {
     console.log('  [seed] Inserting plan: manage');
     await client.query(
-      `INSERT INTO hris_saas.subscription_plans (id, name, price_inr, period, trial_days, features)
+      `INSERT INTO subscription_plans (id, name, price_inr, period, trial_days, features)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         'manage',
         'Manage',
-        0,
+        499,
         'year',
         14,
         JSON.stringify({
           ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
-          reports: 'basic', invoices: true, purchase_orders: true, payroll: false,
-          inventory: false, branches: 1, export: true, whatsapp: false, api: false,
+          reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+          inventory: false, branches: 2, export: true, whatsapp: false, api: false,
           branding: false, support: 'email',
         }),
       ]
     );
   }
 
-  if (!existing.has('business_pro')) {
-    console.log('  [seed] Inserting plan: business_pro');
+  if (!existing.has('manage_monthly')) {
+    console.log('  [seed] Inserting plan: manage_monthly');
     await client.query(
-      `INSERT INTO hris_saas.subscription_plans (id, name, price_inr, period, trial_days, features)
+      `INSERT INTO subscription_plans (id, name, price_inr, period, trial_days, features)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
-        'business_pro',
-        'Business Pro',
-        4999,
-        'year',
+        'manage_monthly',
+        'Manage Monthly',
+        49,
+        'month',
         14,
         JSON.stringify({
-          ledger_customers: -1, staff_members: -1, monthly_txns: -1,
+          ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
           reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
-          inventory: true, branches: 5, export: true, whatsapp: true, api: true,
-          branding: true, support: 'phone',
+          inventory: false, branches: 2, export: true, whatsapp: false, api: false,
+          branding: false, support: 'email',
         }),
       ]
     );

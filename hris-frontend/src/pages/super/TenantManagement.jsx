@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
 import useIsMobile from '../../hooks/useIsMobile';
+import PhoneField from '../../components/PhoneInput';
 
 const TenantManagement = () => {
   const [tenants, setTenants] = useState([]);
@@ -108,7 +109,7 @@ const TenantManagement = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Admin Phone</label>
-                <input type="text" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="input-field" placeholder="+91 98765 43210" />
+                <PhoneField value={form.phone} onChange={v => setForm({...form, phone: v || ''})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Admin Password</label>

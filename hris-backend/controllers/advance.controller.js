@@ -16,8 +16,8 @@ exports.createAdvance = async (req, res) => {
     if (req.user.role === 'tenant_admin') {
       const advanceId = uuidv4();
       await db.execute(
-        `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status, approved_by, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'approved', ?, NOW())`,
+        `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status, approved_by, approved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'approved', ?, NOW(), NOW())`,
         [advanceId, tenantId, employeeId, amountInCents, amountInCents, reason, req.user.id]
       );
       return res.status(201).json({ message: 'Advance granted successfully.', advanceId });
@@ -26,8 +26,8 @@ exports.createAdvance = async (req, res) => {
     if (req.user.role === 'employee') {
       const advanceId = uuidv4();
       await db.execute(
-        `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`,
         [advanceId, tenantId, req.user.id, amountInCents, amountInCents, reason]
       );
       notifyAdmins({

@@ -96,13 +96,19 @@ const AdvancePayments = () => {
       <span className={statusBadgeClass(v)}>{v.replace('_', ' ')}</span>
     )},
     { key: 'created_at', label: 'Date', render: (v) => <span className="text-gray-500">{(v || '').split('T')[0]}</span> },
-    { key: 'actions', label: 'Actions', render: (_, r) => (
-      <div>
+    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+      <div className="flex justify-end">
         {r.status === 'pending' && (
-          <div className="flex gap-2">
-            <button onClick={(e) => { e.stopPropagation(); handleApprove(r.id); }} className="text-sm text-green-600 hover:text-green-800 font-medium">Approve</button>
-            <button onClick={(e) => { e.stopPropagation(); handleReject(r.id); }} className="text-sm text-red-600 hover:text-red-800 font-medium">Reject</button>
+          <div className="flex gap-1.5">
+            <button onClick={(e) => { e.stopPropagation(); handleApprove(r.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Approve</button>
+            <button onClick={(e) => { e.stopPropagation(); handleReject(r.id); }} className="btn-danger !py-1.5 !px-2.5 text-xs">Reject</button>
           </div>
+        )}
+        {r.status === 'approved' && (
+          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        )}
+        {r.status === 'rejected' && (
+          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         )}
       </div>
     )},

@@ -5,6 +5,7 @@ const Razorpay = require('razorpay');
 const { getSubscriptionStatus, invalidateCache } = require('../utils/subscription');
 const TenantUsageRepository = require('../repositories/TenantUsageRepository');
 const { getLimit, isUnlimited, LIMIT_KEY_MAP, resolvePlan } = require('../config/planLimits');
+const { USAGE_QUERIES } = require('../services/usage.service');
 
 const usageRepo = new TenantUsageRepository(db);
 const lifecycle = require('../services/subscriptionLifecycle.service');
@@ -62,13 +63,24 @@ exports.getUsage = async (req, res) => {
     if (tenantRows.length === 0) return res.status(404).json({ error: 'Tenant not found.' });
 
     const plan = resolvePlan(tenantRows[0].subscription_plan);
-    const usage = await usageRepo.findCurrent(req.tenantId);
 
-    const dimensions = USAGE_DIMENSIONS.map(({ key, dbColumn, limitDim }) => {
-      const current = usage?.[dbColumn] ?? 0;
+    const dimensions = [];
+    for (const { key, limitDim } of USAGE_DIMENSIONS) {
       const limit = getLimit(plan, LIMIT_KEY_MAP[limitDim]);
-      return { key, current, limit };
-    });
+      let current = 0;
+      try {
+        const query = USAGE_QUERIES[key];
+        if (query) {
+          const [rows] = await db.execute(query, [req.tenantId]);
+          current = parseInt(rows[0]?.count ?? 0, 10);
+          if (key === 'entities' && current === 0) {
+            const [fallback] = await db.execute('SELECT COUNT(*)::int as count FROM tenants WHERE id = ?', [req.tenantId]);
+            current = parseInt(fallback[0]?.count ?? 1, 10);
+          }
+        }
+      } catch {}
+      dimensions.push({ key, current, limit });
+    }
 
     res.json({ plan, usage: dimensions });
   } catch (error) {

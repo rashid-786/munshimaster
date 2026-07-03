@@ -4,10 +4,9 @@ import { hrService } from '../../services/hr.service';
 import { applyTheme } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import UpgradeModal from '../../components/UpgradeModal';
+import { getRank } from '../../config/subscriptionPlans';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
 
 const TABS = [
   { key: 'general',    label: 'General' },
@@ -23,7 +22,7 @@ const Settings = () => {
   const { tab } = useParams();
   const activeTab = tab || 'general';
   const { user, tenant, updateUser } = useAuth();
-  const planRank = PLAN_RANK[tenant?.subscriptionPlan] ?? 0;
+  const planRank = getRank(tenant?.subscriptionPlan);
 
   const [companyName, setCompanyName] = useState('');
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -91,7 +90,7 @@ const Settings = () => {
       if (res.settings?.irpGstin) setSeller(s => ({ ...s, irpGstin: res.settings.irpGstin }));
     }).catch(() => {});
 
-    if (planRank >= 1) {
+    if (planRank >= 2) {
       hrService.whatsappGetSettings().then(setWhatsapp).catch(() => {}).finally(() => setWhatsappLoaded(true));
     }
   }, []);
@@ -178,7 +177,7 @@ const Settings = () => {
                 <code className="text-sm text-gray-500">{primaryColor}</code>
               </div>
             </div>
-            {planRank >= 2 && (
+            {planRank >= 3 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Weekend Days</label>
                 <div className="flex flex-wrap gap-2">
@@ -228,13 +227,13 @@ const Settings = () => {
           </div>
           {message && <div className="mx-6 mt-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{message}</div>}
           <form onSubmit={handleSave} className="p-6 space-y-6">
-            {planRank >= 1 && (
+            {planRank >= 2 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>
                 <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
               </div>
             )}
-            {planRank >= 2 && (
+            {planRank >= 3 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
                 <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
@@ -246,14 +245,14 @@ const Settings = () => {
               <input type="text" value={currencySymbol} onChange={e => setCurrencySymbol(e.target.value)} className="input-field max-w-[100px]" placeholder="₹" />
               <p className="text-xs text-gray-400 mt-1">Used for all displays.</p>
             </div>
-            {planRank >= 1 && (
+            {planRank >= 2 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Default Country Code</label>
                 <input type="text" value={countryCode} onChange={e => setCountryCode(e.target.value)} className="input-field max-w-[120px]" placeholder="+965" />
                 <p className="text-xs text-gray-400 mt-1">Pre-filled in phone number fields.</p>
               </div>
             )}
-            {planRank >= 2 && (
+            {planRank >= 3 && (
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <input type="checkbox" checked={hideTempPassword} onChange={e => setHideTempPassword(e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
@@ -281,19 +280,21 @@ const Settings = () => {
                   <input type="text" value={groupLabels['Entities']} onChange={e => setGroupLabels({ ...groupLabels, 'Entities': e.target.value })}
                     className="input-field max-w-[240px]" />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Bahi Book Section</label>
-                  <input type="text" value={groupLabels['My Bahi Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Bahi Book': e.target.value })}
-                    className="input-field max-w-[240px]" />
-                </div>
-                {planRank >= 1 && (
+                {planRank < 1 && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Bahi Book Section</label>
+                    <input type="text" value={groupLabels['My Bahi Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Bahi Book': e.target.value })}
+                      className="input-field max-w-[240px]" />
+                  </div>
+                )}
+                {planRank >= 2 && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Business Section</label>
                     <input type="text" value={groupLabels['My Business']} onChange={e => setGroupLabels({ ...groupLabels, 'My Business': e.target.value })}
                       className="input-field max-w-[240px]" />
                   </div>
                 )}
-                {planRank >= 2 && (
+                {planRank >= 3 && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Staff Section</label>
                     <input type="text" value={groupLabels['My Staff']} onChange={e => setGroupLabels({ ...groupLabels, 'My Staff': e.target.value })}
@@ -302,38 +303,38 @@ const Settings = () => {
                 )}
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Hide Sections</label>
-              <p className="text-xs text-gray-400 mb-3">Hide sections from the sidebar navigation.</p>
-              <div className="space-y-2">
-                {planRank >= 1 && (
+            {planRank < 2 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Hide Sections</label>
+                <p className="text-xs text-gray-400 mb-3">Hide sections from the sidebar navigation.</p>
+                <div className="space-y-2">
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <input type="checkbox" checked={!!hiddenGroups['My Bahi Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Bahi Book': e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
                     <span className="text-sm text-gray-700">Hide {groupLabels['My Bahi Book']}</span>
                   </label>
-                )}
-                {planRank >= 2 && (
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
-                    <span className="text-sm text-gray-700">Hide {groupLabels['My Business']}</span>
-                  </label>
-                )}
+                  {planRank >= 3 && (
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+                      <span className="text-sm text-gray-700">Hide {groupLabels['My Business']}</span>
+                    </label>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
             <button type="submit" className="btn-primary">Save Changes</button>
           </form>
         </div>
       )}
 
-      {activeTab === 'einvoice' && planRank < 1 && (
+      {activeTab === 'einvoice' && planRank < 2 && (
         <div className="card p-6 text-center">
           <p className="text-gray-500 text-sm">E-Invoicing is available on the <span className="font-semibold text-indigo-600">Business</span> plan and above.</p>
           <button onClick={() => setShowUpgrade(true)} className="btn-primary mt-4">Upgrade Now</button>
         </div>
       )}
-      {activeTab === 'einvoice' && planRank >= 1 && (
+      {activeTab === 'einvoice' && planRank >= 2 && (
         <div className="card">
           <div className="card-header">
             <h3 className="text-lg font-semibold text-gray-900">E-Invoicing (GST)</h3>
@@ -418,13 +419,13 @@ const Settings = () => {
         </div>
       )}
 
-      {activeTab === 'whatsapp' && planRank < 1 && (
+      {activeTab === 'whatsapp' && planRank < 2 && (
         <div className="card p-6 text-center">
           <p className="text-gray-500 text-sm">WhatsApp notifications are available on the <span className="font-semibold text-indigo-600">Business</span> plan and above.</p>
           <button onClick={() => setShowUpgrade(true)} className="btn-primary mt-4">Upgrade Now</button>
         </div>
       )}
-      {activeTab === 'whatsapp' && planRank >= 1 && (
+      {activeTab === 'whatsapp' && planRank >= 2 && (
         <div className="card">
           <div className="card-header">
             <h3 className="text-lg font-semibold text-gray-900">WhatsApp Notifications</h3>
