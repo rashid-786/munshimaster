@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS = [
   { label: 'Home', path: '/' },
+  { label: 'Pricing', path: '/pricing' },
   { label: 'Services', path: '/services' },
   { label: 'About', path: '/about' },
   { label: 'Blog', path: '/blog' },
@@ -127,9 +128,9 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Product</h4>
               <ul className="space-y-3">
-                {['Payroll', 'Attendance', 'Leave Management', 'Accounting', 'HR Analytics'].map((item) => (
+                {['Subscription Plans', 'Payroll', 'Attendance', 'Invoicing', 'Inventory'].map((item) => (
                   <li key={item}>
-                    <Link to="/services" className="text-sm text-gray-400 hover:text-white transition-colors">
+                    <Link to={item === 'Subscription Plans' ? '/pricing' : '/services'} className="text-sm text-gray-400 hover:text-white transition-colors">
                       {item}
                     </Link>
                   </li>
@@ -141,13 +142,16 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Company</h4>
               <ul className="space-y-3">
-                {['About', 'Blog', 'Careers'].map((item) => (
+                {['About', 'Blog'].map((item) => (
                   <li key={item}>
                     <Link to={`/${item.toLowerCase().replace(/\s+/g, '-')}`} className="text-sm text-gray-400 hover:text-white transition-colors">
                       {item}
                     </Link>
                   </li>
                 ))}
+                <li>
+                  <Link to="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link>
+                </li>
                 <li>
                   <Link to="/#contact" className="text-sm text-gray-400 hover:text-white transition-colors">Contact Us</Link>
                 </li>
@@ -158,9 +162,9 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Support</h4>
               <ul className="space-y-3">
-                {['Help Center', 'Documentation', 'API Reference', 'Community'].map((item) => (
+                {['Help Center', 'Subscription Help', 'Onboarding Guide', 'Community'].map((item) => (
                   <li key={item}>
-                    <Link to="/faq" className="text-sm text-gray-400 hover:text-white transition-colors">
+                    <Link to={item === 'Subscription Help' ? '/pricing' : '/faq'} className="text-sm text-gray-400 hover:text-white transition-colors">
                       {item}
                     </Link>
                   </li>

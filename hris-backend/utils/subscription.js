@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { canTenantAccessFeature, getTenantFeatureLimit } = require('./featureAccess');
 
 const FEATURE_CACHE = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -23,48 +24,17 @@ function invalidateCache(planId) {
 
 /**
  * Check if a tenant can access a feature.
+ * Uses the new Feature Access Resolver (priority: override > section > plan > default).
  * Returns { allowed, plan, limit, usage }
  */
 async function canAccess(tenantId, featureKey, currentValue = 0) {
-  // 1. Check tenant feature overrides first (promos, discounts)
-  const [overrides] = await db.execute(
-    `SELECT max_value FROM tenant_feature_overrides
-     WHERE tenant_id = ? AND feature_key = ?
-       AND (expires_at IS NULL OR expires_at > NOW())`,
-    [tenantId, featureKey]
-  );
-  if (overrides.length > 0) {
-    const maxVal = overrides[0].max_value;
-    return {
-      allowed: maxVal === null || currentValue < maxVal,
-      plan: 'override',
-      limit: maxVal,
-      usage: currentValue,
-    };
-  }
-
-  // 2. Get active subscription
-  const [sub] = await db.execute(
-    `SELECT s.plan_id, s.status
-     FROM subscriptions s
-     WHERE s.tenant_id = ? AND s.status IN ('active','trialing')
-     ORDER BY s.created_at DESC LIMIT 1`,
-    [tenantId]
-  );
-  if (sub.length === 0) return { allowed: false, plan: 'none', limit: 0, usage: currentValue };
-
-  const features = await getPlanFeatures(sub[0].plan_id);
-  if (!features) return { allowed: false, plan: sub[0].plan_id, limit: 0, usage: currentValue };
-
-  const limit = features[featureKey];
-  if (limit === undefined) return { allowed: false, plan: sub[0].plan_id, limit: 0, usage: currentValue };
-  if (limit === -1) return { allowed: true, plan: sub[0].plan_id, limit: -1, usage: currentValue };
-  if (limit === false || limit === 0) return { allowed: false, plan: sub[0].plan_id, limit: 0, usage: currentValue };
+  const allowed = await canTenantAccessFeature(tenantId, featureKey);
+  const limit = await getTenantFeatureLimit(tenantId, featureKey);
 
   return {
-    allowed: currentValue < Number(limit),
-    plan: sub[0].plan_id,
-    limit: Number(limit),
+    allowed: allowed && (limit === -1 || currentValue < limit),
+    plan: 'resolved',
+    limit,
     usage: currentValue,
   };
 }
@@ -115,7 +85,7 @@ async function getSubscriptionStatus(tenantId) {
  * New plans: FREE=0, MANAGE=1, BUSINESS=2, BUSINESS_PRO=3
  * Legacy: free=0, business=1, pro=2
  */
-const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
+const PLAN_RANK = { free: 0, manage: 1, manage_monthly: 1, business: 2, business_monthly: 2, pro: 3, pro_monthly: 3 };
 const NEW_PLAN_RANK = { FREE: 0, MANAGE: 1, BUSINESS: 2, BUSINESS_PRO: 3 };
 
 // Backward compat: old plan names used in existing data

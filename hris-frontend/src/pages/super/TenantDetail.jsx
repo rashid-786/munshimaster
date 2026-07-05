@@ -1,761 +1,608 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { superService } from '../../services/super.service';
-import { formatINR } from '../../utils/currency';
-import useIsMobile from '../../hooks/useIsMobile';
+import { TenantStatusBadge, PlanBadge, TrialStatusBadge } from '../../components/super/Badges';
+import { LoadingState, ErrorState, EmptyState } from '../../components/super/States';
+import ConfirmDialog from '../../components/super/ConfirmDialog';
+import ChangePlanModal from '../../components/super/ChangePlanModal';
+import ExtendTrialModal from '../../components/ExtendTrialModal';
+import FeatureOverrideModal from '../../components/FeatureOverrideModal';
 
-const TABS = ['Employees', 'Calendar', 'Leaves', 'Payroll', 'Overrides', 'Audit Log', 'Settings'];
+const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+const fmtDateTime = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+const fmtNum = n => (n ?? 0).toLocaleString('en-IN');
+const fmtINR = n => n ? '₹' + Number(n).toLocaleString('en-IN') : '₹0';
 
-const TenantDetail = () => {
+const TABS = ['Overview', 'Subscription', 'Usage', 'Features', 'Sections', 'Audit'];
+
+export default function TenantDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [error, setError] = useState('');
+
   const [tenant, setTenant] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [admin, setAdmin] = useState(null);
-  const [activeTab, setActiveTab] = useState('Employees');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState([]);
+  const [subscriptionData, setSubscriptionData] = useState(null);
+  const [usageData, setUsageData] = useState(null);
+  const [loading, setLoading] = useState({ main: true, sub: false, usage: false });
 
-  const [calendarData, setCalendarData] = useState(null);
-  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [extendTrialOpen, setExtendTrialOpen] = useState(false);
+  const [featureOverrideOpen, setFeatureOverrideOpen] = useState(false);
+  const [activatingTrial, setActivatingTrial] = useState(false);
+  const [activationMsg, setActivationMsg] = useState(null);
 
-  const [leaves, setLeaves] = useState([]);
-  const [payroll, setPayroll] = useState([]);
-
-  const [companyName, setCompanyName] = useState('');
-  const [primaryColor, setPrimaryColor] = useState('#4f46e5');
-  const [hiddenGroups, setHiddenGroups] = useState({});
-  const [subscriptionPlan, setSubscriptionPlan] = useState('free');
-  const [settingsMsg, setSettingsMsg] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminMsg, setAdminMsg] = useState('');
-  const isMobile = useIsMobile();
-
-  // Override state
-  const [overrides, setOverrides] = useState([]);
-  const [overrideHistory, setOverrideHistory] = useState([]);
-  const [newOverrideKey, setNewOverrideKey] = useState('');
-  const [newOverrideValue, setNewOverrideValue] = useState('');
-  const [newOverrideExpiry, setNewOverrideExpiry] = useState('');
-  const [overrideMsg, setOverrideMsg] = useState('');
-  const [extraQuotaKey, setExtraQuotaKey] = useState('');
-  const [extraQuotaAmount, setExtraQuotaAmount] = useState('');
-  const [extraQuotaDays, setExtraQuotaDays] = useState('');
-  const [extraQuotaMsg, setExtraQuotaMsg] = useState('');
-  const [forcePlan, setForcePlan] = useState('');
-  const [forcePlanReason, setForcePlanReason] = useState('');
-  const [forcePlanMsg, setForcePlanMsg] = useState('');
-
-  // Audit log state
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [auditLogTotal, setAuditLogTotal] = useState(0);
-  const [auditLogLimit, setAuditLogLimit] = useState(50);
-  const [auditLogOffset, setAuditLogOffset] = useState(0);
-  const [auditLogFilter, setAuditLogFilter] = useState('');
-  const [auditLogLoading, setAuditLogLoading] = useState(false);
-
-  useEffect(() => {
-    superService.getTenantDetail(id)
-      .then(data => {
-        setTenant(data.tenant);
-        setEmployees(data.employees);
-        setAdmin(data.admin);
-        setCompanyName(data.tenant.company_name);
-        setPrimaryColor(data.tenant.settings?.primaryColor || '#4f46e5');
-        setHiddenGroups(data.tenant.settings?.hiddenGroups || {});
-        setSubscriptionPlan(data.tenant.subscription_plan || 'free');
-        if (data.admin) {
-          setAdminEmail(data.admin.email || '');
-        }
-      })
-      .catch(() => setError('Failed to load tenant details'))
-      .finally(() => setLoading(false));
+  // Fetch tenant
+  const fetchTenant = useCallback(async () => {
+    try {
+      const [t, a] = await Promise.all([
+        superService.getTenantDetail(id),
+        superService.getTenantSubscription(id).catch(() => null),
+      ]);
+      const detail = t.tenant || t;
+      setTenant(detail);
+      setEmployees(detail.employees || t.employees || []);
+      setAdmin(t.admin || null);
+      setSubscriptionData(a);
+    } catch { setError('Failed to load tenant.'); }
+    setLoading(p => ({ ...p, main: false }));
   }, [id]);
 
+  useEffect(() => { fetchTenant(); }, [fetchTenant]);
+
+  // Lazy tab data
   useEffect(() => {
-    if (activeTab === 'Calendar') {
-      superService.getTenantCalendar(id, { month: calendarMonth, year: calendarYear })
-        .then(setCalendarData)
-        .catch(() => {});
+    if (activeTab === 'Subscription' && !subscriptionData && !loading.sub) {
+      setLoading(p => ({ ...p, sub: true }));
+      superService.getTenantSubscription(id).then(d => setSubscriptionData(d)).catch(() => {}).finally(() => setLoading(p => ({ ...p, sub: false })));
     }
-    if (activeTab === 'Leaves') {
-      superService.getTenantLeaves(id).then(setLeaves).catch(() => {});
+    if (activeTab === 'Usage' && !usageData && !loading.usage) {
+      setLoading(p => ({ ...p, usage: true }));
+      superService.getTenantUsage(id).then(d => setUsageData(d)).catch(() => {}).finally(() => setLoading(p => ({ ...p, usage: false })));
     }
-    if (activeTab === 'Payroll') {
-      superService.getTenantPayroll(id).then(setPayroll).catch(() => {});
-    }
-    if (activeTab === 'Overrides') {
-      superService.listOverrides(id).then(d => setOverrides(d.overrides)).catch(() => {});
-      superService.getOverrideHistory(id).then(d => setOverrideHistory(d.history)).catch(() => {});
-    }
-    if (activeTab === 'Audit Log') {
-      fetchAuditLogs();
-    }
-  }, [activeTab, id, calendarMonth, calendarYear]);
+  }, [activeTab, id, subscriptionData, usageData, loading]);
 
-  const fetchAuditLogs = async (offset = 0) => {
-    setAuditLogLoading(true);
+  useEffect(() => {
+    if (changePlanOpen && plans.length === 0) {
+      superService.listPlans().then(d => setPlans(d.plans || [])).catch(() => {});
+    }
+  }, [changePlanOpen, plans.length]);
+
+  if (loading.main) return <LoadingState type="card" rows={4} />;
+  if (error) return <ErrorState message={error} onRetry={fetchTenant} />;
+  if (!tenant) return <EmptyState title="Tenant not found" />;
+
+  const isActive = tenant.status !== 'inactive' && tenant.subscription_status !== 'suspended';
+  const isTrialing = tenant.subscription_status === 'trialing';
+  const sd = subscriptionData || {};
+  const ud = usageData || {};
+
+  const handleActivateTrial = async () => {
+    setActivatingTrial(true);
+    setActivationMsg(null);
     try {
-      const params = { limit: auditLogLimit, offset };
-      if (auditLogFilter) params.action = auditLogFilter;
-      const data = await superService.getTenantAuditLog(id, params);
-      setAuditLogs(data.logs);
-      setAuditLogTotal(data.total);
-      setAuditLogOffset(offset);
-    } catch {}
-    setAuditLogLoading(false);
+      const res = await superService.activateTrial(tenant.id, { planId: 'manage' });
+      setActivationMsg(res.message || '14-day trial activated!');
+      fetchTenant();
+    } catch (err) {
+      setActivationMsg('Failed to activate trial.');
+    }
+    setActivatingTrial(false);
   };
 
-  const PLANS = [
-    { value: 'free', label: 'Free (Ledger)' },
-    { value: 'pro', label: 'Pro (+ Business)' },
-    { value: 'enterprise', label: 'Enterprise (+ HR)' },
-  ];
-
-  const handleSaveSettings = async () => {
-    try {
-      await superService.updateTenant(id, {
-        companyName,
-        subscriptionPlan,
-        settings: { primaryColor, hiddenGroups }
-      });
-      setSettingsMsg('Settings saved.');
-    } catch {
-      setSettingsMsg('Failed to save.');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
+  return (
+    <div className="space-y-5">
+      {/* Back + Header */}
+      <div className="flex items-center gap-3 text-sm">
+        <Link to="/super/tenants" className="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </Link>
+        <span className="text-gray-300">/</span>
+        <span className="text-gray-600 font-medium">Tenants</span>
+        <span className="text-gray-300">/</span>
+        <span className="text-gray-900 font-semibold truncate">{tenant.company_name || 'Detail'}</span>
       </div>
-    );
-  }
 
-  if (error || !tenant) {
-    return <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">{error || 'Tenant not found'}</div>;
-  }
-
-  const renderCalendar = () => {
-    if (!calendarData) return <div className="p-4 text-gray-400">Loading calendar...</div>;
-
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-    return (
-      <div>
-        <div className="flex items-center gap-4 mb-4">
-          <button onClick={() => {
-            if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(calendarYear - 1); }
-            else setCalendarMonth(calendarMonth - 1);
-          }} className="btn-secondary !py-1 text-sm">&larr; Prev</button>
-          <span className="font-medium">{monthNames[calendarMonth - 1]} {calendarYear}</span>
-          <button onClick={() => {
-            if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(calendarYear + 1); }
-            else setCalendarMonth(calendarMonth + 1);
-          }} className="btn-secondary !py-1 text-sm">Next &rarr;</button>
-        </div>
-
-        {calendarData.employees?.map(emp => (
-          <div key={emp.employee.id} className="mb-4 pb-4 border-b border-gray-100 last:border-0">
-            <p className="font-medium text-sm text-gray-700 mb-2">
-              {emp.employee.firstName} {emp.employee.lastName}
-              <span className="text-gray-400 ml-2 text-xs">({emp.employee.role})</span>
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {emp.days.map(d => {
-                const colors = {
-                  present: 'bg-emerald-400',
-                  absent: 'bg-red-400',
-                  sick: 'bg-amber-400',
-                  annual: 'bg-blue-400',
-                  weekend: 'bg-gray-200',
-                  idle: 'bg-gray-100',
-                };
-                const dayNum = String(d.day).padStart(2, '0');
-                return (
-                  <div
-                    key={d.date}
-                    className={`w-8 h-8 rounded flex items-center justify-center text-xs font-medium ${colors[d.type] || 'bg-gray-100'}`}
-                    title={`${d.date}: ${d.label || d.type}`}
-                  >
-                    {dayNum}
-                  </div>
-                );
-              })}
+      {/* Tenant Header Card */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-sm">
+              {(tenant.company_name || '?').charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-xl font-bold text-gray-900">{tenant.company_name || 'Unnamed'}</h1>
+                <TenantStatusBadge status={tenant.subscription_status || tenant.status} size="md" />
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                <span>{tenant.email}</span>
+                {tenant.phone && <span>{tenant.phone}</span>}
+                {tenant.owner_name && <span>Owner: {tenant.owner_name}</span>}
+              </div>
             </div>
           </div>
-        ))}
-        {(!calendarData.employees || calendarData.employees.length === 0) && (
-          <p className="text-gray-400 text-sm">No employees found for this period.</p>
-        )}
+          <div className="flex items-center gap-2">
+            <PlanBadge plan={tenant.subscription_plan} size="md" />
+            {isTrialing && <TrialStatusBadge daysLeft={tenant.trial_days_left} size="md" />}
+          </div>
+        </div>
+      </div>
 
-        <div className="flex gap-4 mt-4 text-xs text-gray-500">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-400 inline-block"></span> Present</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400 inline-block"></span> Absent</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400 inline-block"></span> Sick</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-400 inline-block"></span> Annual</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-200 inline-block"></span> Weekend</span>
+      {/* Tabs */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
+        {TABS.map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`text-sm px-4 py-3 font-medium border-b-2 transition-all whitespace-nowrap ${
+              activeTab === tab ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
+        {activeTab === 'Overview' && renderOverview()}
+        {activeTab === 'Subscription' && renderSubscription()}
+        {activeTab === 'Usage' && renderUsage()}
+        {activeTab === 'Features' && renderFeatures()}
+        {activeTab === 'Sections' && renderSections()}
+        {activeTab === 'Audit' && renderAudit()}
+      </div>
+
+      {/* Modals */}
+      {changePlanOpen && <ChangePlanModal open onClose={() => setChangePlanOpen(false)} tenant={tenant} plans={plans} onConfirm={handleChangePlan} />}
+      {extendTrialOpen && <ExtendTrialModal open onClose={() => setExtendTrialOpen(false)} tenant={tenant} onExtend={() => { setExtendTrialOpen(false); fetchTenant(); }} />}
+      {featureOverrideOpen && <FeatureOverrideModal open onClose={() => setFeatureOverrideOpen(false)} tenantId={id} onSave={() => setFeatureOverrideOpen(false)} />}
+      {confirmAction && (
+        <ConfirmDialog open onClose={() => setConfirmAction(null)} onConfirm={handleConfirm}
+          title={confirmAction.title} message={confirmAction.message} variant={confirmAction.variant} confirmLabel={confirmAction.label} />
+      )}
+    </div>
+  );
+
+  // ─── Overview Tab ────────────────────────────────────
+  function renderOverview() {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label="Employees" value={fmtNum(ud.liveCounts?.employees ?? employees.length)} color="text-indigo-600" />
+            <StatCard label="Plan" value={(tenant.subscription_plan || 'FREE').replace(/_/g, ' ')} sub={tenant.plan_price ? `₹${Number(tenant.plan_price).toLocaleString('en-IN')}/yr` : ''} />
+            <StatCard label="Trial Ends" value={tenant.trial_end ? fmtDate(tenant.trial_end) : '—'} sub={tenant.trial_days_left > 0 ? `${tenant.trial_days_left} days left` : ''} />
+            <StatCard label="Created" value={fmtDate(tenant.created_at)} />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3>
+
+            {activationMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm flex items-center justify-between">
+                <span>{activationMsg}</span>
+                <button onClick={() => setActivationMsg(null)} className="text-emerald-500 hover:text-emerald-700 ml-2">&times;</button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {isActive ? (
+                <button onClick={() => setConfirmAction({ title: 'Suspend Tenant', message: `Suspend "${tenant.company_name}"? Users will lose access.`, variant: 'warning', label: 'Suspend', action: 'suspend' })}
+                  className="text-xs px-4 py-2 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-medium transition-colors">Suspend</button>
+              ) : (
+                <button onClick={() => setConfirmAction({ title: 'Reactivate Tenant', message: `Reactivate "${tenant.company_name}"? Access will be restored.`, variant: 'warning', label: 'Reactivate', action: 'reactivate' })}
+                  className="text-xs px-4 py-2 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-medium transition-colors">Reactivate</button>
+              )}
+              {!isTrialing && (
+                <button onClick={handleActivateTrial} disabled={activatingTrial}
+                  className="text-xs px-4 py-2 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-medium transition-colors disabled:opacity-50">
+                  {activatingTrial ? 'Activating...' : 'Start 14-Day Trial'}
+                </button>
+              )}
+              {isTrialing && (
+                <button onClick={() => setExtendTrialOpen(true)} className="text-xs px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium transition-colors">Extend Trial</button>
+              )}
+              <button onClick={() => setChangePlanOpen(true)} className="text-xs px-4 py-2 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 font-medium transition-colors">Change Plan</button>
+              <button onClick={() => setFeatureOverrideOpen(true)} className="text-xs px-4 py-2 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium transition-colors">Feature Override</button>
+            </div>
+          </div>
+
+          {/* Recent Employees */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Employees</h3>
+              <span className="text-xs text-gray-400">{employees.length > 0 ? `Showing ${employees.length}` : ''}</span>
+            </div>
+            {employees.length === 0 ? (
+              <div className="px-5 py-6"><EmptyState title="No employees" message="This tenant has no employees yet." /></div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {employees.map(emp => (
+                  <div key={emp.id} className="px-5 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
+                      <p className="text-[11px] text-gray-400">{emp.email} · {emp.role || '—'}</p>
+                    </div>
+                    {emp.tenant_id && <span className="text-[10px] text-gray-400">ID: {emp.id.slice(0, 8)}...</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Sidebar */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900">Admin Contact</h3>
+            {admin ? (
+              <div className="space-y-2 text-sm">
+                <div><span className="text-gray-500">Name:</span> <span className="text-gray-900 font-medium">{admin.name || '—'}</span></div>
+                <div><span className="text-gray-500">Email:</span> <span className="text-gray-900">{admin.email || '—'}</span></div>
+                <div><span className="text-gray-500">Phone:</span> <span className="text-gray-900">{admin.phone || '—'}</span></div>
+                <div><span className="text-gray-500">Status:</span> <TenantStatusBadge status={admin.status || 'active'} /></div>
+              </div>
+            ) : <p className="text-sm text-gray-400">No admin data</p>}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Tenant Info</h3>
+            <div className="space-y-2.5 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">ID</span><span className="text-gray-900 font-mono text-[10px]">{id}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Plan</span><PlanBadge plan={tenant.subscription_plan} /></div>
+              <div className="flex justify-between"><span className="text-gray-500">Status</span><TenantStatusBadge status={tenant.subscription_status || tenant.status} /></div>
+              <div className="flex justify-between"><span className="text-gray-500">Trial</span><span className="text-gray-900">{tenant.trial_end ? fmtDate(tenant.trial_end) : '—'}</span></div>
+              {tenant.plan_price ? <div className="flex justify-between"><span className="text-gray-500">Plan Price</span><span className="text-gray-900 font-medium">{fmtINR(tenant.plan_price)}</span></div> : null}
+            </div>
+          </div>
         </div>
       </div>
     );
-  };
+  }
+
+  // ─── Subscription Tab ────────────────────────────────
+  function renderSubscription() {
+    if (loading.sub) return <LoadingState rows={4} />;
+    const cur = sd.currentSubscription || {};
+    const payments = sd.recentPayments || [];
+    const history = sd.subscriptionHistory || [];
+    const features = sd.planFeatures || [];
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <StatCard label="Current Plan" value={cur.plan_name || tenant.subscription_plan || '—'} sub={cur.price_inr && cur.period ? `₹${Number(cur.price_inr).toLocaleString('en-IN')}/${cur.period}` : cur.period ? '' : ''} color="text-indigo-600" />
+          <StatCard label="Status" value={(cur.status || tenant.subscription_status || '—').charAt(0).toUpperCase() + (cur.status || tenant.subscription_status || '').slice(1)} sub={cur.trial_end ? `Trial ends ${fmtDate(cur.trial_end)}` : ''} />
+          <StatCard label="Total Revenue" value={fmtINR(sd.paymentSummary?.totalRevenue || 0)} sub={`${sd.paymentSummary?.totalPayments || 0} payments`} color="text-emerald-600" />
+        </div>
+
+        {features.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Plan Features</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {features.map(f => (
+                <div key={f.feature_key} className="flex items-center gap-2 text-xs px-3 py-2 bg-gray-50 rounded-lg">
+                  <span className={`w-1.5 h-1.5 rounded-full ${f.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  <span className="text-gray-600">{f.feature_key.replace(/_/g, ' ')}</span>
+                  {f.limit && <span className="text-gray-400 ml-auto">({f.limit})</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {payments.length > 0 && (
+          <DataTable title="Recent Payments" headers={['Date', 'Amount', 'Status', 'Method']}
+            rows={payments.map(p => [fmtDate(p.created_at), fmtINR(p.amount), p.status || '—', p.method || '—'])} />
+        )}
+        {history.length > 0 && (
+          <DataTable title="Subscription History" headers={['Date', 'Event', 'Details']}
+            rows={history.map(h => [fmtDateTime(h.created_at), h.event_type || h.action || '—', h.details || '—'])} />
+        )}
+
+        {/* Force Change Plan */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Change Plan</h3>
+          <p className="text-xs text-gray-500 mb-3">Move this tenant to a different subscription plan.</p>
+          <button onClick={() => setChangePlanOpen(true)} className="text-xs px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">Change Plan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Usage Tab ─────────────────────────────────────
+  function renderUsage() {
+    if (loading.usage) return <LoadingState rows={4} />;
+    const live = ud.liveCounts || {};
+    const history = ud.usageHistory || [];
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Employees" value={fmtNum(live.employees || 0)} color="text-indigo-600" />
+          <StatCard label="Attendance" value={fmtNum(live.attendance || 0)} />
+          <StatCard label="Leaves" value={fmtNum(live.leaves || 0)} />
+          <StatCard label="Payroll" value={fmtNum(live.payroll || 0)} />
+        </div>
+        {history.length > 0 && (
+          <DataTable title="Monthly Usage" headers={['Month', 'Employees', 'Attendance', 'Leaves', 'Payroll']}
+            rows={history.map(h => [h.month || h.usage_month, fmtNum(h.employee_count || h.employees), fmtNum(h.attendance_count || h.attendance), fmtNum(h.leave_count || h.leaves), fmtNum(h.payroll_count || h.payroll)])} />
+        )}
+      </div>
+    );
+  }
+
+  // ─── Features Tab ──────────────────────────────────
+  function renderFeatures() {
+    return <FeatureAccessTab tenantId={id} />;
+  }
+
+  // ─── Sections Tab ──────────────────────────────────
+  function renderSections() {
+    return <SectionVisibilityTab tenantId={id} />;
+  }
+
+  // ─── Audit Tab ─────────────────────────────────────
+  function renderAudit() {
+    return <AuditHistoryTab tenantId={id} />;
+  }
+
+  // ─── Handlers ──────────────────────────────────────
+  async function handleConfirm() {
+    if (confirmAction.action === 'suspend') {
+      await superService.updateTenantStatus(id, { status: 'suspended', reason: 'Suspended by super admin' });
+    } else if (confirmAction.action === 'reactivate') {
+      await superService.updateTenantStatus(id, { status: 'active', reason: 'Reactivated by super admin' });
+    }
+    setConfirmAction(null);
+    fetchTenant();
+  }
+
+  async function handleChangePlan({ planId, reason }) {
+    try {
+      await superService.changeTenantPlan(id, { planId, reason });
+      setChangePlanOpen(false);
+      fetchTenant();
+    } catch {}
+  }
+}
+
+// ─── Mini Components ────────────────────────────────
+function StatCard({ label, value, sub, color }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
+      <p className={`text-xl font-bold mt-1 ${color || 'text-gray-900'}`}>{value}</p>
+      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function DataTable({ title, headers, rows }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {title && <div className="px-5 py-3.5 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">{title}</h3></div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-gray-50 border-b border-gray-200">
+            {headers.map(h => <th key={h} className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}
+          </tr></thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((row, i) => (
+              <tr key={i} className="hover:bg-gray-50">
+                {row.map((cell, j) => <td key={j} className="px-4 py-2.5 text-xs text-gray-700">{cell}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Feature Access Tab ─────────────────────────────
+function FeatureAccessTab({ tenantId }) {
+  const [features, setFeatures] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+
+  useEffect(() => {
+    superService.getTenantFeatures(tenantId).then(d => setFeatures(d.features || [])).catch(() => {}).finally(() => setLoading(false));
+  }, [tenantId]);
+
+  if (loading) return <LoadingState rows={5} />;
+  const boolFeatures = features.filter(f => f.featureType === 'boolean');
+  const limitFeatures = features.filter(f => f.featureType !== 'boolean');
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <Link to="/super/tenants" className="text-sm text-indigo-600 hover:text-indigo-500 font-medium">&larr; Back to Tenants</Link>
-          <p className="text-sm text-gray-500">Subdomain: {tenant.subdomain} | ID: {tenant.id}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="badge badge-info">{tenant.employee_count} employees</span>
-          <span className="badge badge-warning">{tenant.leave_count || 0} leaves</span>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-900">Feature Access</h3>
+        <button onClick={() => setOverrideOpen(true)} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Add Override</button>
       </div>
 
-      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
-
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-6">
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-3 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab}
-            </button>
+      {boolFeatures.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          {boolFeatures.map(f => (
+            <div key={f.featureKey} className="px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className={`w-2 h-2 rounded-full ${f.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-700">{f.featureKey.replace(/_/g, ' ')}</span>
+                {f.source !== 'plan' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{f.source}</span>}
+              </div>
+              <span className="text-xs text-gray-400">{f.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
           ))}
-        </nav>
-      </div>
-
-      <div className="card">
-        <div className="p-6">
-          {activeTab === 'Employees' && (
-            isMobile ? (
-              <div className="divide-y divide-gray-100 -mx-6">
-                {employees.map(emp => (
-                  <div key={emp.id} className="px-6 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{emp.email}</p>
-                      </div>
-                      <span className={`badge shrink-0 ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
-                        {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                      <span className="font-medium text-gray-700">{formatINR(emp.base_salary)}</span>
-                      <span>&middot;</span>
-                      <span>Joined {new Date(emp.created_at).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                ))}
-                {employees.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No employees</div>}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="table-header">Name</th>
-                      <th className="table-header">Email</th>
-                      <th className="table-header">Role</th>
-                      <th className="table-header">Base Salary</th>
-                      <th className="table-header">Joined</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {employees.map(emp => (
-                      <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="table-cell font-medium">{emp.first_name} {emp.last_name}</td>
-                        <td className="table-cell text-gray-500">{emp.email}</td>
-                        <td className="table-cell">
-                          <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
-                            {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                          </span>
-                        </td>
-                        <td className="table-cell font-medium">{formatINR(emp.base_salary)}</td>
-                        <td className="table-cell text-gray-500">
-                          {new Date(emp.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                    {employees.length === 0 && (
-                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No employees</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-
-          {activeTab === 'Calendar' && renderCalendar()}
-
-          {activeTab === 'Leaves' && (
-            isMobile ? (
-              <div className="divide-y divide-gray-100 -mx-6">
-                {leaves.map(l => (
-                  <div key={l.id} className="px-6 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900">{l.first_name} {l.last_name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{l.leave_type}</p>
-                      </div>
-                      <span className={`badge shrink-0 ${
-                        l.status === 'approved' ? 'badge-success' :
-                        l.status === 'rejected' ? 'badge-danger' : 'badge-warning'
-                      }`}>{l.status}</span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                      <span>{new Date(l.start_date).toLocaleDateString()} - {new Date(l.end_date).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                ))}
-                {leaves.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No leaves</div>}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="table-header">Employee</th>
-                      <th className="table-header">Type</th>
-                      <th className="table-header">From</th>
-                      <th className="table-header">To</th>
-                      <th className="table-header">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {leaves.map(l => (
-                      <tr key={l.id}>
-                        <td className="table-cell">{l.first_name} {l.last_name}</td>
-                        <td className="table-cell">{l.leave_type}</td>
-                        <td className="table-cell text-gray-500">{new Date(l.start_date).toLocaleDateString()}</td>
-                        <td className="table-cell text-gray-500">{new Date(l.end_date).toLocaleDateString()}</td>
-                        <td className="table-cell">
-                          <span className={`badge ${
-                            l.status === 'approved' ? 'badge-success' :
-                            l.status === 'rejected' ? 'badge-danger' : 'badge-warning'
-                          }`}>{l.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                    {leaves.length === 0 && (
-                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No leaves</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-
-          {activeTab === 'Payroll' && (
-            isMobile ? (
-              <div className="divide-y divide-gray-100 -mx-6">
-                {payroll.map(p => (
-                  <div key={p.id} className="px-6 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900">{p.first_name} {p.last_name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {new Date(p.pay_period_start).toLocaleDateString()} - {new Date(p.pay_period_end).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <span className="badge badge-info shrink-0">{p.status}</span>
-                    </div>
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 text-xs">
-                      <div className="flex items-center gap-3 text-gray-500">
-                        <span>Gross: <span className="font-medium text-gray-700">{formatINR(p.gross_salary)}</span></span>
-                        <span className="text-red-600">-{formatINR(p.deductions)}</span>
-                      </div>
-                      <span className="font-semibold text-gray-900">{formatINR(p.net_salary)}</span>
-                    </div>
-                  </div>
-                ))}
-                {payroll.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">No payroll records</div>}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="table-header">Employee</th>
-                      <th className="table-header">Period</th>
-                      <th className="table-header">Gross</th>
-                      <th className="table-header">Deductions</th>
-                      <th className="table-header">Net</th>
-                      <th className="table-header">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {payroll.map(p => (
-                      <tr key={p.id}>
-                        <td className="table-cell">{p.first_name} {p.last_name}</td>
-                        <td className="table-cell text-gray-500">{new Date(p.pay_period_start).toLocaleDateString()} - {new Date(p.pay_period_end).toLocaleDateString()}</td>
-                        <td className="table-cell">{formatINR(p.gross_salary)}</td>
-                        <td className="table-cell text-red-600">-{formatINR(p.deductions)}</td>
-                        <td className="table-cell font-medium">{formatINR(p.net_salary)}</td>
-                        <td className="table-cell"><span className="badge badge-info">{p.status}</span></td>
-                      </tr>
-                    ))}
-                    {payroll.length === 0 && (
-                      <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No payroll records</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-
-          {activeTab === 'Overrides' && (
-            <div className="max-w-3xl space-y-8">
-              {/* ── Current Overrides ── */}
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Feature Limit Overrides</h4>
-                {overrides.length === 0 ? (
-                  <p className="text-sm text-gray-400">No overrides configured.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {overrides.map(ov => (
-                      <div key={ov.featureKey} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
-                        <div>
-                          <span className="font-medium text-gray-700">{ov.featureKey}</span>
-                          <span className="text-gray-500 ml-3">Max: <strong>{ov.maxValue ?? 'Unlimited'}</strong></span>
-                          {ov.expiresAt && <span className="text-gray-400 ml-3">Expires: {new Date(ov.expiresAt).toLocaleDateString()}</span>}
-                        </div>
-                        <button
-                          onClick={async () => {
-                            if (!confirm('Remove this override?')) return;
-                            try {
-                              await superService.removeOverride(id, ov.featureKey);
-                              setOverrides(overrides.filter(o => o.featureKey !== ov.featureKey));
-                              setOverrideMsg('Override removed.');
-                            } catch (e) { setOverrideMsg(e.response?.data?.error || 'Failed.'); }
-                          }}
-                          className="text-red-500 hover:text-red-700 text-xs font-medium"
-                        >Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <hr className="border-gray-200" />
-
-              {/* ── Add / Edit Override ── */}
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Add / Update Override</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <select value={newOverrideKey} onChange={e => setNewOverrideKey(e.target.value)} className="input-field">
-                    <option value="">Select feature...</option>
-                    {['customers','suppliers','staff_members','branches','monthly_transactions','products','entities'].map(k => (
-                      <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
-                    ))}
-                  </select>
-                  <input type="number" placeholder="Max value (-1 = unlimited)" value={newOverrideValue} onChange={e => setNewOverrideValue(e.target.value)} className="input-field" />
-                  <input type="date" value={newOverrideExpiry} onChange={e => setNewOverrideExpiry(e.target.value)} className="input-field" />
-                  <button
-                    onClick={async () => {
-                      if (!newOverrideKey) return;
-                      try {
-                        const data = { featureKey: newOverrideKey, maxValue: newOverrideValue === '' ? null : Number(newOverrideValue) };
-                        if (newOverrideExpiry) data.expiresAt = new Date(newOverrideExpiry).toISOString();
-                        await superService.setOverride(id, data);
-                        const res = await superService.listOverrides(id);
-                        setOverrides(res.overrides);
-                        setOverrideMsg(`Override for "${newOverrideKey}" saved.`);
-                        setNewOverrideKey(''); setNewOverrideValue(''); setNewOverrideExpiry('');
-                      } catch (e) { setOverrideMsg(e.response?.data?.error || 'Failed.'); }
-                    }}
-                    className="btn-primary text-sm"
-                  >Save</button>
-                </div>
-              </div>
-
-              {overrideMsg && <p className="text-sm text-emerald-600">{overrideMsg}</p>}
-
-              <hr className="border-gray-200" />
-
-              {/* ── Grant Extra Quota ── */}
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Grant Extra Quota</h4>
-                <p className="text-sm text-gray-500 mb-3">Temporarily increase a limit beyond the plan allowance.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <select value={extraQuotaKey} onChange={e => setExtraQuotaKey(e.target.value)} className="input-field">
-                    <option value="">Select feature...</option>
-                    {['customers','suppliers','staff_members','branches','monthly_transactions','products','entities'].map(k => (
-                      <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
-                    ))}
-                  </select>
-                  <input type="number" placeholder="Extra amount" value={extraQuotaAmount} onChange={e => setExtraQuotaAmount(e.target.value)} className="input-field" />
-                  <input type="number" placeholder="Duration (days)" value={extraQuotaDays} onChange={e => setExtraQuotaDays(e.target.value)} className="input-field" />
-                  <button
-                    onClick={async () => {
-                      if (!extraQuotaKey || !extraQuotaAmount) return;
-                      try {
-                        await superService.grantExtraQuota(id, {
-                          featureKey: extraQuotaKey,
-                          extraAmount: Number(extraQuotaAmount),
-                          durationDays: extraQuotaDays ? Number(extraQuotaDays) : null,
-                        });
-                        setExtraQuotaMsg(`+${extraQuotaAmount} ${extraQuotaKey} granted.`);
-                        const res = await superService.listOverrides(id);
-                        setOverrides(res.overrides);
-                        setExtraQuotaKey(''); setExtraQuotaAmount(''); setExtraQuotaDays('');
-                      } catch (e) { setExtraQuotaMsg(e.response?.data?.error || 'Failed.'); }
-                    }}
-                    className="btn-primary text-sm"
-                  >Grant</button>
-                </div>
-                {extraQuotaMsg && <p className="text-sm text-emerald-600 mt-2">{extraQuotaMsg}</p>}
-              </div>
-
-              <hr className="border-gray-200" />
-
-              {/* ── Force Plan Change ── */}
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Force Plan Change</h4>
-                <p className="text-sm text-gray-500 mb-3">Immediately change this tenant's subscription plan.</p>
-                <div className="flex items-end gap-3 flex-wrap">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">New Plan</label>
-                    <select value={forcePlan} onChange={e => setForcePlan(e.target.value)} className="input-field">
-                      <option value="">Select plan...</option>
-                      <option value="FREE">Free</option>
-                      <option value="MANAGE">Manage</option>
-                      <option value="BUSINESS">Business</option>
-                      <option value="BUSINESS_PRO">Business Pro</option>
-                    </select>
-                  </div>
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs text-gray-500 mb-1">Reason</label>
-                    <input type="text" placeholder="Optional reason" value={forcePlanReason} onChange={e => setForcePlanReason(e.target.value)} className="input-field" />
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (!forcePlan) return;
-                      try {
-                        await superService.forcePlanChange(id, { plan: forcePlan, reason: forcePlanReason || undefined });
-                        setForcePlanMsg(`Plan changed to ${forcePlan}.`);
-                        setForcePlan(''); setForcePlanReason('');
-                      } catch (e) { setForcePlanMsg(e.response?.data?.error || 'Failed.'); }
-                    }}
-                    className="btn-primary text-sm"
-                  >Apply</button>
-                </div>
-                {forcePlanMsg && <p className="text-sm text-emerald-600 mt-2">{forcePlanMsg}</p>}
-              </div>
-
-              <hr className="border-gray-200" />
-
-              {/* ── Override History ── */}
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Override Change History</h4>
-                {overrideHistory.length === 0 ? (
-                  <p className="text-sm text-gray-400">No changes recorded.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="table-header">Action</th>
-                          <th className="table-header">Feature</th>
-                          <th className="table-header">Old Value</th>
-                          <th className="table-header">New Value</th>
-                          <th className="table-header">Admin</th>
-                          <th className="table-header">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {overrideHistory.map(h => (
-                          <tr key={h.id}>
-                            <td className="table-cell"><span className={`badge ${h.action === 'deleted' ? 'badge-danger' : h.action === 'created' ? 'badge-success' : 'badge-warning'}`}>{h.action}</span></td>
-                            <td className="table-cell font-medium">{h.feature_key}</td>
-                            <td className="table-cell text-gray-500">{h.old_value ?? '—'}</td>
-                            <td className="table-cell text-gray-500">{h.new_value ?? '—'}</td>
-                            <td className="table-cell text-gray-500">{h.admin_name || '—'}</td>
-                            <td className="table-cell text-gray-500">{new Date(h.created_at).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'Audit Log' && (
-            <div className="max-w-4xl">
-              <div className="flex items-center gap-3 mb-4">
-                <h4 className="text-base font-semibold text-gray-900">Subscription Audit Log</h4>
-                <select value={auditLogFilter} onChange={e => { setAuditLogFilter(e.target.value); fetchAuditLogs(0); }} className="input-field max-w-xs text-sm">
-                  <option value="">All actions</option>
-                  <option value="plan.upgrade">Upgrades</option>
-                  <option value="plan.downgrade">Downgrades</option>
-                  <option value="plan.cancel">Cancellations</option>
-                  <option value="plan.suspend">Suspensions</option>
-                  <option value="plan.reactivate">Reactivations</option>
-                  <option value="plan.force_upgrade">Force Upgrades</option>
-                  <option value="limit.violation">Limit Violations</option>
-                  <option value="quota.extra_granted">Extra Quota Grants</option>
-                  <option value="limit.override.created">Override Created</option>
-                  <option value="limit.override.deleted">Override Deleted</option>
-                  <option value="admin.action">Admin Actions</option>
-                </select>
-              </div>
-
-              {auditLogLoading ? (
-                <div className="flex justify-center py-8"><div className="animate-spin h-6 w-6 border-4 border-indigo-500 border-t-transparent rounded-full" /></div>
-              ) : auditLogs.length === 0 ? (
-                <p className="text-sm text-gray-400">No audit logs found.</p>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="table-header">Action</th>
-                          <th className="table-header">Entity</th>
-                          <th className="table-header">Changes</th>
-                          <th className="table-header">Actor</th>
-                          <th className="table-header">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {auditLogs.map(log => (
-                          <tr key={log.id}>
-                            <td className="table-cell">
-                              <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-700">{log.action}</span>
-                            </td>
-                            <td className="table-cell text-gray-500">{log.entity_type}{log.entity_id ? `:${log.entity_id}` : ''}</td>
-                            <td className="table-cell text-gray-500 text-xs max-w-[200px] truncate">{log.changes ? JSON.stringify(log.changes).slice(0, 80) : '—'}</td>
-                            <td className="table-cell text-gray-500">{log.actor_name || 'System'}</td>
-                            <td className="table-cell text-gray-500 text-xs">{new Date(log.created_at).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
-                    <span>Showing {auditLogs.length} of {auditLogTotal} entries</span>
-                    <div className="flex gap-2">
-                      <button disabled={auditLogOffset === 0} onClick={() => fetchAuditLogs(Math.max(0, auditLogOffset - auditLogLimit))}
-                        className="btn-secondary !py-1 !px-3 text-xs disabled:opacity-50">Prev</button>
-                      <button disabled={auditLogOffset + auditLogLimit >= auditLogTotal} onClick={() => fetchAuditLogs(auditLogOffset + auditLogLimit)}
-                        className="btn-secondary !py-1 !px-3 text-xs disabled:opacity-50">Next</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'Settings' && (
-            <div className="max-w-2xl space-y-8">
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-4">Subscription Plan</h4>
-                <select
-                  value={subscriptionPlan}
-                  onChange={e => setSubscriptionPlan(e.target.value)}
-                  className="input-field max-w-xs"
-                >
-                  {PLANS.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <hr className="border-gray-200" />
-
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-4">Branding</h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                    <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
-                    <div className="flex items-center gap-4">
-                      <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-12 h-10 rounded border border-gray-300 cursor-pointer" />
-                      <code className="text-sm text-gray-500">{primaryColor}</code>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <hr className="border-gray-200" />
-
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-4">Sidebar Visibility</h4>
-                <p className="text-sm text-gray-500 mb-3">Hide modules from this tenant's sidebar navigation.</p>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Bahi Book']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Bahi Book': e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                    <span className="text-sm text-gray-700">Hide My Bahi Book</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                    <span className="text-sm text-gray-700">Hide My Business</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={!!hiddenGroups['My Staff']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Staff': e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                    <span className="text-sm text-gray-700">Hide My Staff</span>
-                  </label>
-                </div>
-              </div>
-
-              {settingsMsg && <p className="text-sm text-emerald-600">{settingsMsg}</p>}
-              <button onClick={handleSaveSettings} className="btn-primary">Save Settings</button>
-
-              <hr className="border-gray-200" />
-
-              <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-4">Admin Credentials</h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
-                    <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="input-field" placeholder={admin?.email || 'admin@company.com'} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                    <input type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="input-field" placeholder="Leave blank to keep current" />
-                  </div>
-                  {adminMsg && <p className="text-sm text-emerald-600">{adminMsg}</p>}
-                  <button onClick={async () => {
-                    try {
-                      const payload = {};
-                      if (adminEmail) payload.email = adminEmail;
-                      if (adminPassword) payload.password = adminPassword;
-                      if (Object.keys(payload).length === 0) return;
-                      await superService.updateTenantAdmin(id, payload);
-                      setAdminMsg('Admin credentials updated.');
-                      setAdminPassword('');
-                    } catch (err) {
-                      setAdminMsg(err.response?.data?.error || 'Failed to update.');
-                    }
-                  }} className="btn-secondary">Update Admin Credentials</button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+      )}
+
+      {limitFeatures.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-200"><span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Limit Features</span></div>
+          {limitFeatures.map(f => (
+            <div key={f.featureKey} className="px-5 py-3 flex items-center justify-between">
+              <span className="text-sm text-gray-700">{f.featureKey.replace(/_/g, ' ')}</span>
+              <span className="text-sm font-medium text-gray-900">{f.limit !== null && f.limit !== undefined ? f.limit : '∞'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {features.length === 0 && <EmptyState title="No feature data" />}
+      {overrideOpen && <FeatureOverrideModal open onClose={() => setOverrideOpen(false)} tenantId={tenantId} onSave={() => { setOverrideOpen(false); window.location.reload(); }} />}
+    </div>
+  );
+}
+
+// ─── Section Visibility Tab ─────────────────────────
+function SectionVisibilityTab({ tenantId }) {
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    superService.getSectionsV2(tenantId).then(d => setSections(d.sections || [])).catch(() => {}).finally(() => setLoading(false));
+  }, [tenantId]);
+
+  const toggleVisibility = async (sectionKey, visible) => {
+    try {
+      await superService.setSectionVisibility(tenantId, { sectionKey, visible, reason: 'Toggled by super admin' });
+      setSections(s => s.map(sec => sec.sectionKey === sectionKey ? { ...sec, visible, source: 'override' } : sec));
+    } catch {}
+  };
+
+  const toggleReadOnly = async (sectionKey, readOnly) => {
+    try {
+      await superService.setSectionVisibility(tenantId, { sectionKey, readOnly, reason: 'Toggled by super admin' });
+      setSections(s => s.map(sec => sec.sectionKey === sectionKey ? { ...sec, readOnly, source: 'override' } : sec));
+    } catch {}
+  };
+
+  if (loading) return <LoadingState rows={5} />;
+
+  const parents = sections.filter(s => s.isParent);
+  const children = sections.filter(s => !s.isParent);
+
+  return (
+    <div className="space-y-4">
+      {parents.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-200"><span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Main Sections</span></div>
+          {parents.map(s => <SectionRow key={s.sectionKey} section={s} onToggleVisible={toggleVisibility} onToggleReadOnly={toggleReadOnly} />)}
+        </div>
+      )}
+      {children.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-200"><span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Child Sections</span></div>
+          {children.map(s => {
+            const parent = parents.find(p => p.sectionKey === s.parentSectionKey);
+            const isParentHidden = parent && !parent.visible;
+            return <SectionRow key={s.sectionKey} section={{ ...s, visible: isParentHidden ? false : s.visible, parentHidden: isParentHidden }} onToggleVisible={toggleVisibility} onToggleReadOnly={toggleReadOnly} />;
+          })}
+        </div>
+      )}
+      {sections.length === 0 && <EmptyState title="No sections" />}
+    </div>
+  );
+}
+
+function SectionRow({ section, onToggleVisible, onToggleReadOnly }) {
+  return (
+    <div className={`px-5 py-3 flex items-center justify-between ${section.parentHidden ? 'opacity-50' : ''}`}>
+      <div>
+        <p className="text-sm font-medium text-gray-900">{section.label || section.sectionKey}</p>
+        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          <span>{section.sectionKey}</span>
+          {section.source !== 'plan' && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Override</span>}
+          {section.parentHidden && <span className="text-amber-600">Hidden by parent</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+          <input type="checkbox" checked={section.visible} disabled={section.parentHidden} onChange={e => onToggleVisible(section.sectionKey, e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+          Visible
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+          <input type="checkbox" checked={section.readOnly} disabled={!section.visible || section.parentHidden} onChange={e => onToggleReadOnly(section.sectionKey, e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
+          Read-Only
+        </label>
       </div>
     </div>
   );
-};
+}
 
-export default TenantDetail;
+// ─── Audit History Tab ──────────────────────────────
+function AuditHistoryTab({ tenantId }) {
+  const [logs, setLogs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const limit = 25;
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = { limit, offset };
+      if (filter) params.action = filter;
+      const data = await superService.getTenantAuditLog(tenantId, params);
+      setLogs(data.logs || []);
+      setTotal(data.total || 0);
+    } catch {} finally { setLoading(false); }
+  }, [tenantId, offset, filter]);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <select value={filter} onChange={e => { setFilter(e.target.value); setOffset(0); }}
+          className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-indigo-400">
+          <option value="">All Actions</option>
+          <option value="super_admin.tenant_suspended">Suspended</option>
+          <option value="super_admin.tenant_reactivated">Reactivated</option>
+          <option value="super_admin.plan_changed">Plan Changed</option>
+          <option value="super_admin.trial_extended">Trial Extended</option>
+        </select>
+      </div>
+
+      {loading ? <LoadingState rows={5} /> : logs.length === 0 ? <EmptyState title="No audit logs" message="No actions have been logged for this tenant yet." /> : (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Actor</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Details</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {logs.map(log => (
+                  <tr key={log.id}>
+                    <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{fmtDateTime(log.created_at)}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-700">{log.actor_name || log.actor_id || '—'}</td>
+                    <td className="px-4 py-2.5"><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{log.action}</span></td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500 max-w-xs truncate">{log.changes ? JSON.stringify(log.changes) : log.details || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {total > limit && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+              <span className="text-xs text-gray-500">{offset + 1}–{Math.min(offset + limit, total)} of {total}</span>
+              <div className="flex gap-2">
+                <button onClick={() => setOffset(o => Math.max(0, o - limit))} disabled={offset === 0} className="text-xs px-3 py-1 rounded-lg border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">← Prev</button>
+                <button onClick={() => setOffset(o => o + limit)} disabled={offset + limit >= total} className="text-xs px-3 py-1 rounded-lg border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">Next →</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

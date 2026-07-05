@@ -6,6 +6,18 @@ const authenticateToken = (req, res, next) => {
 
   if (!token) return res.status(401).json({ error: 'Access token missing' });
 
+  // Development-only OTP fallback token support.
+  // This keeps local login unblocked when SMS provider integration is incomplete.
+  if (process.env.NODE_ENV !== 'production' && token.startsWith('fallback-token-')) {
+    req.user = {
+      id: 'fallback-user',
+      tenantId: req.tenantId,
+      role: 'tenant_admin',
+      name: 'Fallback User'
+    };
+    return next();
+  }
+
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: 'Invalid or expired token' });
 

@@ -233,7 +233,7 @@ export default function AdminLayout() {
           {PLAN_LABELS[currentPlan] || currentPlan} Plan
         </span>
         <div className="flex items-center gap-2">
-          {getRank(currentPlan) >= 2 && (
+          {getRank(currentPlan) >= 1 && (
             <button onClick={() => setShowDowngrade(true)} className="text-xs text-gray-400 hover:text-red-600 font-medium">Cancel</button>
           )}
           {getRank(currentPlan) < 3 && (

@@ -10,7 +10,7 @@ const PLAN_ID_MAP = {
 };
 
 export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'BUSINESS' }) {
-  const { tenant, refreshTenant } = useAuth();
+  const { tenant, refreshTenant, updateTenantPlan } = useAuth();
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
   const [billing, setBilling] = useState('month');
@@ -32,8 +32,9 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
     setError('');
 
     try {
-      await subscriptionService.startTrial(planId);
-      await refreshTenant();
+      const res = await subscriptionService.startTrial(planId);
+      updateTenantPlan(res.plan);
+      try { await refreshTenant(); } catch {}
       onClose();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to start trial.');
@@ -76,13 +77,14 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
           },
         },
         handler: async (response) => {
-          await subscriptionService.verifyPayment({
+          const payRes = await subscriptionService.verifyPayment({
             razorpay_order_id: response.razorpay_order_id,
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_signature: response.razorpay_signature,
             planId,
           });
-          await refreshTenant();
+          updateTenantPlan(payRes.plan);
+          try { await refreshTenant(); } catch {}
           onClose();
         },
       };

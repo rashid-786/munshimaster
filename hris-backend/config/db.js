@@ -4,7 +4,6 @@ require('dotenv').config();
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  // Fallback to build from individual env vars for backward compat
   const { DB_HOST, DB_USER, DB_PASS, DB_NAME } = process.env;
   if (!DB_HOST || !DB_USER || !DB_NAME) {
     throw new Error('DATABASE_URL or DB_HOST/DB_USER/DB_NAME must be set');
@@ -14,22 +13,23 @@ if (!DATABASE_URL) {
   var url = DATABASE_URL;
 }
 
+// Set schema search_path via connection options (avoids deprecated client.query() in connect handler)
+const sep = url.includes('?') ? '&' : '?';
+const searchPathOpt = 'options=-c%20search_path%3Dhris_saas%2Cpublic';
+const connectionString = url + sep + searchPathOpt;
+
 const pool = new Pool({
-  connectionString: url,
+  connectionString,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
   allowExitOnIdle: false,
 });
 
-// Set schema search path so unqualified table names resolve to hris_saas
-pool.query('SET search_path TO hris_saas, public').catch(() => {});
-
 pool.on('error', (err) => {
   console.error('PG Pool error (non-fatal):', err?.message || err);
 });
 
-// Convert ?-style placeholders to $N style
 function convertParams(sql, params) {
   if (!params || params.length === 0) return { text: sql, values: params || [] };
   let idx = 0;
@@ -44,10 +44,7 @@ const db = {
       const result = await pool.query(text, values);
       return [result.rows, result.fields];
     } catch (error) {
-      // Map PG error codes to something similar to mysql2 for backward compat
-      if (error.code === '23505') {
-        error.code = 'ER_DUP_ENTRY';
-      }
+      if (error.code === '23505') error.code = 'ER_DUP_ENTRY';
       throw error;
     }
   },
@@ -56,15 +53,16 @@ const db = {
     const result = await pool.query(text, values);
     return [result.rows, result.fields];
   },
-  // For pool.query raw access
   pool,
 };
 
-// Test connection on startup
-pool.query('SELECT 1').then(() => {
-  console.log('PostgreSQL connection pool verified successfully.');
-}).catch(err => {
-  console.error('PostgreSQL connection failed:', err.message);
-});
+(async () => {
+  try {
+    await pool.query('SELECT 1');
+    console.log('PostgreSQL connection pool verified successfully.');
+  } catch (err) {
+    console.error('PostgreSQL connection failed:', err.message);
+  }
+})();
 
 module.exports = db;

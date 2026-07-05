@@ -59,12 +59,20 @@ import Profile from './pages/employee/Profile';
 import MyAdvances from './pages/employee/MyAdvances';
 
 // Super Admin
-import SuperLayout from './layouts/SuperLayout';
+import SuperAdminLayout from './layouts/SuperAdminLayout';
 import SuperLogin from './pages/super/SuperLogin';
-import SuperDashboard from './pages/super/SuperDashboard';
-import TenantManagement from './pages/super/TenantManagement';
+import Dashboard from './pages/super/Dashboard';
+import Tenants from './pages/super/Tenants';
 import TenantDetail from './pages/super/TenantDetail';
-import SuperSettings from './pages/super/SuperSettings';
+import SubscriptionPlans from './pages/super/SubscriptionPlans';
+import Campaigns from './pages/super/Campaigns';
+import SuperReferrals from './pages/super/Referrals';
+
+import RevenueAnalytics from './pages/super/RevenueAnalytics';
+import ConversionAnalytics from './pages/super/ConversionAnalytics';
+import PlanAdoption from './pages/super/PlanAdoption';
+import UsageAnalytics from './pages/super/UsageAnalytics';
+import SuperAuditLogs from './pages/super/SuperAuditLogs';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -96,14 +104,23 @@ function App() {
             path="/super"
             element={
               <ProtectedRoute allowedRoles={['super_admin']}>
-                <SuperLayout />
+                <SuperAdminLayout />
               </ProtectedRoute>
             }
           >
-            <Route path="dashboard" element={<SuperDashboard />} />
-            <Route path="tenants" element={<TenantManagement />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="tenants" element={<Tenants />} />
             <Route path="tenants/:id" element={<TenantDetail />} />
-            <Route path="settings" element={<SuperSettings />} />
+            <Route path="campaigns" element={<Campaigns />} />
+            <Route path="referrals" element={<SuperReferrals />} />
+            <Route path="plans" element={<SubscriptionPlans />} />
+            <Route path="analytics/revenue" element={<RevenueAnalytics />} />
+            <Route path="analytics/conversion" element={<ConversionAnalytics />} />
+            <Route path="analytics/plan-adoption" element={<PlanAdoption />} />
+            <Route path="analytics/usage" element={<UsageAnalytics />} />
+            <Route path="audit-logs" element={<SuperAuditLogs />} />
+
           </Route>
 
           <Route

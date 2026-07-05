@@ -125,7 +125,8 @@ exports.selectPlan = async (req, res) => {
       [subId, tenantId, plan, status, trialEnd, periodEnd]
     );
 
-    await db.execute('UPDATE tenants SET subscription_plan = ? WHERE id = ?', [plan, tenantId]);
+    const planStatus = plan === 'free' ? 'active' : 'trialing';
+    await db.execute('UPDATE tenants SET subscription_plan = ?, subscription_status = ? WHERE id = ?', [plan, planStatus, tenantId]);
 
     invalidateCache(plan);
     res.json({ message: `Plan set to ${plan}.`, plan });
@@ -498,7 +499,7 @@ exports.startTrial = async (req, res) => {
       [subId, tenantId, planId, trialEnd, periodEnd]
     );
 
-    await db.execute('UPDATE tenants SET subscription_plan = ? WHERE id = ?', [planId, tenantId]);
+    await db.execute('UPDATE tenants SET subscription_plan = ?, subscription_status = ? WHERE id = ?', [planId, 'trialing', tenantId]);
 
     res.json({
       message: `Trial started! You have ${trialDays} days free.`,
@@ -685,8 +686,8 @@ exports.downgradeToFree = async (req, res) => {
     );
 
     await db.execute(
-      'UPDATE tenants SET subscription_plan = ? WHERE id = ?',
-      ['free', req.tenantId]
+      'UPDATE tenants SET subscription_plan = ?, subscription_status = ? WHERE id = ?',
+      ['free', 'active', req.tenantId]
     );
 
     invalidateCache('free');

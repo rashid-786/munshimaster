@@ -37,6 +37,12 @@ Build full notification system, add "Load More" + search across tables, fix Post
 ## In Progress
 - (none)
 
+## Completed (Jul 5)
+- **Manage plan trial fix**: Ran migration `20260720_add_manage_plan_seed.sql` to insert `manage`/`manage_monthly` into `subscription_plans`. Added `manage: 1`/`manage_monthly: 1` to `PLAN_RANK` in `utils/subscription.js`. Added `MANAGE_MONTHLY: 'MANAGE'` to `LEGACY_RESOLVE` in `config/planLimits.js`. Added `['manage', 'manage_monthly']` to `MANAGE.legacyIds` in frontend `subscriptionPlans.js` (was empty — caused `resolvePlan('manage_monthly')` → `'FREE'`).
+- **Cancel/Downgrade buttons for Manage**: Changed `>= 2` → `>= 1` in `AdminLayout.jsx` and `SubscriptionSettings.jsx` so Cancel/Downgrade shows for all paid plans.
+- **Frontend plan sync**: Added `updateTenantPlan()` to `AuthContext` — `UpgradeModal` now directly updates tenant context from trial/payment API response (`res.plan`) instead of relying solely on `refreshTenant()` API call (which could fail silently).
+- **Subscription_status consistency**: `startTrial`, `selectPlan`, and `downgradeToFree` controllers now all update `subscription_status` in `tenants` table.
+
 ## Key Decisions
 - Internal sidebar group keys (used for `hiddenGroups`, `openGroups`, `pageTitles`) remain the original English labels; only visible text uses `labelOf()` lookup
 - `is_read` left as SMALLINT (not boolean) in notifications table
@@ -117,3 +123,59 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - `hris-frontend/src/pages/auth/Register.jsx`: PhoneField in phone step
 - `hris-frontend/src/pages/admin/Employees.jsx`: PhoneField in onboard/edit form
 - `hris-frontend/src/services/auth.service.js`: `getGeoCountry()` added
+
+## Super Admin QA Results (Jul 4, 2026)
+
+### Status: **ALL CRITICAL PATH TESTS PASSING** — Ready for rollout
+
+### Summary
+- **42/42 API tests passing** after fixing 3 production-blocking bugs
+- **4 demo tenants** verified (Free, Manage, Business/Trial, Business Pro)
+- **Security boundaries** confirmed: tenant admins cannot access super admin APIs
+- **Audit logging** verified across all write operations
+- **78 audit log entries** created during QA
+
+### Bugs Found & Fixed During QA
+| # | Bug | File | Fix |
+|---|-----|------|-----|
+| 1 | `analytics: usage` — wrong table names `attendance_records`, `leave_requests` don't exist | `controllers/analytics.controller.js:230-233` | Changed to `attendance` and `leaves` |
+| 2 | `analytics: expiring-trials` — `tenants.owner_email`/`owner_phone` columns don't exist | `controllers/analytics.controller.js:293` | Added LEFT JOIN to `employees` where `role = 'tenant_admin'` |
+| 3 | `section-visibility v2` — `tenant_section_visibility_history` table missing, INSERT fails | `controllers/sectionVisibility.controller.js:126` | Created missing table via DDL |
+
+### API Field Reference (Correct Signatures)
+| Endpoint | Required Fields |
+|----------|----------------|
+| `POST /plans` | `{ name, code, description?, price?, period?, trialDays?, isActive? }` |
+| `PATCH /plans/:id` | `{ name?, price?, period?, trialDays?, isActive? }` |
+| `POST /tenants/:id/change-plan` | `{ plan, reason? }` |
+| `POST /tenants/:id/extend-trial` | `{ extensionType? (7\|15\|30\|60\|custom_days), extensionDays?, customTrialEndDate?, reason }` — reason must be one of: `sales_follow_up, customer_request, promotional_offer, internal_testing, payment_delay, other` |
+| `POST /campaigns` | `{ name, startDate, endDate, code?, discountType?, discountValue?, status? }` |
+| `PATCH /campaigns/:id/status` | `{ status: 'active'\|'inactive'\|'expired' }` |
+| `PUT /tenants/:id/sections` (v1) | `{ sectionKey, visible, reason? }` |
+| `POST /tenants/:id/sections/visibility` (v2) | `{ sectionKey, visible, readOnly?, reason }` — valid keys: `bahi_book, buyers, sellers, cashbook, reports, business_dashboard, staff_management, expenses, campaigns, settings` |
+| `POST /tenants/:id/overrides` (v1) | `{ featureKey, maxValue?, expiresAt?, reason? }` |
+| `POST /tenants/:id/features/override` (v2) | `{ featureKey, overrideType, maxValue?, expiresAt?, reason? }` — valid keys: `customers, suppliers, staff_members, branches, monthly_transactions, products, entities` |
+
+### Rollout Checklist
+1. **Run DB migration** — create missing table:
+   ```sql
+   CREATE TABLE IF NOT EXISTS hris_saas.tenant_section_visibility_history (
+       id VARCHAR(36) PRIMARY KEY,
+       tenant_id VARCHAR(36) NOT NULL,
+       section_key VARCHAR(100) NOT NULL,
+       action VARCHAR(50),
+       old_visible BOOLEAN,
+       new_visible BOOLEAN,
+       old_read_only BOOLEAN,
+       new_read_only BOOLEAN,
+       reason TEXT,
+       changed_by VARCHAR(255),
+       changed_by_name VARCHAR(255),
+       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
+   ```
+2. **Deploy updated `controllers/analytics.controller.js`** (table name + join fixes)
+3. **Restart server** after deploy
+4. **Seed super admin** if not already present: `POST /api/v1/super/auth/seed`
+5. **Verify** dashboard, analytics, section visibility v2, trial extension endpoints
+6. **Rollback plan**: Revert `analytics.controller.js` to previous version; delete `tenant_section_visibility_history` table if causing issues (v1 visibility still works without it)

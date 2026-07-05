@@ -60,51 +60,82 @@ const TEST_TENANTS = [
 ];
 
 async function ensureSubscriptionPlans(client) {
+  const ALL_PLANS = [
+    {
+      id: 'free', name: 'Free', price: 0, period: 'year', trialDays: 0,
+      features: { ledger_customers: 50, staff_members: 0, monthly_txns: 500,
+        reports: 'basic', invoices: true, purchase_orders: false, payroll: false,
+        inventory: false, branches: 2, whatsapp: false, api: false,
+        branding: false, support: 'community' },
+    },
+    {
+      id: 'manage', name: 'Manage', price: 499, period: 'year', trialDays: 14,
+      features: { ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: false, branches: 2, export: true, whatsapp: false, api: false,
+        branding: false, support: 'email' },
+    },
+    {
+      id: 'manage_monthly', name: 'Manage Monthly', price: 49, period: 'month', trialDays: 14,
+      features: { ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: false, branches: 2, export: true, whatsapp: false, api: false,
+        branding: false, support: 'email' },
+    },
+    {
+      id: 'business', name: 'Business', price: 1069, period: 'year', trialDays: 14,
+      features: { ledger_customers: -1, staff_members: 25, monthly_txns: 10000,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: true, branches: 3, export: true, whatsapp: false, api: false,
+        branding: false, support: 'email' },
+    },
+    {
+      id: 'business_monthly', name: 'Business Monthly', price: 99, period: 'month', trialDays: 14,
+      features: { ledger_customers: -1, staff_members: 25, monthly_txns: 10000,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: true, branches: 3, export: true, whatsapp: false, api: false,
+        branding: false, support: 'email' },
+    },
+    {
+      id: 'pro', name: 'Pro', price: 1609, period: 'year', trialDays: 14,
+      features: { ledger_customers: -1, staff_members: -1, monthly_txns: -1,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: true, branches: 5, export: true, whatsapp: true, api: true,
+        branding: true, support: 'priority' },
+    },
+    {
+      id: 'pro_monthly', name: 'Pro Monthly', price: 149, period: 'month', trialDays: 14,
+      features: { ledger_customers: -1, staff_members: -1, monthly_txns: -1,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: true, branches: 5, export: true, whatsapp: true, api: true,
+        branding: true, support: 'priority' },
+    },
+    {
+      id: 'business_pro', name: 'Business Pro', price: 1609, period: 'year', trialDays: 14,
+      features: { ledger_customers: -1, staff_members: -1, monthly_txns: -1,
+        reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
+        inventory: true, branches: 5, export: true, whatsapp: true, api: true,
+        branding: true, support: 'priority' },
+    },
+  ];
+
+  const planIds = ALL_PLANS.map(p => p.id);
   const { rows } = await client.query(
-    `SELECT id FROM subscription_plans WHERE id IN ('manage', 'manage_monthly')`
+    `SELECT id FROM subscription_plans WHERE id = ANY($1)`,
+    [planIds]
   );
   const existing = new Set(rows.map(r => r.id));
 
-  if (!existing.has('manage')) {
-    console.log('  [seed] Inserting plan: manage');
-    await client.query(
-      `INSERT INTO subscription_plans (id, name, price_inr, period, trial_days, features)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        'manage',
-        'Manage',
-        499,
-        'year',
-        14,
-        JSON.stringify({
-          ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
-          reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
-          inventory: false, branches: 2, export: true, whatsapp: false, api: false,
-          branding: false, support: 'email',
-        }),
-      ]
-    );
-  }
-
-  if (!existing.has('manage_monthly')) {
-    console.log('  [seed] Inserting plan: manage_monthly');
-    await client.query(
-      `INSERT INTO subscription_plans (id, name, price_inr, period, trial_days, features)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        'manage_monthly',
-        'Manage Monthly',
-        49,
-        'month',
-        14,
-        JSON.stringify({
-          ledger_customers: 250, staff_members: 10, monthly_txns: 3000,
-          reports: 'advanced', invoices: true, purchase_orders: true, payroll: true,
-          inventory: false, branches: 2, export: true, whatsapp: false, api: false,
-          branding: false, support: 'email',
-        }),
-      ]
-    );
+  for (const plan of ALL_PLANS) {
+    if (!existing.has(plan.id)) {
+      console.log(`  [seed] Inserting plan: ${plan.id}`);
+      await client.query(
+        `INSERT INTO subscription_plans (id, name, price_inr, period, trial_days, features)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [plan.id, plan.name, plan.price, plan.period, plan.trialDays, JSON.stringify(plan.features)]
+      );
+    }
   }
 }
 

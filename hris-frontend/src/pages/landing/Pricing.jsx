@@ -7,64 +7,77 @@ const PLANS = [
   {
     id: 'free',
     name: 'Free',
-    price: '₹0',
+    price: { year: 0, month: 0 },
     period: 'forever',
-    desc: 'For solo shopkeepers',
-    popular: false,
+    subtitle: 'For early-stage operators',
+    highlight: 'Start bookkeeping and daily operations quickly',
     features: [
-      { text: 'Khata ledger — 50 customers', included: true },
-      { text: '500 transactions/month', included: true },
-      { text: 'Basic daily reports', included: true },
-      { text: '2 staff members', included: true },
-      { text: 'Attendance tracking', included: true },
-      { text: 'Leave management', included: true },
-      { text: 'Advanced reports (P&L)', included: false },
-      { text: 'Invoices & estimates', included: false },
-      { text: 'Payroll calculation', included: false },
-      { text: 'Inventory management', included: false },
+      'Khata ledger and basic business tracking',
+      'Up to 50 customers',
+      'Up to 2 staff members',
+      '500 monthly transactions',
+      'Basic reporting',
     ],
+    limitations: ['No advanced finance reports', 'No full payroll and invoicing workflows'],
+    cta: 'Start Free',
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    price: { year: 999, month: 99 },
+    period: 'per year',
+    subtitle: 'For growing teams',
+    highlight: 'Best fit for businesses moving from manual tools to structured operations',
+    features: [
+      'Unlimited customers and staff',
+      'Invoices, purchase orders, and recurring billing',
+      'Payroll, attendance, leaves, advances',
+      'Balance sheet, P&L, and cash flow reports',
+      'Export to PDF and Excel',
+      'Email support',
+    ],
+    limitations: ['Advanced Pro controls like deeper automation and premium support are excluded'],
+    cta: 'Choose Business',
+    popular: true,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price: { year: 2499, month: 208 },
+    period: 'per year',
+    subtitle: 'For advanced and multi-entity operations',
+    highlight: 'Full capabilities for organizations scaling across teams and workflows',
+    features: [
+      'Everything in Business',
+      'Inventory and stock-heavy workflows',
+      'Multi-branch readiness and premium controls',
+      'Bulk notifications and advanced automation hooks',
+      'Priority support',
+      'Stronger customization and expansion path',
+    ],
+    limitations: [],
+    cta: 'Choose Pro',
   },
 ];
 
-const PAID_PLANS = {
-  business: {
-    name: 'Business',
-    monthly: 99,
-    yearly: 1069,
-    desc: 'For growing teams',
-    popular: true,
-    features: [
-      { text: 'Unlimited customers & transactions', included: true },
-      { text: 'Advanced P&L reports', included: true },
-      { text: 'Unlimited staff', included: true },
-      { text: 'Attendance tracking', included: true },
-      { text: 'Leave management', included: true },
-      { text: 'Payroll calculation', included: true },
-      { text: 'Invoices & estimates', included: true },
-      { text: 'Purchase orders', included: true },
-      { text: 'Export to Excel/PDF', included: true },
-      { text: 'Email support', included: true },
-      { text: 'Inventory management', included: false },
-      { text: 'Bulk WhatsApp notifications', included: false },
-    ],
+const FAQS = [
+  {
+    q: 'Can I upgrade later without losing data?',
+    a: 'Yes. Your data and history remain intact. Upgrading only unlocks additional capabilities for your tenant.',
   },
-  pro: {
-    name: 'Pro',
-    monthly: 149,
-    yearly: 1609,
-    desc: 'For established businesses',
-    popular: false,
-    features: [
-      { text: 'Everything in Business, plus...', included: true },
-      { text: 'Inventory management', included: true },
-      { text: 'Up to 5 branches', included: true },
-      { text: 'Bulk WhatsApp notifications', included: true },
-      { text: 'Custom branding (your logo)', included: true },
-      { text: 'API access', included: true },
-      { text: 'Phone + email support', included: true },
-    ],
+  {
+    q: 'Do I need a card to start?',
+    a: 'No card is required to start free and evaluate workflows.',
   },
-};
+  {
+    q: 'Which plan should I choose first?',
+    a: 'If you need invoicing, payroll, and full reporting, start with Business. If you need premium controls and scaling headroom, choose Pro.',
+  },
+  {
+    q: 'What if I downgrade?',
+    a: 'Data remains available. Access to premium features is restricted based on your active plan.',
+  },
+];
 
 export default function Pricing() {
   const { user } = useAuth();
@@ -85,144 +98,110 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-indigo-50">
-      <div className="max-w-6xl mx-auto px-4 py-16 md:py-24">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">
-            The Complete OS for Your Small Business
-          </h1>
-          <p className="text-gray-500 mt-3 max-w-xl mx-auto">
-            From khata to payroll — one app, no limits. Start free. Upgrade when you grow.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-emerald-50">
+      <section className="py-16 md:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto text-center">
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Subscription Plans Built for Real Business Stages</h1>
+            <p className="mt-4 text-lg text-gray-600">
+              Choose the plan that matches your current operations. Start lean, then unlock deeper workflows as you grow.
+            </p>
 
-          {/* Billing toggle */}
-          <div className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-1 mt-6 shadow-sm">
-            <button
-              onClick={() => setBilling('month')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'month' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBilling('year')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'year' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Annual <span className="text-emerald-300 font-semibold">Save 10%</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {/* Free plan */}
-          {PLANS.map(plan => (
-            <div
-              key={plan.id}
-              className="relative bg-white rounded-2xl border-2 border-gray-200 p-6 shadow-sm transition-all hover:shadow-md"
-            >
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
-                  <span className="text-gray-400 text-sm ml-1">{plan.period}</span>
-                </div>
-                <p className="text-sm text-gray-500 mt-1">{plan.desc}</p>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                {plan.features.map((f, i) => (
-                  <li key={i} className={`flex items-start gap-2.5 text-sm ${f.included ? 'text-gray-700' : 'text-gray-400'}`}>
-                    {f.included ? (
-                      <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    )}
-                    <span>{f.text}</span>
-                  </li>
-                ))}
-              </ul>
-
+            <div className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-1 mt-7 shadow-sm">
               <button
-                onClick={() => handleCta(plan.id)}
-                className="w-full py-2.5 rounded-xl font-medium text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                onClick={() => setBilling('month')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'month' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                Get Started Free
+                Monthly View
+              </button>
+              <button
+                onClick={() => setBilling('year')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'year' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Annual View
               </button>
             </div>
-          ))}
+          </div>
 
-          {/* Paid plans */}
-          {Object.entries(PAID_PLANS).map(([id, plan]) => {
-            const price = billing === 'month' ? plan.monthly : plan.yearly;
-            const periodLabel = billing === 'month' ? '/mo' : '/yr';
-            const perMonth = billing === 'year' ? `₹${Math.round(plan.yearly / 12)}/mo` : null;
-            const perYear = billing === 'month' ? `₹${plan.yearly}/yr` : null;
-            return (
-              <div
-                key={id}
-                className={`relative bg-white rounded-2xl border-2 p-6 shadow-sm transition-all hover:shadow-md ${
-                  plan.popular ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-gray-200'
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-xs font-semibold px-4 py-1 rounded-full">
-                    Most Popular
+          <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto mt-12">
+            {PLANS.map((plan) => {
+              const amount = billing === 'month' ? plan.price.month : plan.price.year;
+              const billingLabel = plan.id === 'free' ? plan.period : billing === 'month' ? 'per month (effective)' : plan.period;
+              return (
+                <article
+                  key={plan.id}
+                  className={`relative rounded-2xl border-2 p-6 bg-white ${plan.popular ? 'border-primary-500 ring-2 ring-primary-500/20 shadow-md' : 'border-gray-200 shadow-sm'}`}
+                >
+                  {plan.popular && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold bg-primary-600 text-white">
+                      Recommended
+                    </span>
+                  )}
+
+                  <h2 className="text-xl font-bold text-gray-900">{plan.name}</h2>
+                  <p className="mt-1 text-sm text-gray-500">{plan.subtitle}</p>
+
+                  <div className="mt-4">
+                    <span className="text-4xl font-bold text-gray-900">Rs {amount.toLocaleString('en-IN')}</span>
+                    <p className="text-sm text-gray-500 mt-1">{billingLabel}</p>
                   </div>
-                )}
 
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
-                  <div className="mt-2">
-                    <span className="text-3xl font-bold text-gray-900">₹{price.toLocaleString('en-IN')}</span>
-                    <span className="text-gray-400 text-sm ml-1">{periodLabel}</span>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {perMonth || perYear}{plan.desc && ` — ${plan.desc}`}
-                  </p>
-                </div>
+                  <p className="mt-4 text-sm text-gray-600">{plan.highlight}</p>
 
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((f, i) => (
-                    <li key={i} className={`flex items-start gap-2.5 text-sm ${f.included ? 'text-gray-700' : 'text-gray-400'}`}>
-                      {f.included ? (
-                        <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <ul className="mt-5 space-y-2.5">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2 text-sm text-gray-700">
+                        <svg className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                         </svg>
-                      ) : (
-                        <svg className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                    {plan.limitations.map((item) => (
+                      <li key={item} className="flex items-start gap-2 text-sm text-gray-400">
+                        <svg className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                      )}
-                      <span>{f.text}</span>
-                    </li>
-                  ))}
-                </ul>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
 
-                <button
-                  onClick={() => handleCta(id)}
-                  className="w-full py-2.5 rounded-xl font-medium text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition-all"
-                >
-                  Upgrade Now
-                </button>
+                  <button
+                    onClick={() => handleCta(plan.id)}
+                    className={`w-full mt-7 py-2.5 rounded-xl text-sm font-medium transition-all ${plan.id === 'free' ? 'border border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-primary-600 text-white hover:bg-primary-700'}`}
+                  >
+                    {plan.cta}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <h3 className="text-xl font-semibold text-gray-900">How to pick a plan quickly</h3>
+              <ul className="mt-4 space-y-3 text-sm text-gray-600">
+                <li>If you are validating workflow and need basic tracking, start with Free.</li>
+                <li>If you are already issuing invoices or running payroll, Business is your default choice.</li>
+                <li>If you run advanced operations and need stronger scale controls, choose Pro.</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Subscription FAQs</h3>
+              <div className="space-y-3">
+                {FAQS.map((faq) => (
+                  <div key={faq.q} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <p className="text-sm font-medium text-gray-900">{faq.q}</p>
+                    <p className="text-sm text-gray-600 mt-1.5">{faq.a}</p>
+                  </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-12 max-w-3xl mx-auto">
-          <h3 className="text-lg font-semibold text-gray-900 text-center mb-6">Frequently Asked Questions</h3>
-          <div className="space-y-4">
-            <Faq q="What happens when I upgrade?" a="All your existing data carries over instantly. Nothing changes except you unlock more features." />
-            <Faq q="What if I downgrade?" a="Your data stays safe. You'll lose access to paid features but nothing is deleted. Upgrade anytime to get them back." />
-            <Faq q="Do I need a credit card for the trial?" a="No. Try Business free for 14 days — no payment required." />
-            <Faq q="Is my data backed up?" a="Yes. Daily encrypted backups. You can request a full export anytime." />
-            <Faq q="Can I use it on multiple phones?" a="Yes. Your account works on any device. All data syncs instantly." />
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {showUpgrade && (
         <UpgradeModal
@@ -231,15 +210,6 @@ export default function Pricing() {
           requiredPlan={showUpgrade}
         />
       )}
-    </div>
-  );
-}
-
-function Faq({ q, a }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="font-medium text-gray-900 text-sm">{q}</p>
-      <p className="text-sm text-gray-500 mt-1">{a}</p>
     </div>
   );
 }

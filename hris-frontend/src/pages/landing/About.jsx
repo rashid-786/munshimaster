@@ -1,60 +1,96 @@
-const About = () => {
+import { Link } from 'react-router-dom';
+
+const BRAND_PILLARS = [
+  {
+    title: 'Manage',
+    desc: 'Bring finance, HR, billing, and compliance workflows into one operational system with shared visibility.',
+  },
+  {
+    title: 'Grow',
+    desc: 'Use subscription plans and feature controls to expand capabilities in step with your business maturity.',
+  },
+  {
+    title: 'Simplify',
+    desc: 'Reduce manual handoffs and tool-switching by giving teams one platform for day-to-day execution.',
+  },
+];
+
+const VALUES = [
+  {
+    title: 'Practical Innovation',
+    desc: 'We focus on solutions that reduce real operational friction, not vanity features.',
+  },
+  {
+    title: 'Operational Trust',
+    desc: 'Business-critical workflows need reliability, auditability, and predictable outcomes.',
+  },
+  {
+    title: 'Scalable Simplicity',
+    desc: 'The product stays usable for small teams while supporting larger, more complex operations.',
+  },
+];
+
+export default function About() {
   return (
     <div>
-      <section className="bg-gradient-to-br from-indigo-50 via-white to-indigo-50 py-20 md:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About bahi360</h1>
-          <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-            Empowering organizations with intelligent HR technology since 2020.
+      <section className="bg-gradient-to-br from-primary-50 via-white to-emerald-50 py-20 md:py-28">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About Bahi360</h1>
+          <p className="mt-4 text-lg text-gray-600 max-w-3xl mx-auto">
+            Bahi360 is built for businesses that want one dependable operating layer across finance, people, and growth workflows.
           </p>
         </div>
       </section>
 
       <section className="py-16 md:py-24 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900">Our Mission</h2>
-              <p className="mt-4 text-gray-600 leading-relaxed">
-                We believe that great HR technology should be accessible to every organization, not just enterprises with massive IT budgets. Our platform simplifies complex HR operations so your team can focus on what matters most — your people.
+              <h2 className="text-3xl font-bold text-gray-900">Our Brand Promise</h2>
+              <p className="mt-5 text-gray-600 leading-relaxed">
+                We believe business teams should not need separate systems for ledger, payroll, attendance, invoicing,
+                subscriptions, and compliance. Bahi360 unifies these workflows so operators can run with speed and control.
               </p>
               <p className="mt-4 text-gray-600 leading-relaxed">
-                From seamless payroll processing to intuitive attendance tracking, we provide the tools you need to build a thriving workplace.
+                Our guiding line is simple: Manage. Grow. Simplify. Every release, workflow, and subscription tier is shaped
+                around this promise.
               </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/services" className="btn-primary !py-2.5 !px-6 text-sm">Explore Services</Link>
+                <Link to="/pricing" className="btn-secondary-navy !py-2.5 !px-6 text-sm">View Plans</Link>
+              </div>
             </div>
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-2xl p-8 flex items-center justify-center">
-              <svg className="w-32 h-32 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
-              </svg>
+
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-7">
+              <h3 className="text-xl font-semibold text-gray-900">Brand Pillars</h3>
+              <div className="mt-5 space-y-4">
+                {BRAND_PILLARS.map((pillar) => (
+                  <article key={pillar.title} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <h4 className="text-sm font-semibold text-gray-900">{pillar.title}</h4>
+                    <p className="mt-1.5 text-sm text-gray-600">{pillar.desc}</p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="py-16 md:py-24 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900">Our Values</h2>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">What Shapes Our Product Decisions</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { title: 'Innovation', desc: 'Continuously evolving our platform to meet the changing needs of modern HR teams.' },
-              { title: 'Reliability', desc: 'Enterprise-grade infrastructure ensuring your HR data is always available and secure.' },
-              { title: 'Simplicity', desc: 'Intuitive design that requires minimal training, so your team can hit the ground running.' },
-            ].map((v) => (
-              <div key={v.title} className="text-center p-8">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl font-bold text-indigo-600">{v.title[0]}</span>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{v.title}</h3>
-                <p className="text-sm text-gray-500">{v.desc}</p>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {VALUES.map((value) => (
+              <article key={value.title} className="rounded-2xl border border-gray-200 bg-white p-6">
+                <h3 className="text-lg font-semibold text-gray-900">{value.title}</h3>
+                <p className="mt-3 text-sm text-gray-600">{value.desc}</p>
+              </article>
             ))}
           </div>
         </div>
       </section>
     </div>
   );
-};
-
-export default About;
+}

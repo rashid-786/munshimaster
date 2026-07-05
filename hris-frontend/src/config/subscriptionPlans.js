@@ -105,7 +105,7 @@ export const PLANS = {
     id: 'MANAGE',
     name: 'Manage',
     rank: 1,
-    legacyIds: [],
+    legacyIds: ['manage', 'manage_monthly'],
     limits: {
       customers: 250,
       suppliers: 50,

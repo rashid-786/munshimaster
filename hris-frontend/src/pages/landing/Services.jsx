@@ -1,77 +1,99 @@
-const SERVICES = [
+import { Link } from 'react-router-dom';
+
+const SERVICE_BLOCKS = [
   {
-    title: 'Employee Management',
-    desc: 'Complete employee lifecycle management with role-based access, document storage, and automated onboarding workflows.',
-    features: ['Role-based access control', 'Employee self-service portal', 'Document & file management', 'Automated onboarding'],
+    title: 'Finance and Ledger Operations',
+    desc: 'Move from manual entries to structured financial execution with live khata, balance views, and periodic reporting.',
+    items: ['Khata and cashbook tracking', 'Balance sheet and P&L visibility', 'Cash flow analysis', 'Entity-wise financial snapshots'],
   },
   {
-    title: 'Time & Attendance',
-    desc: 'Real-time attendance tracking with clock-in/out, calendar views, and configurable weekend policies.',
-    features: ['Clock-in/out tracking', 'Calendar-based attendance view', 'Configurable work week', 'Attendance reports & analytics'],
+    title: 'Billing, Collections, and Revenue Workflow',
+    desc: 'Standardize billing across teams with invoice lifecycle tracking and recurring revenue support.',
+    items: ['Invoice creation and status flow', 'Recurring invoice automation', 'Payment history and reconciliations', 'Credit/debit note workflow'],
   },
   {
-    title: 'Payroll Processing',
-    desc: 'Hourly-rate payroll with auto-calculations, deduction management, and downloadable PDF payslips.',
-    features: ['Hourly rate calculation', 'Deduction management', 'PDF payslip generation', 'Payroll history & reports'],
+    title: 'Procurement and Inventory Operations',
+    desc: 'Keep purchasing and stock under one process for better planning, control, and auditability.',
+    items: ['Supplier management and PO flow', 'Stock and product control', 'Bulk import options', 'Inventory-driven business operations'],
   },
   {
-    title: 'Leave Management',
-    desc: 'Streamlined leave requests with approval workflows, balance tracking, and department-wide reporting.',
-    features: ['Leave request & approval', 'Balance tracking', 'Department reports', 'Configurable leave types'],
+    title: 'People and Payroll Management',
+    desc: 'Run people operations from onboarding to payroll with policy-driven workflows.',
+    items: ['Employee directory and profile management', 'Attendance and leave approvals', 'Payroll, advances, and replacements', 'Calendar and shift-aware tracking'],
   },
   {
-    title: 'Purchase Orders',
-    desc: 'Create and manage purchase orders with auto-numbering, status tracking, and download capabilities.',
-    features: ['Auto-numbered POs', 'Status tracking', 'PO history & search', 'PDF export'],
+    title: 'Compliance and Tax Readiness',
+    desc: 'Reduce filing stress with built-in compliance flows integrated into day-to-day operations.',
+    items: ['GST return support', 'GSTR-2B reconciliation', 'TDS workflows', 'e-Invoice and e-Waybill readiness'],
   },
   {
-    title: 'Invoicing',
-    desc: 'Professional invoice generation with auto-numbering, GST calculation, and payment status tracking.',
-    features: ['Auto-numbered invoices', '18% GST auto-calculation', 'Payment status tracking', 'Invoice PDF download'],
+    title: 'Growth and Subscription Enablement',
+    desc: 'Scale with configurable plan-based access, usage controls, notifications, and branded experiences.',
+    items: ['Subscription plans and upgrade flows', 'Feature-level access control', 'Tenant branding and customization', 'Notification and communication hooks'],
   },
-  {
-    title: 'Supplier Management',
-    desc: 'Centralized supplier directory with search, transaction history, and performance tracking.',
-    features: ['Supplier directory', 'Transaction history', 'Search & filter', 'Contact management'],
-  },
-  {
-    title: 'Customer Management',
-    desc: 'Customer directory linked to invoices and orders, with full search and history capabilities.',
-    features: ['Customer database', 'Invoice linkage', 'Order history', 'Search & filter'],
-  },
+];
+
+const OUTCOMES = [
+  'Single platform replacing fragmented tools',
+  'Faster operations with fewer manual steps',
+  'Clear ownership across finance, HR, and admin teams',
+  'Subscription-aligned access as teams grow',
 ];
 
 export default function Services() {
   return (
     <div>
-      <section className="bg-gradient-to-br from-indigo-50 via-white to-indigo-50 py-20 md:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Our Services</h1>
-          <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-            Comprehensive HR solutions designed to scale with your organization.
+      <section className="bg-gradient-to-br from-primary-50 via-white to-emerald-50 py-20 md:py-28">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Services Built Around How Businesses Actually Operate</h1>
+          <p className="mt-4 text-lg text-gray-600 max-w-3xl mx-auto">
+            Bahi360 combines finance, HR, compliance, and growth workflows into one service layer so your team can execute faster with better control.
           </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link to="/pricing" className="btn-primary !py-2.5 !px-6 text-sm">View Plans</Link>
+            <Link to="/register" className="btn-secondary-navy !py-2.5 !px-6 text-sm">Start Free Trial</Link>
+          </div>
         </div>
       </section>
 
       <section className="py-16 md:py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {SERVICES.map((s) => (
-              <div key={s.title} className="p-6 lg:p-8 rounded-2xl border border-gray-100 bg-white hover:shadow-lg hover:border-indigo-100 transition-all">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">{s.title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed mb-5">{s.desc}</p>
-                <ul className="space-y-2">
-                  {s.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
-                      <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+            {SERVICE_BLOCKS.map((block) => (
+              <article key={block.title} className="rounded-2xl border border-gray-200 p-6 bg-white hover:shadow-md transition-shadow">
+                <h2 className="text-lg font-semibold text-gray-900">{block.title}</h2>
+                <p className="mt-3 text-sm text-gray-600 leading-relaxed">{block.desc}</p>
+                <ul className="mt-5 space-y-2.5">
+                  {block.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
+                      <svg className="w-4 h-4 text-primary-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                       </svg>
-                      {f}
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
-              </div>
+              </article>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 md:py-20 bg-gray-50">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white rounded-2xl border border-gray-200 p-7 md:p-10">
+            <h3 className="text-2xl md:text-3xl font-bold text-gray-900">What you gain with Bahi360 services</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              {OUTCOMES.map((item) => (
+                <div key={item} className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/pricing" className="btn-primary !py-2.5 !px-6 text-sm">Compare Subscription Plans</Link>
+              <Link to="/faq" className="border border-gray-300 text-gray-700 rounded-lg py-2.5 px-6 text-sm font-medium hover:bg-gray-50">Read FAQs</Link>
+            </div>
           </div>
         </div>
       </section>

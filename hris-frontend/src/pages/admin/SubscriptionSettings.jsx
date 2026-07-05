@@ -74,7 +74,7 @@ export default function SubscriptionSettings() {
   };
 
   const handleDowngrade = () => {
-    if (currentRank >= 2) {
+    if (currentRank >= 1) {
       setShowDowngrade(true);
     }
   };
@@ -124,12 +124,12 @@ export default function SubscriptionSettings() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {currentRank >= 2 && (
+            {currentRank >= 1 && (
               <button
                 onClick={handleDowngrade}
                 className="py-2 px-4 text-sm font-medium text-gray-500 hover:text-red-600 border border-gray-200 hover:border-red-200 rounded-lg transition-colors"
               >
-                Cancel Plan
+                {isTrialing ? 'Cancel Trial' : 'Cancel Plan'}
               </button>
             )}
             {currentRank < 3 && (

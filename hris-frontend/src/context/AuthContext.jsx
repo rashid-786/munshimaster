@@ -75,6 +75,13 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('user_data', JSON.stringify(updated));
   };
 
+  const updateTenantPlan = (plan) => {
+    const current = JSON.parse(localStorage.getItem('tenant_data') || '{}');
+    const updated = { ...current, subscriptionPlan: plan };
+    setTenant(updated);
+    localStorage.setItem('tenant_data', JSON.stringify(updated));
+  };
+
   const logout = () => {
     setUser(null);
     setTenant(null);
@@ -82,7 +89,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, login, updateUser, logout, loading, refreshTenant }}>
+    <AuthContext.Provider value={{ user, tenant, login, updateUser, updateTenantPlan, logout, loading, refreshTenant }}>
       {!loading && children}
     </AuthContext.Provider>
   );

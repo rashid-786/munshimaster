@@ -2,96 +2,91 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 
-const FEATURES = [
+const CORE_MODULES = [
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    ),
-    title: 'Time & Attendance',
-    desc: 'Automated clock-in/out tracking with real-time attendance dashboards and calendar views.',
+    title: 'Khata & Smart Ledger',
+    desc: 'Track cash in, cash out, and party balances in a single live ledger built for daily business decisions.',
   },
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
-    ),
-    title: 'Employee Management',
-    desc: 'Complete employee lifecycle management from onboarding to offboarding with role-based access.',
+    title: 'Billing & Collections',
+    desc: 'Create invoices, payment links, recurring invoices, and follow up faster with status visibility.',
   },
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-    ),
-    title: 'Payroll Processing',
-    desc: 'Hourly-rate based payroll with auto-calculations, deduction management, and downloadable payslips.',
+    title: 'Payroll & HR Console',
+    desc: 'Manage attendance, leaves, salary runs, advances, and replacements from one workflow.',
   },
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-    ),
-    title: 'Leave Management',
-    desc: 'Configurable leave policies with approval workflows, balance tracking, and department-level reporting.',
+    title: 'Inventory & Purchase Flow',
+    desc: 'Control stock, suppliers, purchase orders, and movement history without manual spreadsheets.',
   },
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-    ),
-    title: 'Invoicing & PO',
-    desc: 'Create and manage purchase orders and invoices with auto-numbering, tax calculation, and status tracking.',
+    title: 'Compliance & Reports',
+    desc: 'Use GST returns, GSTR-2B reconciliation, TDS, e-invoice, and P&L reports with export-ready outputs.',
   },
   {
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
-    ),
-    title: 'Supplier & Customer',
-    desc: 'Centralized vendor and customer directories with search, filtering, and linked transaction history.',
+    title: 'Subscription & Controls',
+    desc: 'Feature gating, usage tracking, tenant-level settings, and upgrade paths designed for growth.',
   },
 ];
 
-const TESTIMONIALS = [
-  { quote: 'bahi360 transformed how we manage our workforce. The payroll automation alone saved us 15 hours every month.', author: 'Rajesh Kumar', role: 'CEO, TechCorp India' },
-  { quote: 'The attendance tracking with calendar view gives me complete visibility into my team. Invaluable for a growing company.', author: 'Priya Sharma', role: 'HR Director, GreenLeaf Industries' },
-  { quote: 'Implementation was seamless. Our employees adapted to the system within days, and the support team was exceptional.', author: 'Amit Verma', role: 'CTO, NovaTech Solutions' },
+const PLAN_SUMMARY = [
+  {
+    id: 'free',
+    name: 'Free',
+    price: 'Rs 0',
+    cycle: 'forever',
+    pitch: 'For solo founders and early-stage shops',
+    bullets: ['Khata + daily bookkeeping', 'Up to 50 customers', 'Basic reports'],
+    cta: 'Start Free',
+    ctaTo: '/register',
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    price: 'Rs 999',
+    cycle: 'per year',
+    pitch: 'For growing teams that need billing + operations',
+    bullets: ['Unlimited customers and staff', 'Invoices, PO, payroll, attendance', 'Advanced reports and exports'],
+    cta: 'Explore Business',
+    ctaTo: '/pricing',
+    popular: true,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price: 'Rs 2,499',
+    cycle: 'per year',
+    pitch: 'For advanced operations and multi-branch control',
+    bullets: ['Inventory + branch capabilities', 'WhatsApp + API readiness', 'Priority support and custom controls'],
+    cta: 'See Pro Plan',
+    ctaTo: '/pricing',
+  },
 ];
 
-const FREE_FEATURES = [
-  { text: 'Khata ledger — 50 customers', included: true },
-  { text: '500 transactions/month', included: true },
-  { text: 'Basic daily reports', included: true },
-  { text: 'Advanced reports (P&L)', included: false },
-  { text: 'Invoices & estimates', included: false },
-  { text: 'Payroll calculation', included: false },
+const IMPROVEMENTS = [
+  {
+    title: 'Clearer first screen',
+    text: 'We now present who Bahi360 is for, what outcomes it drives, and where to begin in under 10 seconds.',
+  },
+  {
+    title: 'Subscription-led flow',
+    text: 'Plan options are visible on Home with direct paths to Pricing, reducing confusion before signup.',
+  },
+  {
+    title: 'Trust through operations depth',
+    text: 'The page highlights real modules like GST, GSTR-2B, payroll, inventory, and ledger instead of generic claims.',
+  },
+  {
+    title: 'Faster decision path',
+    text: 'Every section includes action paths: Start Free, View Pricing, or Contact for onboarding support.',
+  },
 ];
 
-const BUSINESS_FEATURES = [
-  { text: 'Unlimited customers & transactions', included: true },
-  { text: 'Advanced P&L reports', included: true },
-  { text: 'Invoices & estimates', included: true },
-  { text: 'Purchase orders', included: true },
-  { text: 'Export to Excel/PDF', included: true },
-  { text: 'Email support', included: true },
-  { text: 'Unlimited staff', included: false },
-  { text: 'Attendance tracking', included: false },
-  { text: 'Leave management', included: false },
-  { text: 'Payroll calculation', included: false },
-  { text: 'Inventory management', included: false },
-  { text: 'Bulk WhatsApp notifications', included: false },
-];
-
-const PRO_FEATURES = [
-  { text: 'Everything in Business, plus...', included: true },
-  { text: '50 staff', included: true },
-  { text: 'Attendance tracking', included: true },
-  { text: 'Leave management', included: true },
-  { text: 'Payroll calculation', included: true },
-  { text: 'Inventory management', included: true },
-  { text: 'Bulk WhatsApp notifications', included: true },
-  { text: 'Phone + email support', included: true },
-];
-
-const PLANS = [
-  { id: 'free', name: 'Free', price: '₹0', period: 'forever', desc: 'For solo shopkeepers', popular: false, features: FREE_FEATURES },
-  { id: 'business', name: 'Business', monthly: 99, yearly: 1069, desc: 'For growing teams', popular: true, features: BUSINESS_FEATURES },
-  { id: 'pro', name: 'Pro', monthly: 149, yearly: 1609, desc: 'For established businesses', popular: false, features: PRO_FEATURES },
+const FAQ_PREVIEW = [
+  'Can I start on Free and upgrade later without losing data?',
+  'Do plans include payroll, attendance, and invoicing together?',
+  'Can I use Bahi360 for multi-branch operations?',
+  'Is GST and compliance workflow included?',
 ];
 
 export default function Home() {
@@ -99,7 +94,6 @@ export default function Home() {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSuccess, setContactSuccess] = useState('');
   const [contactError, setContactError] = useState('');
-  const [billing, setBilling] = useState('year');
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
@@ -109,6 +103,7 @@ export default function Home() {
       setContactError('All fields are required.');
       return;
     }
+
     setContactLoading(true);
     try {
       const res = await api.post('/public/contact', contact);
@@ -123,223 +118,202 @@ export default function Home() {
 
   return (
     <div>
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-50">
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%230B3C5D\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")', backgroundRepeat: 'repeat' }} />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28 lg:py-36">
-          <div className="max-w-3xl mx-auto text-center">
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium bg-primary-100 text-primary-700 mb-6">
-              Trusted by 200+ organizations
-            </span>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight tracking-tight">
-              People Operations,{' '}
-              <span className="text-primary-600">Simplified</span>
-            </h1>
-            <p className="mt-6 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              Enterprise-grade platform that streamlines payroll, attendance, leave management, and workforce operations — all in one place.
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register" className="btn-primary !py-3 !px-8 text-base shadow-lg shadow-primary-700/25">
-                Start Free Trial
-              </Link>
-              <Link to="/services" className="btn-secondary-navy !py-3 !px-8 text-base">
-                Explore Services
-              </Link>
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-emerald-50 py-20 md:py-28 lg:py-32">
+        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(120deg, #0b3c5d 0%, #2fbf71 100%)', maskImage: 'radial-gradient(circle at 30% 20%, black 0%, transparent 70%)' }} />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <span className="inline-flex items-center px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-primary-100 text-primary-700 uppercase">
+                Bahi360 Business Operating System
+              </span>
+              <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight text-gray-900">
+                Run HR, Finance, Ledger, and Growth from one control center.
+              </h1>
+              <p className="mt-6 text-lg text-gray-600 max-w-2xl">
+                Bahi360 helps teams replace scattered tools with one platform for payroll, attendance, invoicing, inventory,
+                compliance, and subscription-managed scaling.
+              </p>
+              <div className="mt-9 flex flex-col sm:flex-row gap-4">
+                <Link to="/register" className="btn-primary !py-3 !px-7 text-base">
+                  Start Free Trial
+                </Link>
+                <Link to="/pricing" className="btn-secondary-navy !py-3 !px-7 text-base">
+                  View Subscription Plans
+                </Link>
+              </div>
+              <p className="mt-4 text-sm text-gray-500">No credit card required for trial. Upgrade any time.</p>
             </div>
-            <p className="mt-4 text-sm text-gray-400">No credit card required - Free 14-day trial</p>
+
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-xl p-6 md:p-8">
+              <h2 className="text-xl font-semibold text-gray-900">What teams improve with Bahi360</h2>
+              <ul className="mt-5 space-y-4">
+                {[
+                  'Reduce payroll processing effort with automated attendance and deductions.',
+                  'Track customer-supplier cash movement in a real-time ledger.',
+                  'Launch invoicing and collection workflows with payment status visibility.',
+                  'Control usage and upgrades through structured subscription plans.',
+                ].map((line) => (
+                  <li key={line} className="flex items-start gap-3 text-sm text-gray-700">
+                    <svg className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="py-16 md:py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Everything you need to manage your workforce</h2>
-            <p className="mt-4 text-lg text-gray-600">Comprehensive tools designed for modern HR teams.</p>
+          <div className="max-w-3xl mx-auto text-center mb-14">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Built for daily operations, not just dashboards</h2>
+            <p className="mt-4 text-lg text-gray-600">Each module solves a real workflow your team runs every day.</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="group p-6 lg:p-8 rounded-2xl border border-gray-100 bg-white hover:shadow-lg hover:border-primary-100 transition-all">
-                <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 mb-5 group-hover:bg-primary-100 transition-colors">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    {feature.icon}
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{feature.title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{feature.desc}</p>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {CORE_MODULES.map((module) => (
+              <article key={module.title} className="rounded-2xl border border-gray-100 p-6 bg-white hover:shadow-md transition-shadow">
+                <h3 className="text-lg font-semibold text-gray-900">{module.title}</h3>
+                <p className="mt-3 text-sm text-gray-600 leading-relaxed">{module.desc}</p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-gradient-to-br from-gray-50 to-primary-50/50">
+      <section className="py-16 md:py-24 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Trusted by industry leaders</h2>
-            <p className="mt-4 text-lg text-gray-600">See what our customers have to say.</p>
+          <div className="max-w-3xl mx-auto text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Choose the plan that matches your growth stage</h2>
+            <p className="mt-4 text-lg text-gray-600">Simple annual pricing. Start with Free, move to Business or Pro as operations expand.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.author} className="p-6 lg:p-8 rounded-2xl bg-white border border-gray-100 shadow-sm">
-                <svg className="w-8 h-8 text-primary-200 mb-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C9.591 11.69 11 13.189 11 15c0 1.933-1.567 3.5-3.5 3.5-1.271 0-2.404-.655-2.917-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C19.591 11.69 21 13.189 21 15c0 1.933-1.567 3.5-3.5 3.5-1.271 0-2.404-.655-2.917-1.179z" />
-                </svg>
-                <p className="text-gray-600 text-sm leading-relaxed mb-6">{t.quote}</p>
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm">{t.author}</p>
-                  <p className="text-gray-400 text-xs mt-0.5">{t.role}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      <section className="py-16 md:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Simple, transparent pricing</h2>
-            <p className="mt-4 text-lg text-gray-600">No hidden fees. Scale as you grow.</p>
-            <div className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-1 mt-6 shadow-sm">
-              <button
-                onClick={() => setBilling('month')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'month' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {PLAN_SUMMARY.map((plan) => (
+              <div
+                key={plan.id}
+                className={`rounded-2xl border-2 p-6 bg-white ${plan.popular ? 'border-primary-500 shadow-lg' : 'border-gray-200 shadow-sm'}`}
               >
-                Monthly
-              </button>
-              <button
-                onClick={() => setBilling('year')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${billing === 'year' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Annual <span className="text-emerald-300 font-semibold">Save 10%</span>
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {PLANS.map((plan) => {
-              const isPaid = plan.monthly != null;
-              const price = isPaid ? (billing === 'month' ? plan.monthly : plan.yearly) : null;
-              const periodLabel = !isPaid ? plan.period : (billing === 'month' ? '/mo' : '/yr');
-              const perMonth = isPaid && billing === 'year' ? `₹${Math.round(plan.yearly / 12)}/mo` : null;
-              return (
-              <div key={plan.id} className={`relative rounded-2xl border-2 p-8 ${plan.popular ? 'border-primary-500 ring-2 ring-primary-500/20 bg-primary-50/30' : 'border-gray-200 bg-white'}`}>
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary-600 text-white text-xs font-semibold rounded-full whitespace-nowrap">
+                  <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
                     Most Popular
-                  </div>
+                  </span>
                 )}
-                <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
-                <p className="mt-4">
-                  {isPaid ? (
-                    <><span className="text-4xl font-bold text-gray-900">₹{price.toLocaleString('en-IN')}</span><span className="text-gray-400 text-sm ml-1">{periodLabel}</span></>
-                  ) : (
-                    <><span className="text-4xl font-bold text-gray-900">{plan.price}</span><span className="text-gray-400 text-sm ml-1">{plan.period}</span></>
-                  )}
-                </p>
-                <p className="mt-1 text-sm text-gray-500">
-                  {perMonth}{plan.desc && ` — ${plan.desc}`}
-                </p>
-                <ul className="mt-6 space-y-3">
-                  {plan.features.map((f, i) => (
-                    <li key={i} className={`flex items-start gap-2.5 text-sm ${f.included ? 'text-gray-700' : 'text-gray-400'}`}>
-                      {f.included ? (
-                        <svg className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      )}
-                      <span>{f.text}</span>
+                <h3 className="mt-4 text-xl font-bold text-gray-900">{plan.name}</h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">{plan.price}</p>
+                <p className="text-sm text-gray-500">{plan.cycle}</p>
+                <p className="mt-3 text-sm text-gray-600">{plan.pitch}</p>
+                <ul className="mt-5 space-y-2">
+                  {plan.bullets.map((bullet) => (
+                    <li key={bullet} className="flex items-start gap-2 text-sm text-gray-700">
+                      <svg className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>{bullet}</span>
                     </li>
                   ))}
                 </ul>
                 <Link
-                  to="/register"
-                  className={`mt-8 w-full block text-center py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isPaid
-                      ? 'bg-primary-600 text-white hover:bg-primary-700 shadow-sm'
-                      : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
-                  }`}
+                  to={plan.ctaTo}
+                  className={`mt-7 block text-center rounded-xl py-2.5 text-sm font-medium ${plan.popular ? 'bg-primary-600 text-white hover:bg-primary-700' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                 >
-                  {isPaid ? 'Upgrade Now' : 'Get Started Free'}
+                  {plan.cta}
                 </Link>
               </div>
-              );
-            })}
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <Link to="/pricing" className="text-primary-700 font-medium hover:text-primary-800">
+              Compare all plan features and limits -&gt;
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Contact section */}
-      <section id="contact" className="py-16 md:py-24 bg-gray-50">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Get in Touch</h2>
-            <p className="mt-4 text-lg text-gray-600">Have a question or need help? Drop us a message and we'll get back to you.</p>
+      <section className="py-16 md:py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Home page improvements delivered</h2>
+            <p className="mt-4 text-lg text-gray-600">We focused on clarity, conversion path, and subscription visibility.</p>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
-            <form onSubmit={handleContactSubmit} className="space-y-5">
-              {contactSuccess && (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-medium">{contactSuccess}</div>
-              )}
-              {contactError && (
-                <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{contactError}</div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Name</label>
-                <input
-                  type="text"
-                  value={contact.name}
-                  onChange={e => setContact(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="John Doe"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
-                <input
-                  type="email"
-                  value={contact.email}
-                  onChange={e => setContact(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="john@example.com"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
-                <textarea
-                  rows={4}
-                  value={contact.message}
-                  onChange={e => setContact(prev => ({ ...prev, message: e.target.value }))}
-                  placeholder="How can we help you?"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={contactLoading}
-                className="btn-primary w-full !py-2.5 !text-base"
-              >
-                {contactLoading ? 'Sending...' : 'Send Message'}
-              </button>
-            </form>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {IMPROVEMENTS.map((item) => (
+              <article key={item.title} className="rounded-2xl border border-gray-200 p-6 bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
+                <p className="mt-3 text-sm text-gray-600">{item.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
       <section className="py-16 md:py-24 bg-gradient-to-br from-primary-700 to-primary-900">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to streamline your business operations?</h2>
-          <p className="mt-4 text-lg text-white/80">Join 200+ organizations already using bahi360. Start your free trial today.</p>
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/register" className="bg-white text-primary-700 !py-3 !px-8 rounded-lg text-base font-semibold hover:bg-primary-50 transition-colors shadow-xl">
-              Get Started Free
-            </Link>
-            <Link to="/login" className="text-white border border-white/30 !py-3 !px-8 rounded-lg text-base font-medium hover:bg-white/10 transition-colors">
-              Sign In
-            </Link>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white">Still comparing options?</h2>
+              <p className="mt-4 text-white/85 text-lg">
+                We mapped common subscription questions to help you choose the right plan quickly.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {FAQ_PREVIEW.map((q) => (
+                  <li key={q} className="text-sm text-white/90 flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-300 shrink-0" />
+                    <span>{q}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/faq" className="bg-white text-primary-700 rounded-lg py-2.5 px-5 text-sm font-semibold hover:bg-primary-50">
+                  Read FAQs
+                </Link>
+                <Link to="/pricing" className="border border-white/30 text-white rounded-lg py-2.5 px-5 text-sm font-medium hover:bg-white/10">
+                  Open Pricing
+                </Link>
+              </div>
+            </div>
+
+            <div id="contact" className="bg-white rounded-2xl border border-white/20 p-6 md:p-7">
+              <h3 className="text-xl font-semibold text-gray-900">Talk to the Bahi360 team</h3>
+              <p className="mt-2 text-sm text-gray-600">Share your use case and we will help you choose the right subscription setup.</p>
+
+              <form onSubmit={handleContactSubmit} className="mt-5 space-y-4">
+                {contactSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm">{contactSuccess}</div>
+                )}
+                {contactError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{contactError}</div>
+                )}
+
+                <input
+                  type="text"
+                  value={contact.name}
+                  onChange={(e) => setContact((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Your name"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <input
+                  type="email"
+                  value={contact.email}
+                  onChange={(e) => setContact((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="Work email"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <textarea
+                  rows={4}
+                  value={contact.message}
+                  onChange={(e) => setContact((prev) => ({ ...prev, message: e.target.value }))}
+                  placeholder="Tell us what you want to improve: payroll, invoicing, subscriptions, inventory..."
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                />
+                <button type="submit" disabled={contactLoading} className="btn-primary w-full !py-2.5">
+                  {contactLoading ? 'Sending...' : 'Send Message'}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </section>

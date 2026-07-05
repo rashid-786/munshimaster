@@ -7,6 +7,7 @@ const customPlanService = require('../services/customPlan.service');
 const whiteLabelService = require('../services/whiteLabel.service');
 const analyticsService = require('../services/subscriptionAnalytics.service');
 const audit = require('../services/audit.service');
+const saService = require('../services/superAdmin.service');
 
 exports.seedSuperAdmin = async (req, res) => {
   const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -140,26 +141,76 @@ exports.createTenant = async (req, res) => {
 };
 
 exports.getTenants = async (req, res) => {
-  const { search, page = 1, limit = 20 } = req.query;
+  const { search, page = 1, limit = 20, status, subscriptionPlan, dateFrom, dateTo } = req.query;
   const offset = (page - 1) * limit;
 
   try {
-    let query = `
-      SELECT t.id, t.company_name, t.subdomain, t.subscription_plan, t.settings, t.created_at,
-             (SELECT COUNT(*) FROM employees e WHERE e.tenant_id = t.id) as employee_count,
-             (SELECT e.email FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_email,
-             (SELECT e.phone FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_phone,
-             (SELECT e.id FROM employees e WHERE e.tenant_id = t.id AND e.role = 'tenant_admin' LIMIT 1) as admin_id
-      FROM tenants t
-    `;
-    let countQuery = 'SELECT COUNT(*) as count FROM tenants t';
+    const conditions = [];
     const params = [];
 
     if (search) {
-      query += ' WHERE t.company_name LIKE ? OR t.subdomain LIKE ?';
-      countQuery += ' WHERE t.company_name LIKE ? OR t.subdomain LIKE ?';
-      params.push(`%${search}%`, `%${search}%`);
+      conditions.push(`(t.company_name ILIKE ? OR t.subdomain ILIKE ? OR e.first_name ILIKE ? OR e.last_name ILIKE ? OR e.email ILIKE ? OR e.phone ILIKE ?)`);
+      const p = `%${search}%`;
+      params.push(p, p, p, p, p, p);
     }
+
+    // Filter by subscription status (active, trial, paid, expired, suspended)
+    if (status) {
+      switch (status) {
+        case 'active':
+          conditions.push(`t.subscription_status = 'active'`);
+          break;
+        case 'trial':
+          conditions.push(`t.subscription_status = 'trialing'`);
+          break;
+        case 'paid':
+          conditions.push(`t.subscription_status = 'active'`);
+          break;
+        case 'expired':
+          conditions.push(`t.subscription_status = 'expired'`);
+          break;
+        case 'suspended':
+          conditions.push(`(t.status = 'inactive' OR t.subscription_status = 'suspended')`);
+          break;
+      }
+    }
+
+    // Filter by subscription plan
+    if (subscriptionPlan) {
+      conditions.push(`UPPER(t.subscription_plan) = UPPER(?)`);
+      params.push(subscriptionPlan);
+    }
+
+    // Filter by created date range
+    if (dateFrom) {
+      conditions.push(`t.created_at >= ?`);
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      conditions.push(`t.created_at <= ?`);
+      params.push(dateTo + ' 23:59:59');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    let query = `
+      SELECT t.id, t.company_name, t.subdomain, t.subscription_plan, t.subscription_status,
+             t.status, t.settings, t.created_at, t.notes, t.tags,
+             e.first_name as owner_first_name, e.last_name as owner_last_name,
+             e.email as owner_email, e.phone as owner_phone,
+             (SELECT COUNT(*) FROM hris_saas.employees emp WHERE emp.tenant_id = t.id) as employee_count,
+             (SELECT COUNT(*) FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id AND s.status = 'active') as active_subscription_count,
+             (SELECT s.status FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id ORDER BY s.created_at DESC LIMIT 1) as latest_subscription_status,
+             (SELECT s.trial_ends_at FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id ORDER BY s.created_at DESC LIMIT 1) as trial_ends_at,
+             (SELECT MAX(s.updated_at) FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id) as last_activity_at
+      FROM hris_saas.tenants t
+      LEFT JOIN hris_saas.employees e ON e.tenant_id = t.id AND e.role = 'tenant_admin'
+    `;
+    let countQuery = `SELECT COUNT(DISTINCT t.id) as count FROM hris_saas.tenants t
+      LEFT JOIN hris_saas.employees e ON e.tenant_id = t.id AND e.role = 'tenant_admin'`;
+
+    query += ` ${whereClause}`;
+    countQuery += ` ${whereClause}`;
 
     query += ' ORDER BY t.created_at DESC LIMIT ? OFFSET ?';
     const [rows] = await db.execute(query, [...params, String(limit), String(offset)]);
@@ -167,12 +218,13 @@ exports.getTenants = async (req, res) => {
 
     const tenants = rows.map(t => ({
       ...t,
-      settings: typeof t.settings === 'string' ? JSON.parse(t.settings) : (t.settings || {})
+      settings: typeof t.settings === 'string' ? JSON.parse(t.settings) : (t.settings || {}),
+      tags: typeof t.tags === 'string' ? JSON.parse(t.tags) : (t.tags || []),
     }));
 
     res.json({
       tenants,
-      total: countResult[0].count,
+      total: Number(countResult[0]?.count || 0),
       page: Number(page),
       limit: Number(limit)
     });
@@ -211,12 +263,17 @@ exports.getTenantDetail = async (req, res) => {
     );
 
     const [admin] = await db.execute(
-      `SELECT id, first_name, last_name, email, role
+      `SELECT id, first_name, last_name, email, phone, role
        FROM employees WHERE tenant_id = ? AND role = 'tenant_admin' LIMIT 1`,
       [id]
     );
 
-    res.json({ tenant, employees, admin: admin[0] || null });
+    const adminData = admin[0] ? {
+      ...admin[0],
+      name: [admin[0].first_name, admin[0].last_name].filter(Boolean).join(' ') || admin[0].email,
+    } : null;
+
+    res.json({ tenant, employees, admin: adminData });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch tenant details.' });
@@ -266,6 +323,26 @@ exports.deleteTenant = async (req, res) => {
 
   try {
     await db.query('START TRANSACTION');
+    // Delete from all child tables referencing tenants.id
+    await db.execute('DELETE FROM referral_redemptions WHERE referrer_id = ? OR referred_id = ?', [id, id]);
+    await db.execute('DELETE FROM referral_codes WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM campaign_redemptions WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM conversion_events WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM subscription_events WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM tenant_section_visibility WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM tenant_feature_overrides WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM tenant_custom_plans WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM tenant_branding WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM tenant_usage WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM payments WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM subscriptions WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM email_logs WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM attachments WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM invoices WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM purchase_orders WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM suppliers WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM customers WHERE tenant_id = ?', [id]);
+    await db.execute('DELETE FROM staff_replacements WHERE tenant_id = ?', [id]);
     await db.execute('DELETE FROM payroll WHERE tenant_id = ?', [id]);
     await db.execute('DELETE FROM leaves WHERE tenant_id = ?', [id]);
     await db.execute('DELETE FROM attendance WHERE tenant_id = ?', [id]);
@@ -276,7 +353,7 @@ exports.deleteTenant = async (req, res) => {
     res.json({ message: 'Tenant and all associated data deleted permanently.' });
   } catch (error) {
     await db.query('ROLLBACK');
-    console.error(error);
+    console.error('deleteTenant error:', error);
     res.status(500).json({ error: 'Failed to delete tenant.' });
   }
 };
@@ -533,14 +610,15 @@ exports.getTenantLeaves = async (req, res) => {
 
 exports.updateSuperEmployee = async (req, res) => {
   const { id } = req.params;
-  const { firstName, lastName, email, role, baseSalary, tenantId } = req.body;
+  const { firstName, lastName, email, role, baseSalary, tenantId, reason } = req.body;
 
   try {
-    const [existing] = await db.execute('SELECT id FROM employees WHERE id = ?', [id]);
+    const [existing] = await db.execute('SELECT * FROM employees WHERE id = ?', [id]);
     if (existing.length === 0) {
       return res.status(404).json({ error: 'Employee not found.' });
     }
 
+    const emp = existing[0];
     const updates = [];
     const params = [];
 
@@ -561,10 +639,73 @@ exports.updateSuperEmployee = async (req, res) => {
     params.push(id);
     await db.execute(`UPDATE employees SET ${updates.join(', ')} WHERE id = ?`, params);
 
+    await saService.logAction({
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      action: saService.SA_ACTIONS.EMPLOYEE_UPDATED,
+      entityType: 'employee',
+      entityId: id,
+      tenantId: tenantId || emp.tenant_id,
+      oldValue: { firstName: emp.first_name, lastName: emp.last_name, email: emp.email, role: emp.role },
+      newValue: { firstName, lastName, email, role, baseSalary, tenantId },
+      reason: reason || null,
+      details: { updatedFields: updates.map(u => u.split('=')[0].trim()) },
+      req,
+    });
+
     res.json({ message: 'Employee updated successfully.' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update employee.' });
+  }
+};
+
+// ─── Activate Trial ─────────────────────────────────────────────
+exports.activateTrial = async (req, res) => {
+  const { tenantId } = req.params;
+  const { planId, trialDays, reason } = req.body;
+
+  try {
+    const targetPlan = planId || 'manage';
+    const days = trialDays || 14;
+    const trialEnd = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    // Expire any existing active/trialing subscription
+    await db.execute(
+      `UPDATE hris_saas.subscriptions SET status = 'expired', ended_at = NOW(), updated_at = NOW()
+       WHERE tenant_id = ? AND status IN ('active','trialing')`,
+      [tenantId]
+    );
+
+    // Create new trial subscription
+    await db.execute(
+      `INSERT INTO hris_saas.subscriptions (tenant_id, plan_id, status, trial_ends_at, current_period_start, current_period_end, created_at, updated_at)
+       VALUES (?, ?, 'trialing', ?, NOW(), NOW() + INTERVAL '1 year', NOW(), NOW())`,
+      [tenantId, targetPlan, trialEnd]
+    );
+
+    // Update tenant
+    await db.execute(
+      `UPDATE hris_saas.tenants SET subscription_plan = UPPER(?), subscription_status = 'trialing' WHERE id = ?`,
+      [targetPlan, tenantId]
+    );
+
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: 'tenant.trial_activated',
+      entityType: 'tenant', entityId: tenantId,
+      details: { planId: targetPlan, trialDays: days, trialEndsAt: trialEnd, reason },
+      req,
+    });
+
+    res.json({
+      message: `14-day trial activated on ${targetPlan.toUpperCase()} plan.`,
+      plan: targetPlan.toUpperCase(),
+      trialEndsAt: trialEnd,
+    });
+  } catch (error) {
+    console.error('activateTrial error:', error);
+    res.status(500).json({ error: 'Failed to activate trial.' });
   }
 };
 
@@ -582,6 +723,188 @@ exports.getSystemSettings = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch system settings.' });
+  }
+};
+
+// =============================================
+// TENANT STATUS — Suspend or reactivate a tenant
+// =============================================
+exports.updateTenantStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status, reason } = req.body;
+
+  if (!status || !['active', 'suspended'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be "active" or "suspended".' });
+  }
+
+  try {
+    const [existing] = await db.execute('SELECT id, company_name, status, subscription_status FROM hris_saas.tenants WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+
+    const tenant = existing[0];
+    const oldStatus = tenant.subscription_status || tenant.status || 'active';
+
+    if (oldStatus === status) {
+      return res.status(400).json({ error: `Tenant is already ${status}.` });
+    }
+
+    // Update tenant status and subscription_status
+    const tenantStatus = status === 'suspended' ? 'inactive' : 'active';
+    await db.execute(
+      'UPDATE hris_saas.tenants SET status = ?, subscription_status = ? WHERE id = ?',
+      [tenantStatus, status, id]
+    );
+
+    // Also update the subscriptions table if there's an active subscription
+    await db.execute(
+      `UPDATE hris_saas.subscriptions SET status = ?, updated_at = NOW() WHERE tenant_id = ? AND status IN ('active', 'trialing')`,
+      [status, id]
+    );
+
+    // Log to super admin action log
+    await saService.logAction({
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      action: status === 'suspended' ? saService.SA_ACTIONS.TENANT_SUSPENDED : saService.SA_ACTIONS.TENANT_REACTIVATED,
+      entityType: 'tenant',
+      entityId: id,
+      tenantId: id,
+      details: { oldStatus, newStatus: status, reason: reason || null, companyName: tenant.company_name },
+      req,
+    });
+
+    // Log to tenant audit log
+    await saService.logTenantAudit({
+      tenantId: id,
+      actorId: req.user?.id,
+      actorName: req.user?.name || 'Super Admin',
+      action: status === 'suspended' ? 'super_admin.tenant_suspended' : 'super_admin.tenant_reactivated',
+      entityType: 'tenant',
+      entityId: id,
+      changes: { oldStatus, newStatus: status, reason: reason || null },
+      req,
+    });
+
+    res.json({
+      message: `Tenant ${status === 'suspended' ? 'suspended' : 'reactivated'} successfully.`,
+      oldStatus,
+      newStatus: status,
+    });
+  } catch (error) {
+    console.error('updateTenantStatus error:', error);
+    res.status(500).json({ error: 'Failed to update tenant status.' });
+  }
+};
+
+// =============================================
+// TENANT USAGE — Get usage analytics for a tenant
+// =============================================
+exports.getTenantUsage = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Check tenant exists
+    const [tenantRows] = await db.execute('SELECT id, company_name, subscription_plan FROM hris_saas.tenants WHERE id = ?', [id]);
+    if (tenantRows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+
+    // Usage from tenant_usage table (current & historical)
+    const [usageRecords] = await db.execute(
+      `SELECT * FROM hris_saas.tenant_usage WHERE tenant_id = ? ORDER BY usage_month DESC LIMIT 12`,
+      [id]
+    );
+
+    // Current usage counts from live tables
+    const [employeeCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.employees WHERE tenant_id = ?', [id]);
+    const [attendanceCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.attendance WHERE tenant_id = ?', [id]);
+    const [leaveCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.leaves WHERE tenant_id = ?', [id]);
+    const [payrollCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.payroll WHERE tenant_id = ?', [id]);
+
+    // Subscription info
+    const [subscriptions] = await db.execute(
+      `SELECT s.*, sp.name as plan_name, sp.price_inr, sp.period
+       FROM hris_saas.subscriptions s
+       JOIN hris_saas.subscription_plans sp ON s.plan_id = sp.id
+       WHERE s.tenant_id = ?
+       ORDER BY s.created_at DESC`,
+      [id]
+    );
+
+    // Payment history
+    const [payments] = await db.execute(
+      `SELECT p.*, sp.name as plan_name
+       FROM hris_saas.payments p
+       LEFT JOIN hris_saas.subscription_plans sp ON p.plan_id = sp.id
+       WHERE p.tenant_id = ?
+       ORDER BY p.created_at DESC LIMIT 10`,
+      [id]
+    );
+
+    res.json({
+      tenant: { id: tenantRows[0].id, companyName: tenantRows[0].company_name, subscription_plan: tenantRows[0].subscription_plan },
+      liveCounts: {
+        employees: Number(employeeCount[0]?.c || 0),
+        attendance: Number(attendanceCount[0]?.c || 0),
+        leaves: Number(leaveCount[0]?.c || 0),
+        payroll: Number(payrollCount[0]?.c || 0),
+      },
+      usageHistory: usageRecords,
+      subscription: subscriptions[0] || null,
+      recentPayments: payments,
+    });
+  } catch (error) {
+    console.error('getTenantUsage error:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant usage.' });
+  }
+};
+
+// =============================================
+// TENANT SUBSCRIPTION — Get detailed subscription info
+// =============================================
+exports.getTenantSubscription = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [tenantRows] = await db.execute('SELECT id, company_name, subscription_plan, subscription_status FROM hris_saas.tenants WHERE id = ?', [id]);
+    if (tenantRows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+
+    const [subscriptions] = await db.execute(
+      `SELECT s.*, sp.name as plan_name, sp.price_inr, sp.period, sp.features
+       FROM hris_saas.subscriptions s
+       JOIN hris_saas.subscription_plans sp ON s.plan_id = sp.id
+       WHERE s.tenant_id = ?
+       ORDER BY s.created_at DESC`,
+      [id]
+    );
+
+    const [planFeatures] = await db.execute(
+      `SELECT pf.* FROM hris_saas.plan_features pf
+       WHERE pf.plan_id = ?
+       ORDER BY pf.feature_type, pf.feature_key`,
+      [tenantRows[0].subscription_plan ? tenantRows[0].subscription_plan.toLowerCase() : 'free']
+    );
+
+    const [payments] = await db.execute(
+      `SELECT COUNT(*) as total_payments, COALESCE(SUM(amount),0) as total_amount
+       FROM hris_saas.payments WHERE tenant_id = ? AND status IN ('captured','completed')`,
+      [id]
+    );
+
+    res.json({
+      tenant: tenantRows[0],
+      currentSubscription: subscriptions[0] || null,
+      subscriptionHistory: subscriptions,
+      planFeatures,
+      paymentSummary: payments[0],
+    });
+  } catch (error) {
+    console.error('getTenantSubscription error:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant subscription.' });
   }
 };
 
@@ -1020,5 +1343,581 @@ exports.getSubscriptionAnalytics = async (req, res) => {
   } catch (error) {
     console.error('getSubscriptionAnalytics error:', error);
     res.status(500).json({ error: 'Failed to fetch subscription analytics.' });
+  }
+};
+
+// =============================================
+// CAMPAIGNS — List all campaigns
+// =============================================
+exports.listCampaigns = async (req, res) => {
+  try {
+    const campaigns = await saService.getCampaigns();
+    res.json({ campaigns });
+  } catch (error) {
+    console.error('listCampaigns error:', error);
+    res.status(500).json({ error: 'Failed to list campaigns.' });
+  }
+};
+
+// =============================================
+// CAMPAIGNS — Create
+// =============================================
+exports.createCampaign = async (req, res) => {
+  try {
+    const { name, description, discountPct, discountMonths, code, appliesTo, maxRedemptions, startsAt, endsAt, isActive } = req.body;
+    if (!name || !startsAt || !endsAt) {
+      return res.status(400).json({ error: 'name, startsAt, and endsAt are required.' });
+    }
+    const campaign = await saService.createCampaign(req.body);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.CAMPAIGN_CREATED,
+      entityType: 'campaign', entityId: campaign.id,
+      details: { name, code, discountPct, discountMonths },
+      req,
+    });
+    res.status(201).json({ message: 'Campaign created.', campaign });
+  } catch (error) {
+    console.error('createCampaign error:', error);
+    res.status(500).json({ error: 'Failed to create campaign.' });
+  }
+};
+
+// =============================================
+// CAMPAIGNS — Update
+// =============================================
+exports.updateCampaign = async (req, res) => {
+  try {
+    const campaign = await saService.updateCampaign(req.params.id, req.body);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.CAMPAIGN_UPDATED,
+      entityType: 'campaign', entityId: campaign.id,
+      details: req.body,
+      req,
+    });
+    res.json({ message: 'Campaign updated.', campaign });
+  } catch (error) {
+    console.error('updateCampaign error:', error);
+    res.status(500).json({ error: 'Failed to update campaign.' });
+  }
+};
+
+// =============================================
+// CAMPAIGNS — Delete
+// =============================================
+exports.deleteCampaign = async (req, res) => {
+  try {
+    await saService.deleteCampaign(req.params.id);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.CAMPAIGN_DELETED,
+      entityType: 'campaign', entityId: req.params.id,
+      details: {},
+      req,
+    });
+    res.json({ message: 'Campaign deleted.' });
+  } catch (error) {
+    console.error('deleteCampaign error:', error);
+    res.status(500).json({ error: 'Failed to delete campaign.' });
+  }
+};
+
+// =============================================
+// REFERRALS — List with stats
+// =============================================
+exports.getReferralStats = async (req, res) => {
+  try {
+    const stats = await saService.getReferralStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('getReferralStats error:', error);
+    res.status(500).json({ error: 'Failed to fetch referral stats.' });
+  }
+};
+
+// =============================================
+// REFERRALS — List all
+// =============================================
+exports.listReferrals = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const result = await saService.getReferrals(limit, offset);
+    res.json(result);
+  } catch (error) {
+    console.error('listReferrals error:', error);
+    res.status(500).json({ error: 'Failed to list referrals.' });
+  }
+};
+
+// =============================================
+// REFERRALS — Update status
+// =============================================
+exports.updateReferral = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status is required.' });
+    await saService.updateReferral(req.params.id, status);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.REFERRAL_UPDATED,
+      entityType: 'referral', entityId: req.params.id,
+      details: { status },
+      req,
+    });
+    res.json({ message: 'Referral updated.' });
+  } catch (error) {
+    console.error('updateReferral error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update referral.' });
+  }
+};
+
+// =============================================
+// SECTION VISIBILITY — Get for a tenant
+// =============================================
+exports.getSectionVisibility = async (req, res) => {
+  try {
+    const sections = await saService.getSectionVisibility(req.params.id);
+    res.json({ sections });
+  } catch (error) {
+    console.error('getSectionVisibility error:', error);
+    res.status(500).json({ error: 'Failed to fetch section visibility.' });
+  }
+};
+
+// =============================================
+// SECTION VISIBILITY — Update for a tenant
+// =============================================
+exports.updateSectionVisibility = async (req, res) => {
+  try {
+    const { sectionKey, visible, reason } = req.body;
+    if (!sectionKey || visible === undefined) {
+      return res.status(400).json({ error: 'sectionKey and visible are required.' });
+    }
+    await saService.updateSectionVisibility(req.params.id, sectionKey, visible, reason, req.user?.id);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.SECTION_VISIBILITY_UPDATED,
+      entityType: 'tenant', entityId: req.params.id,
+      tenantId: req.params.id,
+      details: { sectionKey, visible, reason },
+      req,
+    });
+    // Also log to tenant audit log
+    await saService.logTenantAudit({
+      tenantId: req.params.id, actorId: req.user?.id, actorName: req.user?.name,
+      action: 'super_admin.section_visibility_updated',
+      entityType: 'section_visibility', entityId: sectionKey,
+      changes: { sectionKey, visible, reason },
+      req,
+    });
+    res.json({ message: 'Section visibility updated.' });
+  } catch (error) {
+    console.error('updateSectionVisibility error:', error);
+    res.status(500).json({ error: 'Failed to update section visibility.' });
+  }
+};
+
+// =============================================
+// PLAN FEATURES — List all (across plans)
+// =============================================
+exports.listAllPlanFeatures = async (req, res) => {
+  try {
+    const features = await saService.getAllPlanFeatures();
+    res.json({ features });
+  } catch (error) {
+    console.error('listAllPlanFeatures error:', error);
+    res.status(500).json({ error: 'Failed to list plan features.' });
+  }
+};
+
+// =============================================
+// PLAN FEATURES — Get for a specific plan
+// =============================================
+exports.listPlanFeatures = async (req, res) => {
+  try {
+    const features = await saService.getPlanFeatures(req.params.planId);
+    res.json({ features });
+  } catch (error) {
+    console.error('listPlanFeatures error:', error);
+    res.status(500).json({ error: 'Failed to list plan features.' });
+  }
+};
+
+// =============================================
+// PLAN FEATURES — Update
+// =============================================
+exports.updatePlanFeature = async (req, res) => {
+  try {
+    const { featureKey } = req.params;
+    const result = await saService.updatePlanFeature(req.params.planId, featureKey, req.body);
+    if (!result) return res.status(404).json({ error: 'Feature not found.' });
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: 'plan_feature.updated',
+      entityType: 'plan_feature',
+      entityId: `${req.params.planId}:${featureKey}`,
+      details: { planId: req.params.planId, featureKey, updates: req.body },
+      req,
+    });
+    res.json({ message: 'Plan feature updated.', feature: result });
+  } catch (error) {
+    console.error('updatePlanFeature error:', error);
+    res.status(500).json({ error: 'Failed to update plan feature.' });
+  }
+};
+
+// =============================================
+// PLANS — Create a new subscription plan
+// =============================================
+exports.createPlan = async (req, res) => {
+  try {
+    const plan = await saService.createPlan(req.body);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.PLAN_CREATED,
+      entityType: 'plan', entityId: plan.id,
+      details: { name: plan.name, code: plan.id, price: plan.price_inr, period: plan.period },
+      req,
+    });
+    res.status(201).json({ message: 'Plan created.', plan });
+  } catch (error) {
+    console.error('createPlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to create plan.' });
+  }
+};
+
+// =============================================
+// PLANS — Update a plan
+// =============================================
+exports.updatePlan = async (req, res) => {
+  try {
+    const plan = await saService.updatePlan(req.params.planId, req.body);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.PLAN_UPDATED,
+      entityType: 'plan', entityId: req.params.planId,
+      details: req.body,
+      req,
+    });
+    res.json({ message: 'Plan updated.', plan });
+  } catch (error) {
+    console.error('updatePlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update plan.' });
+  }
+};
+
+// =============================================
+// PLANS — Deactivate a plan (never delete)
+// =============================================
+exports.deactivatePlan = async (req, res) => {
+  try {
+    const result = await saService.deactivatePlan(req.params.planId);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.PLAN_DEACTIVATED,
+      entityType: 'plan', entityId: req.params.planId,
+      details: {},
+      req,
+    });
+    res.json({ message: 'Plan deactivated.', plan: result });
+  } catch (error) {
+    console.error('deactivatePlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to deactivate plan.' });
+  }
+};
+
+// =============================================
+// PLAN FEATURES — Bulk update features for a plan
+// =============================================
+exports.bulkUpdatePlanFeatures = async (req, res) => {
+  try {
+    const { features } = req.body;
+    if (!Array.isArray(features)) {
+      return res.status(400).json({ error: 'features array is required.' });
+    }
+    const result = await saService.bulkUpdatePlanFeatures(req.params.planId, features);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: 'plan.features_updated',
+      entityType: 'plan_features',
+      entityId: `${req.params.planId}:bulk`,
+      details: { planId: req.params.planId, featureCount: features.length },
+      req,
+    });
+    res.json({ message: 'Plan features updated.', result });
+  } catch (error) {
+    console.error('bulkUpdatePlanFeatures error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update plan features.' });
+  }
+};
+
+// =============================================
+// TENANT PLAN — Change tenant's plan with full audit trail
+// =============================================
+exports.changeTenantPlan = async (req, res) => {
+  try {
+    const { plan: newPlan, reason, startDate, endDate, trialStartDate, trialEndDate } = req.body;
+    if (!newPlan) {
+      return res.status(400).json({ error: 'Plan is required.' });
+    }
+    const result = await saService.changeTenantPlan(req.params.tenantId, newPlan, {
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      reason: reason || `Plan changed to ${newPlan} by super admin`,
+      startDate, endDate, trialStartDate, trialEndDate,
+      req,
+    });
+    res.json({ message: `Tenant plan changed to ${newPlan}.`, result });
+  } catch (error) {
+    console.error('changeTenantPlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to change tenant plan.' });
+  }
+};
+
+// =============================================
+// PLANS — List all subscription plans
+// =============================================
+exports.listPlans = async (req, res) => {
+  try {
+    const plans = await saService.getAllPlans();
+    res.json({ plans });
+  } catch (error) {
+    console.error('listPlans error:', error);
+    res.status(500).json({ error: 'Failed to list plans.' });
+  }
+};
+
+// =============================================
+// REVENUE ANALYTICS
+// =============================================
+exports.getRevenueAnalytics = async (req, res) => {
+  try {
+    const revenue = await saService.getRevenueAnalytics();
+    const subscriptions = await saService.getSubscriptionAnalytics();
+    const tenants = await saService.getTenantUsageAnalytics();
+    res.json({ revenue, subscriptions, tenants });
+  } catch (error) {
+    console.error('getRevenueAnalytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch revenue analytics.' });
+  }
+};
+
+// =============================================
+// SUPER ADMIN ACTION LOG — List all super admin actions with full filtering
+// =============================================
+exports.getActionLog = async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const { tenantId, action, entityType, actorId, dateFrom, dateTo, search } = req.query;
+
+    let sql = 'SELECT * FROM hris_saas.sa_action_log WHERE 1=1';
+    const params = [];
+    const countParams = [];
+
+    if (tenantId) {
+      sql += ' AND tenant_id = ?';
+      params.push(tenantId);
+    }
+    if (action) {
+      sql += ' AND action = ?';
+      params.push(action);
+    }
+    if (entityType) {
+      sql += ' AND entity_type = ?';
+      params.push(entityType);
+    }
+    if (actorId) {
+      sql += ' AND admin_id = ?';
+      params.push(actorId);
+    }
+    if (dateFrom) {
+      sql += ' AND created_at >= ?';
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      sql += ' AND created_at <= ?';
+      params.push(dateTo + 'T23:59:59Z');
+    }
+    if (search) {
+      sql += ' AND (admin_name ILIKE ? OR entity_id ILIKE ? OR reason ILIKE ? OR details::text ILIKE ?)';
+      const q = `%${search}%`;
+      params.push(q, q, q, q);
+    }
+
+    const countSql = sql.replace('SELECT *', 'SELECT COUNT(*) as count');
+    const [countResult] = await db.execute(countSql, params);
+    const total = Number(countResult[0]?.count || 0);
+
+    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(String(limit), String(offset));
+
+    const [rows] = await db.execute(sql, params);
+
+    res.json({
+      logs: rows,
+      total,
+      limit,
+      offset,
+    });
+  } catch (error) {
+    console.error('getActionLog error:', error);
+    res.status(500).json({ error: 'Failed to fetch action log.' });
+  }
+};
+
+/**
+ * Get distinct action types from sa_action_log (for frontend filter dropdowns)
+ */
+exports.getActionLogTypes = async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT DISTINCT action, COUNT(*) as count
+       FROM hris_saas.sa_action_log
+       GROUP BY action
+       ORDER BY count DESC`
+    );
+    res.json({ types: rows });
+  } catch (error) {
+    console.error('getActionLogTypes error:', error);
+    res.status(500).json({ error: 'Failed to fetch action types.' });
+  }
+};
+
+/**
+ * Get distinct actors from sa_action_log (for frontend filter dropdowns)
+ */
+exports.getActionLogActors = async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT DISTINCT admin_id, admin_name
+       FROM hris_saas.sa_action_log
+       WHERE admin_id IS NOT NULL
+       ORDER BY admin_name`
+    );
+    res.json({ actors: rows });
+  } catch (error) {
+    console.error('getActionLogActors error:', error);
+    res.status(500).json({ error: 'Failed to fetch actors.' });
+  }
+};
+
+// =============================================
+// BULK ACTION — Apply override to multiple tenants
+// =============================================
+exports.bulkOverride = async (req, res) => {
+  try {
+    const { tenantIds, featureKey, maxValue, expiresAt, reason } = req.body;
+    if (!tenantIds || !Array.isArray(tenantIds) || tenantIds.length === 0) {
+      return res.status(400).json({ error: 'tenantIds array is required.' });
+    }
+    if (!featureKey) return res.status(400).json({ error: 'featureKey is required.' });
+
+    const results = [];
+    for (const tenantId of tenantIds) {
+      try {
+        const result = await overrideService.setOverride({
+          tenantId,
+          featureKey,
+          maxValue: maxValue !== undefined ? maxValue : null,
+          expiresAt: expiresAt || null,
+          adminId: req.user?.id,
+          adminName: req.user?.name || 'Super Admin',
+          reason: reason || 'Bulk override by super admin',
+        });
+        results.push({ tenantId, success: true, result });
+      } catch (err) {
+        results.push({ tenantId, success: false, error: err.message });
+      }
+    }
+
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: saService.SA_ACTIONS.BULK_ACTION,
+      entityType: 'bulk_override',
+      details: { tenantIds, featureKey, maxValue, expiresAt, reason, results },
+      req,
+    });
+
+    res.json({ message: 'Bulk override completed.', results });
+  } catch (error) {
+    console.error('bulkOverride error:', error);
+    res.status(500).json({ error: 'Failed to apply bulk override.' });
+  }
+};
+
+// =============================================
+// TRIAL EXTENSION — Extend tenant trial period
+// =============================================
+exports.extendTrial = async (req, res) => {
+  try {
+    const { extensionType, extensionDays, customTrialEndDate, reason } = req.body;
+    if (!reason) {
+      return res.status(400).json({ error: 'Reason is required.' });
+    }
+    if (!extensionType && !customTrialEndDate) {
+      return res.status(400).json({ error: 'extensionType or customTrialEndDate is required.' });
+    }
+    const result = await saService.extendTrial(req.params.tenantId, {
+      extensionType,
+      extensionDays: extensionDays ? Number(extensionDays) : null,
+      customTrialEndDate,
+      reason,
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      req,
+    });
+    res.json({
+      message: `Trial extended to ${new Date(result.newTrialEnd).toLocaleDateString('en-IN')}.`,
+      result,
+    });
+  } catch (error) {
+    console.error('extendTrial error:', error);
+    res.status(400).json({ error: error.message || 'Failed to extend trial.' });
+  }
+};
+
+// =============================================
+// TENANT NOTES — Update notes/tags
+// =============================================
+exports.updateTenantNotes = async (req, res) => {
+  try {
+    const { notes, tags } = req.body;
+    const sets = [];
+    const params = [];
+
+    if (notes !== undefined) { sets.push('notes = ?'); params.push(notes); }
+    if (tags !== undefined) { sets.push('tags = ?'); params.push(JSON.stringify(tags)); }
+
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+
+    // Fetch old values for audit
+    const [oldRows] = await db.execute('SELECT notes, tags FROM hris_saas.tenants WHERE id = ?', [req.params.id]);
+    const oldData = oldRows[0] || {};
+
+    params.push(req.params.id);
+    await db.execute(`UPDATE hris_saas.tenants SET ${sets.join(', ')} WHERE id = ?`, params);
+
+    await saService.logAction({
+      adminId: req.user?.id,
+      adminName: req.user?.name || 'Super Admin',
+      action: saService.SA_ACTIONS.TENANT_NOTES_UPDATED,
+      entityType: 'tenant',
+      entityId: req.params.id,
+      tenantId: req.params.id,
+      oldValue: { notes: oldData.notes, tags: oldData.tags },
+      newValue: { notes: notes !== undefined ? notes : oldData.notes, tags: tags !== undefined ? tags : oldData.tags },
+      reason: req.body?.reason || null,
+      details: { changed: sets.map(s => s.split('=')[0].trim()) },
+      req,
+    });
+
+    res.json({ message: 'Tenant notes updated.' });
+  } catch (error) {
+    console.error('updateTenantNotes error:', error);
+    res.status(500).json({ error: 'Failed to update tenant notes.' });
   }
 };
