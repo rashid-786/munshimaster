@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { hrService } from '../../services/hr.service';
 
 const CORE_MODULES = [
   {
@@ -26,40 +27,6 @@ const CORE_MODULES = [
   {
     title: 'Subscription & Controls',
     desc: 'Feature gating, usage tracking, tenant-level settings, and upgrade paths designed for growth.',
-  },
-];
-
-const PLAN_SUMMARY = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 'Rs 0',
-    cycle: 'forever',
-    pitch: 'For solo founders and early-stage shops',
-    bullets: ['Khata + daily bookkeeping', 'Up to 50 customers', 'Basic reports'],
-    cta: 'Start Free',
-    ctaTo: '/register',
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: 'Rs 999',
-    cycle: 'per year',
-    pitch: 'For growing teams that need billing + operations',
-    bullets: ['Unlimited customers and staff', 'Invoices, PO, payroll, attendance', 'Advanced reports and exports'],
-    cta: 'Explore Business',
-    ctaTo: '/pricing',
-    popular: true,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: 'Rs 2,499',
-    cycle: 'per year',
-    pitch: 'For advanced operations and multi-branch control',
-    bullets: ['Inventory + branch capabilities', 'WhatsApp + API readiness', 'Priority support and custom controls'],
-    cta: 'See Pro Plan',
-    ctaTo: '/pricing',
   },
 ];
 
@@ -90,10 +57,60 @@ const FAQ_PREVIEW = [
 ];
 
 export default function Home() {
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
   const [contact, setContact] = useState({ name: '', email: '', message: '' });
   const [contactLoading, setContactLoading] = useState(false);
   const [contactSuccess, setContactSuccess] = useState('');
   const [contactError, setContactError] = useState('');
+
+  useEffect(() => {
+    hrService.getPlans()
+      .then(data => {
+        const all = (data.plans || []).filter(p => !p.id.endsWith('_monthly'));
+        all.sort((a, b) => parseFloat(a.price_inr || 0) - parseFloat(b.price_inr || 0));
+        setPlans(all);
+      })
+      .catch(() => {})
+      .finally(() => setPlansLoading(false));
+  }, []);
+
+  function planSummary(plan, idx) {
+    const f = plan.features || {};
+    const bullets = [];
+    if (f.my_bahi_book === true) bullets.push('Khata + daily bookkeeping');
+    if (f.invoices === true || f.purchase_orders === true) bullets.push('Billing, invoices, purchase orders');
+    if (f.payroll === true) bullets.push('Payroll, attendance, leave management');
+    if (f.customers === true || f.ledger_customers === true || f.max_customers === -1) bullets.push('Customer management');
+    if (f.suppliers === true || f.max_suppliers === -1) bullets.push('Supplier management');
+    if (f.max_customers === -1 && f.max_suppliers === -1 && f.max_staff === -1) bullets.push('Unlimited customers, suppliers & staff');
+    else if (f.max_staff === -1) bullets.push('Unlimited staff members');
+    else if (f.max_staff > 0) bullets.push(`Up to ${f.max_staff} staff members`);
+    if (f.advanced_reports === true || f.balance_sheet === true) bullets.push('Advanced reports and exports');
+    if (f.inventory === true) bullets.push('Inventory management');
+    if (f.multi_branch === true || f.max_branches === -1) bullets.push('Multi-branch capabilities');
+    if (f.whatsapp === true) bullets.push('WhatsApp integration');
+    if (f.api_access === true) bullets.push('API access');
+    if (f.priority_support === true) bullets.push('Priority support');
+    if (f.white_label === true) bullets.push('White label / custom branding');
+    if (bullets.length === 0) bullets.push('Core business features');
+
+    const price = parseFloat(plan.price_inr || 0);
+    return {
+      id: plan.id,
+      name: plan.name,
+      price: price === 0 ? 'Rs 0' : `Rs ${Math.round(price).toLocaleString('en-IN')}`,
+      cycle: plan.id === 'free' ? 'forever' : 'per year',
+      pitch: plan.id === 'free' ? 'For solo founders and early-stage shops'
+             : plan.id === 'manage' ? 'For small teams starting with structure'
+             : plan.id === 'business' ? 'For growing teams that need billing + operations'
+             : 'For advanced operations and multi-branch control',
+      bullets: bullets.slice(0, 3),
+      cta: plan.id === 'free' ? 'Start Free' : 'Explore ' + plan.name,
+      ctaTo: plan.id === 'free' ? '/register' : '/pricing',
+      popular: idx === 1 && plans.length > 1,
+    };
+  }
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
@@ -191,38 +208,45 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PLAN_SUMMARY.map((plan) => (
-              <div
-                key={plan.id}
-                className={`rounded-2xl border-2 p-6 bg-white ${plan.popular ? 'border-primary-500 shadow-lg' : 'border-gray-200 shadow-sm'}`}
-              >
-                {plan.popular && (
-                  <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
-                    Most Popular
-                  </span>
-                )}
-                <h3 className="mt-4 text-xl font-bold text-gray-900">{plan.name}</h3>
-                <p className="mt-2 text-3xl font-bold text-gray-900">{plan.price}</p>
-                <p className="text-sm text-gray-500">{plan.cycle}</p>
-                <p className="mt-3 text-sm text-gray-600">{plan.pitch}</p>
-                <ul className="mt-5 space-y-2">
-                  {plan.bullets.map((bullet) => (
-                    <li key={bullet} className="flex items-start gap-2 text-sm text-gray-700">
-                      <svg className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to={plan.ctaTo}
-                  className={`mt-7 block text-center rounded-xl py-2.5 text-sm font-medium ${plan.popular ? 'bg-primary-600 text-white hover:bg-primary-700' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                >
-                  {plan.cta}
-                </Link>
-              </div>
-            ))}
+            {plansLoading ? (
+              <div className="col-span-3 text-center text-gray-400 py-12">Loading plans...</div>
+            ) : (
+              plans.map((plan, idx) => {
+                const s = planSummary(plan, idx);
+                return (
+                  <div
+                    key={plan.id}
+                    className={`rounded-2xl border-2 p-6 bg-white ${s.popular ? 'border-primary-500 shadow-lg' : 'border-gray-200 shadow-sm'}`}
+                  >
+                    {s.popular && (
+                      <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
+                        Most Popular
+                      </span>
+                    )}
+                    <h3 className="mt-4 text-xl font-bold text-gray-900">{s.name}</h3>
+                    <p className="mt-2 text-3xl font-bold text-gray-900">{s.price}</p>
+                    <p className="text-sm text-gray-500">{s.cycle}</p>
+                    <p className="mt-3 text-sm text-gray-600">{s.pitch}</p>
+                    <ul className="mt-5 space-y-2">
+                      {s.bullets.map((bullet) => (
+                        <li key={bullet} className="flex items-start gap-2 text-sm text-gray-700">
+                          <svg className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      to={s.ctaTo}
+                      className={`mt-7 block text-center rounded-xl py-2.5 text-sm font-medium ${s.popular ? 'bg-primary-600 text-white hover:bg-primary-700' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    >
+                      {s.cta}
+                    </Link>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <div className="text-center mt-10">

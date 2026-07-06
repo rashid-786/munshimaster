@@ -195,6 +195,10 @@ export const superService = {
     const response = await api.patch(`/super/plans/${planId}/deactivate`);
     return response.data;
   },
+  deletePlan: async (planId) => {
+    const response = await api.delete(`/super/plans/${planId}`);
+    return response.data;
+  },
   bulkUpdatePlanFeatures: async (planId, features) => {
     const response = await api.post(`/super/plans/${planId}/features`, { features });
     return response.data;
@@ -309,8 +313,8 @@ export const superService = {
     const response = await api.get(`/super/tenants/${id}/usage`);
     return response.data;
   },
-  getTenantSubscription: async (id) => {
-    const response = await api.get(`/super/tenants/${id}/subscription`);
+  getTenantSubscription: async (id, params = {}) => {
+    const response = await api.get(`/super/tenants/${id}/subscription`, { params });
     return response.data;
   },
 
@@ -333,6 +337,10 @@ export const superService = {
   },
   bulkSetFeatureOverrides: async (tenantId, overrides) => {
     const response = await api.post(`/super/tenants/${tenantId}/features/bulk`, { overrides });
+    return response.data;
+  },
+  revokeAllFeatureOverrides: async (tenantId) => {
+    const response = await api.delete(`/super/tenants/${tenantId}/features/overrides`);
     return response.data;
   },
 

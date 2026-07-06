@@ -93,7 +93,7 @@ async function getTenantFeatureAccess(tenantId, featureKey) {
       featureKey,
       enabled: !!planDefault.enabled,
       readOnly: false,
-      limit: planDefault.max_value,
+      limit: planDefault.enabled ? planDefault.max_value : 0,
       source: 'plan',
       override: null,
       planDefault,
@@ -111,7 +111,7 @@ async function getTenantFeatureAccess(tenantId, featureKey) {
 async function getTenantFeatureLimit(tenantId, featureKey) {
   const access = await getTenantFeatureAccess(tenantId, featureKey);
   if (!access.enabled) return 0;
-  return access.limit;
+  return access.limit ?? -1;
 }
 
 /**

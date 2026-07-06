@@ -34,10 +34,10 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Login.jsx phone input upgrade**: replaced raw `<input type="tel">` with `<PhoneField>` in both login and forgot-password flows, with `isValidPhoneNumber` validation
 - **Login redirect fixed (Jul 3)**: Login.jsx now navigates directly based on API response's `subscriptionPlan` (avoids React state timing race). PublicRoute.jsx updated to use plan-aware routing instead of hardcoded `/admin/ledger` — eliminating the race where PublicRoute's `<Navigate to="/admin/ledger" />` fired alongside Login.jsx's redirect in the same render cycle.
 
-## In Progress
-- (none)
-
-## Completed (Jul 5)
+## Completed (Jul 6)
+- **Cash balance 0.00 on ledger dashboard**: `dashboard.controller.js` queried `balance_sheet` for income/expense, but cash entries are stored in `kirana_cashbook`. Changed both SELECTs from `balance_sheet` → `kirana_cashbook`. `balance_sheet` had 0 rows for Free Demo tenant; `kirana_cashbook` had 2 IN (₹6,59,07,000) + 4 OUT (₹43,05,000).
+- **Audit log metadata column**: `audit_logs` was missing `metadata` column — added via `ALTER TABLE hris_saas.audit_logs ADD COLUMN metadata jsonb`.
+- **pg deprecation warning**: Removed `pool.on('connect')` handler that called deprecated `client.query()`. Set `search_path` via PostgreSQL connection string `options` parameter instead.
 - **Manage plan trial fix**: Ran migration `20260720_add_manage_plan_seed.sql` to insert `manage`/`manage_monthly` into `subscription_plans`. Added `manage: 1`/`manage_monthly: 1` to `PLAN_RANK` in `utils/subscription.js`. Added `MANAGE_MONTHLY: 'MANAGE'` to `LEGACY_RESOLVE` in `config/planLimits.js`. Added `['manage', 'manage_monthly']` to `MANAGE.legacyIds` in frontend `subscriptionPlans.js` (was empty — caused `resolvePlan('manage_monthly')` → `'FREE'`).
 - **Cancel/Downgrade buttons for Manage**: Changed `>= 2` → `>= 1` in `AdminLayout.jsx` and `SubscriptionSettings.jsx` so Cancel/Downgrade shows for all paid plans.
 - **Frontend plan sync**: Added `updateTenantPlan()` to `AuthContext` — `UpgradeModal` now directly updates tenant context from trial/payment API response (`res.plan`) instead of relying solely on `refreshTenant()` API call (which could fail silently).

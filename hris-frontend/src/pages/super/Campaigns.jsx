@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 import CampaignCreateEditModal from '../../components/CampaignCreateEditModal';
+import ConfirmDialog from '../../components/super/ConfirmDialog';
 
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 const classNames = (...c) => c.filter(Boolean).join(' ');
@@ -26,6 +27,7 @@ export default function CampaignsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [toggling, setToggling] = useState(null);
+  const [confirm, setConfirm] = useState({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
 
   const fetchCampaigns = async (p = page) => {
     setLoading(true);
@@ -57,14 +59,25 @@ export default function CampaignsPage() {
     }
   };
 
-  const handleDelete = async c => {
-    if (!window.confirm(`Delete campaign "${c.name}"? This cannot be undone.`)) return;
-    try {
-      await superService.deleteCampaign(c.id);
-      fetchCampaigns();
-    } catch (e) {
-      setError(e.response?.data?.error || 'Failed to delete.');
-    }
+  const handleDelete = c => {
+    setConfirm({
+      open: true,
+      variant: 'danger',
+      title: 'Delete Campaign',
+      message: `Delete campaign "${c.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setConfirm(cnf => ({ ...cnf, loading: true }));
+        try {
+          await superService.deleteCampaign(c.id);
+          fetchCampaigns();
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        } catch (e) {
+          setError(e.response?.data?.error || 'Failed to delete.');
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        }
+      },
+    });
   };
 
   const handleEdit = c => {
@@ -188,6 +201,17 @@ export default function CampaignsPage() {
           onSuccess={() => { setShowModal(false); setEditCampaign(null); fetchCampaigns(); }}
         />
       )}
+
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmLabel={confirm.confirmLabel || 'Confirm'}
+        variant={confirm.variant}
+        loading={confirm.loading}
+        onClose={() => setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null })}
+        onConfirm={confirm.onConfirm}
+      />
     </div>
   );
 }

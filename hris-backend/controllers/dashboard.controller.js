@@ -20,8 +20,8 @@ exports.getDashboard = async (req, res) => {
       db.query('SELECT COUNT(*) as c FROM hris_saas.invoices WHERE tenant_id = ?', [tenantId]),
       db.query("SELECT COALESCE(SUM(total_amount),0) as t FROM hris_saas.invoices WHERE tenant_id = ? AND status = ?", [tenantId, 'paid']),
       db.query("SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c FROM hris_saas.invoices WHERE tenant_id = ? AND status NOT IN (?, ?, ?)", [tenantId, 'paid', 'cancelled', 'draft']),
-      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = ?", [tenantId, 'IN']),
-      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = ?", [tenantId, 'OUT']),
+      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = ?", [tenantId, 'IN']),
+      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = ?", [tenantId, 'OUT']),
       db.query(
         `SELECT t.id, t.type, t.amount, t.note, t.entry_date, p.name as party_name
          FROM hris_saas.kirana_transactions t

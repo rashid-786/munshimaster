@@ -1,5 +1,47 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment, useRef } from 'react';
 import { superService } from '../../services/super.service';
+
+function SearchableSelect({ options, value, onChange, placeholder, getLabel, getValue }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  const selected = options.find(o => getValue(o) === value);
+  const filtered = search
+    ? options.filter(o => getLabel(o).toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={open ? search : (selected ? getLabel(selected) : '')}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mt-0.5 bg-white focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+      />
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          <div className="sticky top-0 bg-white px-2 py-1 border-b border-gray-100 text-[10px] text-gray-400">{filtered.length} options</div>
+          {filtered.map(o => (
+            <button key={getValue(o)} type="button"
+              onClick={() => { onChange(getValue(o)); setOpen(false); setSearch(''); }}
+              className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-indigo-50 transition-colors ${getValue(o) === value ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'}`}>
+              {getLabel(o)}
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="px-2.5 py-2 text-xs text-gray-400">No matches</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const fmtDate = d => d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 const fmtDateShort = d => d ? new Date(d).toISOString().split('T')[0] : '';
@@ -118,7 +160,7 @@ export default function SuperAuditLogs() {
   };
 
   const clearFilters = () => {
-    setFilters({ action: '', entityType: '', actorId: '', dateFrom: '', dateTo: '', search: '', tenantId: '', limit: 50, offset: 0 });
+    setFilters({ action: '', entityType: '', actorId: '', dateFrom: '', dateTo: '', tenantId: '', limit: 50, offset: 0 });
   };
 
   const nextPage = () => setFilters(prev => ({ ...prev, offset: prev.offset + prev.limit }));
@@ -145,24 +187,28 @@ export default function SuperAuditLogs() {
       {/* Filters */}
       {showFilters && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <div>
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Action Type</label>
-              <select value={filters.action} onChange={e => updateFilter('action', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mt-0.5 bg-white focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400">
-                <option value="">All Actions</option>
-                {actionTypes.map(t => (
-                  <option key={t.action} value={t.action}>{ACTION_LABELS[t.action] || t.action}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={[{ action: '', label: 'All Actions' }, ...actionTypes.map(t => ({ action: t.action, label: ACTION_LABELS[t.action] || t.action }))]}
+                value={filters.action}
+                onChange={v => updateFilter('action', v)}
+                placeholder="All Actions"
+                getLabel={o => o.label}
+                getValue={o => o.action}
+              />
             </div>
             <div>
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Entity Type</label>
-              <select value={filters.entityType} onChange={e => updateFilter('entityType', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mt-0.5 bg-white focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400">
-                <option value="">All Entities</option>
-                {['tenant', 'plan', 'campaign', 'referral', 'override', 'feature_override', 'section_visibility', 'employee', 'system', 'bulk', 'subscription'].map(e => (
-                  <option key={e} value={e}>{e.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={[{ value: '', label: 'All Entities' }, ...['tenant', 'plan', 'campaign', 'referral', 'override', 'feature_override', 'section_visibility', 'employee', 'system', 'bulk', 'subscription'].map(e => ({ value: e, label: e.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))]}
+                value={filters.entityType}
+                onChange={v => updateFilter('entityType', v)}
+                placeholder="All Entities"
+                getLabel={o => o.label}
+                getValue={o => o.value}
+              />
             </div>
             <div>
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Actor</label>
@@ -184,10 +230,6 @@ export default function SuperAuditLogs() {
             <div>
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">To Date</label>
               <input type="date" value={filters.dateTo} onChange={e => updateFilter('dateTo', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mt-0.5 bg-white focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400" />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Search</label>
-              <input value={filters.search} onChange={e => updateFilter('search', e.target.value)} placeholder="Search text..." className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mt-0.5 bg-white focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400" />
             </div>
           </div>
           <div className="flex justify-end">

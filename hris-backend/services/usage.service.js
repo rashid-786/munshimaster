@@ -1,6 +1,7 @@
 const db = require('../config/db');
+const { getTenantFeatureLimit } = require('../utils/featureAccess');
 const TenantUsageRepository = require('../repositories/TenantUsageRepository');
-const { getLimit, isUnlimited, LIMIT_KEY_MAP } = require('../config/planLimits');
+const { LIMIT_KEY_MAP } = require('../config/planLimits');
 
 const usageRepo = new TenantUsageRepository(db);
 
@@ -13,6 +14,12 @@ const USAGE_TYPE_TO_COUNTER = {
 
 const USAGE_QUERIES = {
   entities: `
+    SELECT COUNT(*)::int as count
+    FROM tenants
+    WHERE organization_id = (SELECT organization_id FROM tenants WHERE id = ?)
+      AND status = 'active'
+  `,
+  branches: `
     SELECT COUNT(*)::int as count
     FROM tenants
     WHERE organization_id = (SELECT organization_id FROM tenants WHERE id = ?)
@@ -49,16 +56,13 @@ const USAGE_QUERIES = {
  * @returns {Promise<{allowed: boolean, currentUsage: number, allowedLimit: number}>}
  */
 async function checkUsage({ tenantId, plan, limitKey }) {
-  const dimension = LIMIT_KEY_MAP[limitKey];
-  if (!dimension) {
+  // Resolve the plan_features key via LIMIT_KEY_MAP (e.g. entities → branches)
+  const featureKey = LIMIT_KEY_MAP[limitKey] || limitKey;
+  const allowedLimit = await getTenantFeatureLimit(tenantId, featureKey);
+  if (allowedLimit === -1 || allowedLimit === null || allowedLimit === undefined) {
     return { allowed: true, currentUsage: 0, allowedLimit: -1 };
   }
 
-  if (isUnlimited(plan, dimension)) {
-    return { allowed: true, currentUsage: 0, allowedLimit: -1 };
-  }
-
-  const allowedLimit = getLimit(plan, dimension);
   const query = USAGE_QUERIES[limitKey];
 
   if (!query) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { superService } from '../services/super.service';
 
 const OVERRIDE_TYPES = [
@@ -11,7 +11,56 @@ const OVERRIDE_TYPES = [
   { value: 'REVOKE_OVERRIDE', label: 'Revoke Override', description: 'Remove all overrides, revert to plan' },
 ];
 
-export default function FeatureOverrideModal({ tenantId, feature, existingOverride, onClose, onSuccess }) {
+const ALL_FEATURES = [
+  { key: 'invoices', label: 'Invoices', type: 'boolean' },
+  { key: 'attendance', label: 'Attendance', type: 'boolean' },
+  { key: 'leaves', label: 'Leaves', type: 'boolean' },
+  { key: 'payroll', label: 'Payroll', type: 'boolean' },
+  { key: 'advances', label: 'Advances', type: 'boolean' },
+  { key: 'replacements', label: 'Replacements', type: 'boolean' },
+  { key: 'purchase_orders', label: 'Purchase Orders', type: 'boolean' },
+  { key: 'credit_debit_notes', label: 'Credit/Debit Notes', type: 'boolean' },
+  { key: 'inventory', label: 'Inventory', type: 'boolean' },
+  { key: 'advanced_reports', label: 'Advanced Reports', type: 'boolean' },
+  { key: 'multi_branch', label: 'Multi-Branch', type: 'boolean' },
+  { key: 'whatsapp', label: 'WhatsApp', type: 'boolean' },
+  { key: 'bank_import', label: 'Bank Import', type: 'boolean' },
+  { key: 'gst_returns', label: 'GST Returns', type: 'boolean' },
+  { key: 'e_invoicing', label: 'E-Invoicing', type: 'boolean' },
+  { key: 'bulk_import', label: 'Bulk Import', type: 'boolean' },
+  { key: 'recurring_invoices', label: 'Recurring Invoices', type: 'boolean' },
+  { key: 'cash_flow', label: 'Cash Flow', type: 'boolean' },
+  { key: 'balance_sheet', label: 'Balance Sheet', type: 'boolean' },
+  { key: 'reports', label: 'Reports', type: 'boolean' },
+  { key: 'pl_statement', label: 'P&L Statement', type: 'boolean' },
+  { key: 'tally_export', label: 'Tally Export', type: 'boolean' },
+  { key: 'tds_management', label: 'TDS Management', type: 'boolean' },
+  { key: 'gstr2b_reco', label: 'GSTR-2B Reco', type: 'boolean' },
+  { key: 'audit_logs', label: 'Audit Logs', type: 'boolean' },
+  { key: 'api_access', label: 'API Access', type: 'boolean' },
+  { key: 'white_label', label: 'White Label', type: 'boolean' },
+  { key: 'priority_support', label: 'Priority Support', type: 'boolean' },
+  { key: 'business_dashboard', label: 'Business Dashboard', type: 'boolean' },
+  { key: 'expenses', label: 'Expenses', type: 'boolean' },
+  { key: 'kirana', label: 'Kirana Store', type: 'boolean' },
+  { key: 'customers', label: 'Customers', type: 'boolean' },
+  { key: 'suppliers', label: 'Suppliers', type: 'boolean' },
+  { key: 'products', label: 'Products', type: 'boolean' },
+  { key: 'buyers', label: 'Buyers', type: 'limit' },
+  { key: 'sellers', label: 'Sellers', type: 'limit' },
+  { key: 'cashbook_entries', label: 'Cashbook Entries', type: 'limit' },
+  { key: 'max_customers', label: 'Max Customers', type: 'limit' },
+  { key: 'max_suppliers', label: 'Max Suppliers', type: 'limit' },
+  { key: 'max_staff', label: 'Staff Members', type: 'limit' },
+  { key: 'max_branches', label: 'Branches', type: 'limit' },
+  { key: 'max_monthly_txns', label: 'Monthly Transactions', type: 'limit' },
+  { key: 'max_products', label: 'Max Products', type: 'limit' },
+];
+
+export default function FeatureOverrideModal({ tenantId, feature, featureKey: featureKeyProp, existingOverride, onClose, onSuccess }) {
+  const [selectedKey, setSelectedKey] = useState(feature?.featureKey || feature?.feature_key || featureKeyProp || '');
+  const [searchInput, setSearchInput] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
   const [overrideType, setOverrideType] = useState(existingOverride?.override_type || 'ENABLE_FEATURE');
   const [maxValue, setMaxValue] = useState(existingOverride?.max_value ?? (feature?.planDefault?.max_value ?? ''));
   const [isTemporary, setIsTemporary] = useState(existingOverride?.is_temporary || false);
@@ -19,11 +68,30 @@ export default function FeatureOverrideModal({ tenantId, feature, existingOverri
   const [reason, setReason] = useState(existingOverride?.reason || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const dropdownRef = useRef(null);
+
+  const filteredFeatures = useMemo(() => {
+    if (!searchInput) return ALL_FEATURES;
+    const q = searchInput.toLowerCase();
+    return ALL_FEATURES.filter(f =>
+      f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q)
+    );
+  }, [searchInput]);
 
   const isEditing = !!existingOverride;
-  const featureKey = feature?.featureKey || feature?.feature_key;
+  const featureKey = selectedKey;
 
   const needsLimit = overrideType === 'INCREASE_LIMIT' || overrideType === 'REDUCE_LIMIT';
+
+  useEffect(() => {
+    const handler = e => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -83,6 +151,40 @@ export default function FeatureOverrideModal({ tenantId, feature, existingOverri
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
             <div className="bg-red-50 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>
+          )}
+
+          {/* Feature Selector (when not pre-selected) */}
+          {!feature && !featureKeyProp && (
+            <div className="relative" ref={dropdownRef}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Feature</label>
+              <input
+                type="text"
+                value={selectedKey ? (ALL_FEATURES.find(f => f.key === selectedKey)?.label || selectedKey) : searchInput}
+                onChange={e => { setSearchInput(e.target.value); setSelectedKey(''); setShowDropdown(true); }}
+                onFocus={() => setShowDropdown(true)}
+                placeholder="Search features..."
+                className="input-field w-full"
+                required
+                autoComplete="off"
+              />
+              {showDropdown && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  {filteredFeatures.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-gray-400">No features found</div>
+                  ) : filteredFeatures.map(f => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => { setSelectedKey(f.key); setSearchInput(f.label); setShowDropdown(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 transition-colors ${selectedKey === f.key ? 'bg-indigo-50 font-medium' : ''}`}
+                    >
+                      <span className="text-gray-900">{f.label}</span>
+                      <span className="text-gray-400 ml-2 text-xs">({f.key})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Override Type */}

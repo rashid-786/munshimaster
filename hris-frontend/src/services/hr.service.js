@@ -121,6 +121,10 @@ export const hrService = {
     const response = await api.put('/core/tenant/settings', settingsPayload);
     return response.data;
   },
+  getTenantSections: async () => {
+    const response = await api.get('/core/tenant/sections');
+    return response.data;
+  },
   logEmployeeHoursManually: async (attendancePayload) => {
     const response = await api.post('/core/time/attendance/admin-log', attendancePayload);
     return response.data;

@@ -8,7 +8,7 @@ import SearchBar from '../components/SearchBar';
 import UpgradeModal from '../components/UpgradeModal';
 import DowngradeModal from '../components/DowngradeModal';
 import OnboardingWizard from '../components/OnboardingWizard';
-import { buildMenu, getFirstDashboardRoute } from '../config/subscriptionMenuBuilder.jsx';
+import { buildMenu, getFirstDashboardRoute, getRouteAccessInfo } from '../config/subscriptionMenuBuilder.jsx';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../config/subscriptionPlans';
 
 const Icons = {
@@ -27,6 +27,8 @@ export default function AdminLayout() {
   const [profileCompletion, setProfileCompletion] = useState(null);
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [groupLabels, setGroupLabels] = useState({});
+  const [disabledFeatures, setDisabledFeatures] = useState(null);
+  const [readOnlySections, setReadOnlySections] = useState({});
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showDowngrade, setShowDowngrade] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -40,7 +42,21 @@ export default function AdminLayout() {
   const rawPlan = tenant?.subscriptionPlan || 'free';
   const currentPlan = resolvePlan(rawPlan);
 
-  const menuItems = useMemo(() => buildMenu(currentPlan), [currentPlan]);
+  const menuItems = useMemo(() => {
+    const menu = buildMenu(currentPlan);
+    if (!disabledFeatures) return menu;
+    return menu.reduce((acc, m) => {
+      if (m.feature && disabledFeatures[m.feature]) return acc;
+      if (m.items) {
+        const filteredItems = m.items.filter(i => !(i.feature && disabledFeatures[i.feature]));
+        if (filteredItems.length === 0 && m.type === 'group') return acc;
+        acc.push({ ...m, items: filteredItems });
+      } else {
+        acc.push(m);
+      }
+      return acc;
+    }, []);
+  }, [currentPlan, disabledFeatures]);
 
   const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'My Stores', MANAGE: 'My Stores' } };
   const labelOf = (key) => {
@@ -161,6 +177,31 @@ export default function AdminLayout() {
     });
   }, []);
 
+  // Fetch active feature overrides to gate sidebar items
+  useEffect(() => {
+    if (!tenant?.id) return;
+    subscriptionService.getActiveOverrides().then(res => {
+      const overrides = res.overrides || {};
+      const disabled = {};
+      for (const [key, val] of Object.entries(overrides)) {
+        if (val === false) disabled[key] = true;
+      }
+      setDisabledFeatures(disabled);
+    }).catch(() => {});
+  }, [tenant?.id]);
+
+  // Fetch read-only sections from section visibility
+  useEffect(() => {
+    if (!tenant?.id) return;
+    hrService.getTenantSections().then(res => {
+      const ro = {};
+      for (const [key, val] of Object.entries(res.sections || {})) {
+        if (val.readOnly) ro[key] = true;
+      }
+      setReadOnlySections(ro);
+    }).catch(() => {});
+  }, [tenant?.id]);
+
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -200,8 +241,56 @@ export default function AdminLayout() {
   }, [switching]);
   const pageTitle = pageTitles[location.pathname] || '';
 
+  const ROUTE_TO_SECTION = {
+    '/admin/entities': 'entities',
+    '/admin/ledger': 'my_bahi_book',
+    '/admin/ledger/buyers': 'buyers',
+    '/admin/ledger/sellers': 'sellers',
+    '/admin/ledger/cashbook': 'cashbook',
+    '/admin/ledger/reports': 'reports',
+    '/admin/reports': 'reports',
+    '/admin/business': 'my_business',
+    '/admin/hr': 'my_staff',
+    '/admin/employees': 'staff_directory',
+    '/admin/calendar': 'attendance',
+    '/admin/leaves': 'leaves',
+    '/admin/payroll': 'payroll',
+    '/admin/advances': 'advances',
+    '/admin/replacements': 'replacements',
+    '/admin/expenses': 'expenses',
+    '/admin/campaigns': 'campaigns',
+    '/admin/settings': 'settings',
+  };
+  const currentSectionKey = ROUTE_TO_SECTION[location.pathname] || null;
+  const isReadOnlySection = currentSectionKey ? !!readOnlySections[currentSectionKey] : false;
+
+  // Build parent map from SECTION_HIERARCHY (mirror of backend)
+  const SECTION_PARENT = {
+    buyers: 'my_bahi_book', sellers: 'my_bahi_book', cashbook: 'my_bahi_book', reports: 'my_bahi_book',
+    expenses: 'my_business', campaigns: 'my_business',
+    staff_directory: 'my_staff', attendance: 'my_staff', leaves: 'my_staff',
+    payroll: 'my_staff', advances: 'my_staff', replacements: 'my_staff',
+  };
+
+  const isRouteReadOnly = (route) => {
+    const sk = ROUTE_TO_SECTION[route];
+    if (!sk) return false;
+    if (readOnlySections[sk]) return true;
+    const parent = SECTION_PARENT[sk];
+    return parent ? !!readOnlySections[parent] : false;
+  };
+
   useEffect(() => {
     const path = location.pathname;
+    if (isReadOnlySection) {
+      navigate(firstVisibleDashboard, { replace: true });
+      return;
+    }
+    const routeInfo = getRouteAccessInfo(path);
+    if (routeInfo?.featureKey && disabledFeatures?.[routeInfo.featureKey]) {
+      navigate(firstVisibleDashboard, { replace: true });
+      return;
+    }
     const inHiddenGroup = menuItems.some(section => {
       if (!hiddenGroups[section.label]) return false;
       if (section.type === 'group') {
@@ -213,7 +302,7 @@ export default function AdminLayout() {
     if (inHiddenGroup) {
       navigate(firstVisibleDashboard, { replace: true });
     }
-  }, [hiddenGroups, location.pathname, firstVisibleDashboard, navigate, menuItems]);
+  }, [hiddenGroups, location.pathname, firstVisibleDashboard, navigate, menuItems, disabledFeatures, isReadOnlySection]);
 
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
@@ -247,9 +336,16 @@ export default function AdminLayout() {
           if (hiddenGroups[section.label]) return null;
           if (section.type === 'group') {
             const isActive = location.pathname === section.route;
+            const groupRo = isRouteReadOnly(section.route);
             return (
               <div key={section.label}>
                 <div className="flex items-center gap-1 w-full px-1 py-0.5 rounded-lg transition-all duration-150">
+                  {groupRo ? (
+                    <span className="flex items-center gap-3 flex-1 px-2 py-2.5 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed" title="Read-only section">
+                      <span className="shrink-0 text-gray-400 opacity-50">{section.icon}</span>
+                      <span className="flex-1 text-left">{labelOf(section.label)}</span>
+                    </span>
+                  ) : (
                   <NavLink
                     to={section.route}
                     onClick={() => setSidebarOpen(false)}
@@ -260,6 +356,7 @@ export default function AdminLayout() {
                     <span className="shrink-0 text-gray-400">{section.icon}</span>
                     <span className="flex-1 text-left">{labelOf(section.label)}</span>
                   </NavLink>
+                  )}
                   <button
                     onClick={() => toggleGroup(section.label)}
                     className="shrink-0 px-1.5 py-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-all duration-150"
@@ -272,7 +369,16 @@ export default function AdminLayout() {
                     <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-0.5">
                       {section.items.map((item) => {
                         const isItemActive = location.pathname === item.route;
-                        return (
+                        const ro = isRouteReadOnly(item.route);
+                        return ro ? (
+                          <span
+                            key={item.route}
+                            className="block relative px-3 py-2 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed"
+                            title="Read-only section"
+                          >
+                            {item.label}
+                          </span>
+                        ) : (
                           <NavLink
                             key={item.route}
                             to={item.route}
@@ -292,6 +398,19 @@ export default function AdminLayout() {
             );
           }
           const isLinkActive = location.pathname === section.route;
+          const ro = isRouteReadOnly(section.route);
+          if (ro) {
+            return (
+              <span
+                key={section.route}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed"
+                title="Read-only section"
+              >
+                <span className="shrink-0 text-gray-400 opacity-50">{section.icon}</span>
+                <span>{labelOf(section.label)}</span>
+              </span>
+            );
+          }
           return (
             <NavLink
               key={section.route}
@@ -422,8 +541,16 @@ export default function AdminLayout() {
                     <p className="text-sm font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
                     <p className="text-xs text-gray-500">{user?.phone || user?.email}</p>
                   </div>
-                  <button onClick={() => navigate('/admin/entities')} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">{labelOf('Entities')}</button>
-                  <button onClick={() => navigate('/admin/settings')} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">Settings</button>
+                  {isRouteReadOnly('/admin/entities') ? (
+                    <span className="block w-full text-left px-4 py-2 text-sm text-gray-300 cursor-not-allowed">{labelOf('Entities')}</span>
+                  ) : (
+                    <button onClick={() => navigate('/admin/entities')} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">{labelOf('Entities')}</button>
+                  )}
+                  {isRouteReadOnly('/admin/settings') ? (
+                    <span className="block w-full text-left px-4 py-2 text-sm text-gray-300 cursor-not-allowed">Settings</span>
+                  ) : (
+                    <button onClick={() => navigate('/admin/settings')} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">Settings</button>
+                  )}
                   <div className="border-t border-gray-100 pt-1 mt-1">
                     <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">Sign out</button>
                   </div>

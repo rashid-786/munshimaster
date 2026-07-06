@@ -16,6 +16,16 @@ export const subscriptionService = {
     return res.data;
   },
 
+  checkFeatures: async (features) => {
+    const res = await api.post('/core/subscription/check-features', { features });
+    return res.data;
+  },
+
+  getActiveOverrides: async () => {
+    const res = await api.get('/core/subscription/active-overrides');
+    return res.data;
+  },
+
   createOrder: async (planId) => {
     const res = await api.post('/core/subscription/create-order', { planId });
     return res.data;
@@ -49,8 +59,9 @@ export const subscriptionService = {
     window.open(url, '_blank');
   },
 
-  getDowngradePreview: async () => {
-    const res = await api.get('/core/subscription/downgrade-preview');
+  getDowngradePreview: async (plan) => {
+    const params = plan ? { plan } : {};
+    const res = await api.get('/core/subscription/downgrade-preview', { params });
     return res.data;
   },
 
@@ -60,7 +71,11 @@ export const subscriptionService = {
   },
 
   downgradeToFree: async () => {
-    const res = await api.post('/core/subscription/downgrade');
+    const res = await api.post('/core/subscription/downgrade', { plan: 'free' });
+    return res.data;
+  },
+  changePlan: async (planId) => {
+    const res = await api.post('/core/subscription/downgrade', { plan: planId });
     return res.data;
   },
 

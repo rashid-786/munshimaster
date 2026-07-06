@@ -39,6 +39,8 @@ router.patch('/plans/:planId', authenticateSuperAdmin,
   auditSuperAdminAction('plan.updated', 'plan'), superController.updatePlan);
 router.patch('/plans/:planId/deactivate', authenticateSuperAdmin,
   auditSuperAdminAction('plan.deactivated', 'plan'), superController.deactivatePlan);
+router.delete('/plans/:planId', authenticateSuperAdmin,
+  auditSuperAdminAction('plan.deleted', 'plan'), superController.deletePlan);
 router.get('/plans/:planId/features', authenticateSuperAdmin, superController.listPlanFeatures);
 router.post('/plans/:planId/features', authenticateSuperAdmin,
   auditSuperAdminAction('plan.features_updated', 'plan_features'), superController.bulkUpdatePlanFeatures);
@@ -119,6 +121,8 @@ router.delete('/tenants/:tenantId/features/override/:overrideId', authenticateSu
   auditSuperAdminAction('override.deleted', 'feature_override'), featureOverrideController.deleteFeatureOverride);
 router.post('/tenants/:tenantId/features/bulk', authenticateSuperAdmin,
   auditSuperAdminAction('override.bulk_created', 'feature_override'), featureOverrideController.bulkSetFeatureOverrides);
+router.delete('/tenants/:tenantId/features/overrides', authenticateSuperAdmin,
+  auditSuperAdminAction('override.all_revoked', 'feature_override'), featureOverrideController.revokeAllFeatureOverrides);
 
 // ─── Employees (cross-tenant) ─────────────────────────────────────
 router.get('/employees', authenticateSuperAdmin, superController.getAllEmployees);

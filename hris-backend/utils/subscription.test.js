@@ -20,12 +20,12 @@ describe('planRank', () => {
   });
 
   test('returns correct rank for pro plan', () => {
-    expect(planRank('pro')).toBe(2);
+    expect(planRank('pro')).toBe(3); // pro = Business Pro
   });
 
   test('handles legacy plan name "pro" (old = business)', () => {
-    // LEGACY_RANK maps pro→1 (old pro = new business)
-    expect(planRank('pro')).toBe(2); // PLAN_RANK takes priority
+    // PLAN_RANK maps pro→3 (pro = new Business Pro)
+    expect(planRank('pro')).toBe(3); // PLAN_RANK takes priority
   });
 
   test('handles legacy plan name "enterprise" (old = pro)', () => {

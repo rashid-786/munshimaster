@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { subscriptionService } from '../services/subscription.service';
 import { PLANS, getRank, resolvePlan, PLAN_LABELS } from '../config/subscriptionPlans';
@@ -6,10 +6,10 @@ import { PLANS, getRank, resolvePlan, PLAN_LABELS } from '../config/subscription
 const PLAN_ID_MAP = {
   MANAGE: 'manage',
   BUSINESS: 'business',
-  BUSINESS_PRO: 'pro',
+  BUSINESS_PRO: 'business_pro',
 };
 
-export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'BUSINESS' }) {
+export default function UpgradeModal({ open, onClose, onUpgraded, feature, requiredPlan = 'BUSINESS' }) {
   const { tenant, refreshTenant, updateTenantPlan } = useAuth();
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
@@ -17,6 +17,22 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
   const [selectedPlan, setSelectedPlan] = useState(null);
 
   const currentPlan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+  const [plansData, setPlansData] = useState(null);
+
+  useEffect(() => {
+    if (open) {
+      subscriptionService.getPlans().then(setPlansData).catch(() => {});
+    }
+  }, [open]);
+
+  const getTrialDays = (key) => {
+    if (!plansData) return null;
+    const base = PLAN_ID_MAP[key];
+    if (!base) return null;
+    const planId = billing === 'month' ? `${base}_monthly` : base;
+    const plan = plansData.find(p => p.id === planId);
+    return plan?.trial_days ?? null;
+  };
 
   const getPlanId = (key) => {
     const base = PLAN_ID_MAP[key];
@@ -35,6 +51,7 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
       const res = await subscriptionService.startTrial(planId);
       updateTenantPlan(res.plan);
       try { await refreshTenant(); } catch {}
+      onUpgraded?.();
       onClose();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to start trial.');
@@ -85,6 +102,7 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
           });
           updateTenantPlan(payRes.plan);
           try { await refreshTenant(); } catch {}
+          onUpgraded?.();
           onClose();
         },
       };
@@ -106,9 +124,52 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
 
   const required = resolvePlan(requiredPlan);
 
+  const isPlanActive = (key) => {
+    if (!plansData) return true;
+    const base = PLAN_ID_MAP[key];
+    if (!base) return false;
+    return plansData.some(p => p.id === base || p.id === `${base}_monthly`);
+  };
+
+  const getApiPlan = (key) => {
+    if (!plansData) return null;
+    const base = PLAN_ID_MAP[key];
+    if (!base) return null;
+    const yearly = plansData.find(p => p.id === base);
+    const monthly = plansData.find(p => p.id === `${base}_monthly`);
+    return { yearly, monthly };
+  };
+
+  const getApiPrice = (key, period) => {
+    const api = getApiPlan(key);
+    if (!api) return null;
+    const p = period === 'month' ? api.monthly : api.yearly;
+    return p ? parseInt(p.price_inr || 0) : null;
+  };
+
+  const getDescription = (key) => {
+    const api = getApiPlan(key);
+    const planData = api?.yearly || api?.monthly;
+    if (!planData?.features) return '';
+    const f = planData.features;
+    const parts = [];
+    if (typeof f.max_monthly_txns === 'number' && f.max_monthly_txns > 0) parts.push(`${f.max_monthly_txns.toLocaleString('en-IN')} txns`);
+    else if (f.max_monthly_txns === -1) parts.push('Unlimited txns');
+    if (typeof f.max_staff === 'number' && f.max_staff > 0) parts.push(`${f.max_staff} staff`);
+    else if (f.max_staff === -1) parts.push('Unlimited staff');
+    if (f.multi_branch || f.max_branches === -1 || (typeof f.max_branches === 'number' && f.max_branches > 1)) {
+      parts.push(f.max_branches === -1 ? 'Unlimited branches' : `${f.max_branches} branches`);
+    }
+    if (f.inventory === true) parts.push('Inventory');
+    if (f.whatsapp === true) parts.push('WhatsApp');
+    if (f.api_access === true) parts.push('API');
+    if (f.priority_support === true) parts.push('Priority');
+    return parts.slice(0, 5).join(' · ') + (parts.length > 5 ? ' ..' : '');
+  };
+
   const UPGRADE_PLANS = {};
   for (const [key, plan] of Object.entries(PLANS)) {
-    if (getRank(key) > getRank(currentPlan)) {
+    if (getRank(key) > getRank(currentPlan) && isPlanActive(key)) {
       UPGRADE_PLANS[key] = plan;
     }
   }
@@ -156,8 +217,8 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
 
           <div className="grid gap-3">
             {Object.entries(UPGRADE_PLANS).map(([key, plan]) => {
-              const priceMonthly = plan.metadata.priceMonthly;
-              const priceYearly = plan.metadata.priceYearly;
+              const priceMonthly = getApiPrice(key, 'month') ?? plan.metadata.priceMonthly;
+              const priceYearly = getApiPrice(key, 'year') ?? plan.metadata.priceYearly;
               const price = billing === 'month' ? priceMonthly : priceYearly;
               const isSelected = selectedPlan === key;
               const perMonth = billing === 'year' && priceYearly ? `₹${Math.round(priceYearly / 12)}/mo` : null;
@@ -176,16 +237,16 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-gray-900">{plan.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">{plan.metadata.description}</span>
-                      {perMonth && <span className="text-xs text-gray-400 ml-2">{perMonth}</span>}
-                    </div>
+                    <span className="font-semibold text-gray-900">{plan.name}</span>
                     {price > 0 ? (
-                      <span className="text-indigo-600 font-bold">₹{price}{billing === 'month' ? '/mo' : '/yr'}</span>
+                      <span className="text-indigo-600 font-bold shrink-0 ml-3">₹{price}{billing === 'month' ? '/mo' : '/yr'}</span>
                     ) : (
-                      <span className="text-emerald-600 font-semibold text-sm">Free</span>
+                      <span className="text-emerald-600 font-semibold text-sm shrink-0 ml-3">Free</span>
                     )}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {getDescription(key) || plan.metadata.description}
+                    {perMonth && <span className="ml-2">{perMonth}</span>}
                   </div>
                   {isSelected && (
                     <div className="mt-2 text-xs text-indigo-600 font-medium flex items-center gap-1">
@@ -207,7 +268,7 @@ export default function UpgradeModal({ open, onClose, feature, requiredPlan = 'B
           {selectedPlan && (
             <>
               <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
-                Try <strong>{PLANS[selectedPlan].name}</strong> free for 14 days. No payment required.
+                Try <strong>{PLANS[selectedPlan].name}</strong> free for {getTrialDays(selectedPlan)} days. No payment required.
               </div>
 
               <div className="grid grid-cols-2 gap-3">

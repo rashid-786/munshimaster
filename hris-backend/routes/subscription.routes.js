@@ -11,6 +11,8 @@ router.get('/plan', authenticateToken, subscriptionController.getSubscription);
 router.put('/plan', authenticateToken, subscriptionController.selectPlan);
 router.get('/profile-completion', authenticateToken, subscriptionController.getProfileCompletion);
 router.get('/check-feature', authenticateToken, subscriptionController.checkFeature);
+router.post('/check-features', authenticateToken, subscriptionController.checkFeatures);
+router.get('/active-overrides', authenticateToken, subscriptionController.getActiveOverrides);
 router.get('/usage', authenticateToken, subscriptionController.getUsage);
 
 // Razorpay
@@ -26,7 +28,7 @@ router.get('/payments/:paymentId/receipt', authenticateToken, subscriptionContro
 // Downgrade & Cancellation
 router.get('/downgrade-preview', authenticateToken, subscriptionController.getDowngradePreview);
 router.post('/cancel', authenticateToken, subscriptionController.cancelSubscription);
-router.post('/downgrade', authenticateToken, subscriptionController.downgradeToFree);
+router.post('/downgrade', authenticateToken, subscriptionController.downgradePlan);
 
 // Lifecycle management
 router.post('/suspend', authenticateToken, subscriptionController.suspendSubscription);

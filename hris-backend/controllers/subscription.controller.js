@@ -2,9 +2,10 @@ const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
-const { getSubscriptionStatus, invalidateCache } = require('../utils/subscription');
+const { getSubscriptionStatus, invalidateCache, planRank } = require('../utils/subscription');
+const { getTenantFeatureLimit } = require('../utils/featureAccess');
 const TenantUsageRepository = require('../repositories/TenantUsageRepository');
-const { getLimit, isUnlimited, LIMIT_KEY_MAP, resolvePlan } = require('../config/planLimits');
+const { LIMIT_KEY_MAP, resolvePlan } = require('../config/planLimits');
 const { USAGE_QUERIES } = require('../services/usage.service');
 
 const usageRepo = new TenantUsageRepository(db);
@@ -13,10 +14,10 @@ const audit = require('../services/audit.service');
 
 // Map tenant_usage DB columns to user-facing usage type keys
 const USAGE_DIMENSIONS = [
-  { key: 'transactions',     dbColumn: 'transactionCount',  limitDim: 'transactions' },
-  { key: 'cashbook_entries', dbColumn: 'cashbookEntryCount', limitDim: 'cashbook_entries' },
-  { key: 'staff_count',      dbColumn: 'staffCount',         limitDim: 'staff_count' },
-  { key: 'entities',         dbColumn: 'entityCount',        limitDim: 'entities' },
+  { key: 'transactions',     dbColumn: 'transactionCount',  limitDim: 'transactions',     pfKey: 'max_monthly_txns' },
+  { key: 'cashbook_entries', dbColumn: 'cashbookEntryCount', limitDim: 'cashbook_entries', pfKey: 'cashbook_entries' },
+  { key: 'staff_count',      dbColumn: 'staffCount',         limitDim: 'staff_count',      pfKey: 'max_staff' },
+  { key: 'entities',         dbColumn: 'entityCount',        limitDim: 'entities',         pfKey: 'max_branches' },
 ];
 
 const razorpay = new Razorpay({
@@ -32,7 +33,49 @@ exports.getPlans = async (req, res) => {
     const [rows] = await db.execute(
       'SELECT id, name, price_inr, period, trial_days, features FROM subscription_plans WHERE is_active = true ORDER BY price_inr'
     );
-    res.json({ plans: rows });
+
+    // Merge plan_features into each plan's features JSONB for dynamic toggle/limit values
+    const LEGACY_KEY_MAP = {
+      monthly_transactions: 'monthly_txns',
+      max_monthly_txns: 'monthly_txns',
+      customers: 'ledger_customers',
+      max_customers: 'ledger_customers',
+      staff_members: 'staff_members',
+      max_staff: 'staff_members',
+      branches: 'branches',
+      max_branches: 'branches',
+      suppliers: 'suppliers',
+      max_suppliers: 'suppliers',
+      products: 'products',
+      max_products: 'products',
+    };
+    const plans = [];
+    for (const row of rows) {
+      const baseFeatures = row.features || {};
+      const [planFeatures] = await db.execute(
+        'SELECT feature_key, feature_type, enabled, max_value, config FROM hris_saas.plan_features WHERE plan_id = ?',
+        [row.id]
+      );
+      const merged = { ...baseFeatures };
+      for (const pf of planFeatures) {
+        const val = pf.feature_type === 'boolean' || pf.feature_type === 'section'
+          ? !!pf.enabled
+          : pf.feature_type === 'limit'
+            ? pf.enabled ? (pf.max_value !== null ? pf.max_value : -1) : 0
+            : pf.feature_type === 'config' && pf.config
+              ? pf.config
+              : !!pf.enabled;
+        merged[pf.feature_key] = val;
+        // Also set legacy key if this feature maps to a different JSONB key
+        const legacyKey = LEGACY_KEY_MAP[pf.feature_key];
+        if (legacyKey && legacyKey !== pf.feature_key) {
+          merged[legacyKey] = val;
+        }
+      }
+      plans.push({ ...row, features: merged });
+    }
+
+    res.json({ plans });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch plans.' });
@@ -65,8 +108,9 @@ exports.getUsage = async (req, res) => {
     const plan = resolvePlan(tenantRows[0].subscription_plan);
 
     const dimensions = [];
-    for (const { key, limitDim } of USAGE_DIMENSIONS) {
-      const limit = getLimit(plan, LIMIT_KEY_MAP[limitDim]);
+    for (const { key, pfKey } of USAGE_DIMENSIONS) {
+      // Read limit from plan_features via featureAccess (dynamic), fallback to static config
+      const limit = await getTenantFeatureLimit(req.tenantId, pfKey);
       let current = 0;
       try {
         const query = USAGE_QUERIES[key];
@@ -101,9 +145,11 @@ exports.selectPlan = async (req, res) => {
   try {
     // Verify plan exists
     const [found] = await db.execute(
-      'SELECT id FROM subscription_plans WHERE id = ?', [plan]
+      'SELECT id, trial_days FROM subscription_plans WHERE id = ?', [plan]
     );
     if (found.length === 0) return res.status(400).json({ error: 'Invalid plan.' });
+
+    const trialDays = found[0].trial_days ?? 0;
 
     // Deactivate existing subscription
     await db.execute(
@@ -115,9 +161,9 @@ exports.selectPlan = async (req, res) => {
     // Create new subscription
     const subId = uuidv4();
     const isFree = plan === 'free';
-    const periodEnd = isFree ? '2099-12-31' : new Date(Date.now() + 14 * 86400000).toISOString();
+    const periodEnd = isFree ? '2099-12-31' : new Date(Date.now() + trialDays * 86400000).toISOString();
     const status = isFree ? 'active' : 'trialing';
-    const trialEnd = isFree ? null : new Date(Date.now() + 14 * 86400000);
+    const trialEnd = isFree ? null : new Date(Date.now() + trialDays * 86400000);
 
     await db.execute(
       `INSERT INTO subscriptions (id, tenant_id, plan_id, status, trial_ends_at, current_period_start, current_period_end)
@@ -188,6 +234,41 @@ exports.checkFeature = async (req, res) => {
   const { canAccess } = require('../utils/subscription');
   const result = await canAccess(req.tenantId, feature);
   res.json({ feature, ...result });
+};
+
+exports.checkFeatures = async (req, res) => {
+  const { features } = req.body;
+  if (!Array.isArray(features) || features.length === 0) {
+    return res.status(400).json({ error: 'Features array required.' });
+  }
+
+  const { canAccess } = require('../utils/subscription');
+  const results = {};
+  for (const f of features) {
+    results[f] = await canAccess(req.tenantId, f);
+  }
+  res.json({ features: results });
+};
+
+exports.getActiveOverrides = async (req, res) => {
+  const db = require('../config/db');
+  const [rows] = await db.execute(
+    `SELECT feature_key, override_type, max_value
+     FROM tenant_feature_overrides
+     WHERE tenant_id = ?
+       AND (expires_at IS NULL OR expires_at > NOW())
+       AND override_type IN ('DISABLE_FEATURE','ENABLE_FEATURE','READ_ONLY','FULL_ACCESS')`,
+    [req.tenantId]
+  );
+  const overrides = {};
+  for (const r of rows) {
+    if (r.override_type === 'DISABLE_FEATURE') {
+      overrides[r.feature_key] = false;
+    } else {
+      overrides[r.feature_key] = true;
+    }
+  }
+  res.json({ overrides });
 };
 
 // =============================================
@@ -481,7 +562,7 @@ exports.startTrial = async (req, res) => {
     );
     if (plan.length === 0) return res.status(404).json({ error: 'Plan not found.' });
 
-    const trialDays = plan[0].trial_days || 14;
+    const trialDays = plan[0].trial_days ?? 14;
     const trialEnd = new Date(Date.now() + trialDays * 86400000);
     const periodEnd = new Date(Date.now() + trialDays * 86400000);
 
@@ -522,11 +603,12 @@ exports.getDowngradePreview = async (req, res) => {
       return res.json({ plan: 'free', willLose: [], willKeep: [] });
     }
 
-    const [freePlan] = await db.execute(
-      'SELECT features FROM subscription_plans WHERE id = ?', ['free']
+    const targetPlanId = req.query.plan || 'free';
+    const [targetPlan] = await db.execute(
+      'SELECT features FROM subscription_plans WHERE id = ?', [targetPlanId]
     );
     const currentFeatures = status.features || {};
-    const freeFeatures = freePlan.length > 0 ? freePlan[0].features : {};
+    const targetFeatures = targetPlan.length > 0 ? targetPlan[0].features : {};
 
     const willLose = [];
     const willKeep = [];
@@ -550,13 +632,12 @@ exports.getDowngradePreview = async (req, res) => {
 
     for (const [key, label] of Object.entries(LABEL_MAP)) {
       const current = currentFeatures[key];
-      const freeVal = freeFeatures[key];
-      const currentUnlimited = current === -1;
-      const currentEnabled = current === true;
-      const currentString = typeof current === 'string' && current !== freeVal;
-      const currentNumeric = typeof current === 'number' && current > 0 && (!freeVal || current > freeVal);
+      const targetVal = targetFeatures[key];
 
-      if (currentUnlimited || currentEnabled || currentString || currentNumeric) {
+      const currentActive = current === true || current === -1 || (typeof current === 'number' && current > 0);
+      const targetActive = targetVal === true || targetVal === -1 || (typeof targetVal === 'number' && targetVal > 0);
+
+      if (currentActive && !targetActive) {
         willLose.push(label);
       } else {
         willKeep.push(label);
@@ -573,20 +654,21 @@ exports.getDowngradePreview = async (req, res) => {
     );
     const customerTotal = Number(customerCount[0]?.c || 0);
     const staffTotal = Number(staffCount[0]?.c || 0);
-    const freeCustomerLimit = Number(freeFeatures.ledger_customers || 0);
-    const freeStaffLimit = Number(freeFeatures.staff_members || 0);
+    const targetCustomerLimit = Number(targetFeatures.max_customers || targetFeatures.ledger_customers || 0);
+    const targetStaffLimit = Number(targetFeatures.max_staff || targetFeatures.staff_members || 0);
 
     const warnings = [];
-    if (customerTotal > freeCustomerLimit && freeCustomerLimit > 0) {
-      warnings.push(`You have ${customerTotal} customers — Free plan allows only ${freeCustomerLimit}. Some data will become inaccessible.`);
+    if (targetCustomerLimit > 0 && customerTotal > targetCustomerLimit) {
+      warnings.push(`You have ${customerTotal} customers — ${targetPlanId} plan allows only ${targetCustomerLimit}. Some data will become inaccessible.`);
     }
-    if (staffTotal > freeStaffLimit && freeStaffLimit > 0) {
-      warnings.push(`You have ${staffTotal} staff members — Free plan allows only ${freeStaffLimit}. Extra staff accounts will be locked.`);
+    if (targetStaffLimit > 0 && staffTotal > targetStaffLimit) {
+      warnings.push(`You have ${staffTotal} staff members — ${targetPlanId} plan allows only ${targetStaffLimit}. Extra staff accounts will be locked.`);
     }
 
     res.json({
       currentPlan: status.plan,
       currentPlanName: status.planName,
+      targetPlan: targetPlanId,
       willLose,
       willKeep,
       warnings,
@@ -652,10 +734,17 @@ exports.cancelSubscription = async (req, res) => {
 };
 
 // =============================================
-// Immediate downgrade (with confirmation)
+// Downgrade — switch to any lower-rank plan
 // =============================================
-exports.downgradeToFree = async (req, res) => {
+exports.downgradePlan = async (req, res) => {
   try {
+    const targetPlan = (req.body.plan || 'free').toLowerCase();
+    const validPlans = ['free', 'manage', 'manage_monthly', 'business', 'business_monthly', 'business_pro', 'business_pro_monthly'];
+
+    if (!validPlans.includes(targetPlan)) {
+      return res.status(400).json({ error: `Invalid plan: ${targetPlan}` });
+    }
+
     const [sub] = await db.execute(
       `SELECT id, plan_id, status
        FROM subscriptions
@@ -664,47 +753,59 @@ exports.downgradeToFree = async (req, res) => {
       [req.tenantId]
     );
 
-    if (sub.length === 0 || sub[0].plan_id === 'free') {
-      return res.status(400).json({ error: 'Already on Free plan.' });
+    if (sub.length === 0) {
+      return res.status(400).json({ error: 'No active subscription to change.' });
     }
 
-    const oldPlan = sub[0].plan_id;
+    const currentPlanId = sub[0].plan_id;
+    if (currentPlanId === targetPlan) {
+      return res.status(400).json({ error: `Already on ${targetPlan} plan.` });
+    }
 
-    // Deactivate current
+    const currentRank = planRank(currentPlanId);
+    const targetRank = planRank(targetPlan);
+
+    if (targetRank >= currentRank) {
+      return res.status(400).json({
+        error: `Cannot switch to "${targetPlan}" — only downgrade to a lower-rank plan is allowed.`,
+      });
+    }
+
+    // Deactivate current subscription
     await db.execute(
       `UPDATE subscriptions SET status = 'expired', ended_at = NOW()
        WHERE id = ?`,
       [sub[0].id]
     );
 
-    // Create free sub
+    // Create new subscription for target plan
     const subId = uuidv4();
+    const periodEnd = targetPlan === 'free' ? '2099-12-31' : "NOW() + INTERVAL '1 year'";
     await db.execute(
       `INSERT INTO subscriptions (id, tenant_id, plan_id, status, current_period_start, current_period_end)
-       VALUES (?, ?, 'free', 'active', NOW(), '2099-12-31')`,
-      [subId, req.tenantId]
+       VALUES (?, ?, ?, 'active', NOW(), ${periodEnd})`,
+      [subId, req.tenantId, targetPlan]
     );
 
     await db.execute(
       'UPDATE tenants SET subscription_plan = ?, subscription_status = ? WHERE id = ?',
-      ['free', 'active', req.tenantId]
+      [targetPlan, 'active', req.tenantId]
     );
 
-    invalidateCache('free');
+    invalidateCache(targetPlan);
 
-    // Audit log
     await audit.logPlanChange({
       tenantId: req.tenantId,
-      fromPlan: oldPlan,
-      toPlan: 'FREE',
-      reason: 'User requested downgrade to Free',
+      fromPlan: currentPlanId,
+      toPlan: targetPlan.toUpperCase(),
+      reason: req.body.reason || `User requested downgrade to ${targetPlan}`,
       actorId: req.user?.id,
       req,
     });
 
-    res.json({ message: 'Downgraded to Free plan.', plan: 'free' });
+    res.json({ message: `Downgraded to ${targetPlan} plan.`, plan: targetPlan });
   } catch (error) {
-    console.error('downgradeToFree error:', error);
+    console.error('downgradePlan error:', error);
     res.status(500).json({ error: 'Failed to downgrade.' });
   }
 };

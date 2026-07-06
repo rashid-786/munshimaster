@@ -143,14 +143,9 @@ async function grantExtraQuota({ tenantId, featureKey, extraAmount, durationDays
     throw new Error(`Invalid feature key: "${featureKey}".`);
   }
 
-  // Get current plan limit
-  const { getLimit } = require('../config/planLimits');
-  const [tenant] = await db.execute(
-    'SELECT subscription_plan FROM hris_saas.tenants WHERE id = ?',
-    [tenantId]
-  );
-  const plan = tenant[0]?.subscription_plan || 'FREE';
-  const planLimit = getLimit(plan, featureKey);
+  // Get current plan limit from plan_features (dynamic)
+  const { getTenantFeatureLimit } = require('../utils/featureAccess');
+  const planLimit = await getTenantFeatureLimit(tenantId, featureKey);
   const newLimit = planLimit === -1 ? -1 : planLimit + extraAmount;
 
   // Convert durationDays to expires_at

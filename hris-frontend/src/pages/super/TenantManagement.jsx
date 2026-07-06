@@ -3,6 +3,7 @@ import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
 import useIsMobile from '../../hooks/useIsMobile';
 import ExtendTrialModal from '../../components/ExtendTrialModal';
+import ConfirmDialog from '../../components/super/ConfirmDialog';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 const fmtDateTime = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
@@ -55,6 +56,7 @@ const TenantManagement = () => {
   const [loading, setLoading] = useState(true);
   const [suspending, setSuspending] = useState(null);
   const [extendTrialTenant, setExtendTrialTenant] = useState(null);
+  const [confirm, setConfirm] = useState({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
   const limit = 25;
 
   const fetchTenants = useCallback(async () => {
@@ -90,25 +92,36 @@ const TenantManagement = () => {
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (!window.confirm(`Permanently delete "${name}" and ALL associated data? This cannot be undone.`)) return;
-    try {
-      await superService.deleteTenant(id);
-      fetchTenants();
-    } catch {
-      setError('Failed to delete tenant.');
-    }
+  const handleDelete = (id, name) => {
+    setConfirm({
+      open: true,
+      variant: 'danger',
+      title: 'Delete Tenant',
+      message: `Permanently delete "${name}" and ALL associated data? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, loading: true }));
+        try {
+          await superService.deleteTenant(id);
+          fetchTenants();
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        } catch {
+          setError('Failed to delete tenant.');
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        }
+      },
+    });
   };
 
   const totalPages = Math.ceil(total / limit);
-  const isSuspended = (t) => t.status === 'inactive' || t.subscription_status === 'suspended';
-  const isTrialing = (t) => t.latest_subscription_status === 'trialing' || t.trial_ends_at;
+  const isSuspended = (t) => t.status === 'inactive' || t.subscription_status === 'suspended' || t.status === 'suspended';
+  const isTrialing = (t) => !isSuspended(t) && t.latest_subscription_status === 'trialing';
   const subStatus = (t) => {
     if (isSuspended(t)) return 'suspended';
     if (isTrialing(t)) return 'trialing';
     if (t.latest_subscription_status === 'active' || t.active_subscription_count > 0) return 'active';
     if (t.latest_subscription_status === 'expired' || t.subscription_status === 'expired') return 'expired';
-    return t.subscription_status || 'active';
+    return 'active';
   };
 
   const renderFilters = () => (
@@ -313,6 +326,17 @@ const TenantManagement = () => {
           onSuccess={fetchTenants}
         />
       )}
+
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmLabel={confirm.confirmLabel || 'Confirm'}
+        variant={confirm.variant}
+        loading={confirm.loading}
+        onClose={() => setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null })}
+        onConfirm={confirm.onConfirm}
+      />
     </div>
   );
 };

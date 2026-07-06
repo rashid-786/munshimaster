@@ -338,3 +338,42 @@ exports.bulkSetFeatureOverrides = async (req, res) => {
     return res.status(500).json({ error: 'Failed to set bulk overrides.' });
   }
 };
+
+exports.revokeAllFeatureOverrides = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const admin = req.user;
+
+    const [existing] = await db.execute(
+      'SELECT id, feature_key FROM hris_saas.tenant_feature_overrides WHERE tenant_id = ?',
+      [tenantId]
+    );
+
+    await db.execute(
+      'DELETE FROM hris_saas.tenant_feature_overrides WHERE tenant_id = ?',
+      [tenantId]
+    );
+
+    await saService.logAction({
+      adminId: admin.id, adminName: admin.name,
+      action: 'override.all_revoked',
+      entityType: 'feature_override',
+      tenantId,
+      details: { count: existing.length, featureKeys: existing.map(r => r.feature_key) },
+      req,
+    });
+
+    await saService.logTenantAudit({
+      tenantId, actorId: admin.id, actorName: admin.name,
+      action: 'super_admin.all_overrides_revoked',
+      entityType: 'feature_override',
+      changes: { count: existing.length, featureKeys: existing.map(r => r.feature_key) },
+      req,
+    });
+
+    return res.json({ success: true, revoked: existing.length });
+  } catch (err) {
+    console.error('[FeatureOverride] revokeAllFeatureOverrides error:', err);
+    return res.status(500).json({ error: 'Failed to revoke all overrides.' });
+  }
+};

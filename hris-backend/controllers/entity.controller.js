@@ -73,12 +73,10 @@ exports.create = async (req, res) => {
       orgId = tenantId;
     }
 
-    // Enforce entity limit for the tenant's plan
-    const plan = resolvePlan(parentTenant.subscription_plan);
+    // Enforce branch/store limit for the tenant's plan
     const limitCheck = await checkUsage({
       tenantId,
-      plan,
-      limitKey: 'entities',
+      limitKey: 'branches',
     });
     if (!limitCheck.allowed) {
       const label = entityLabel(parentTenant.subscription_plan);

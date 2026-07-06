@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { superService } from '../../services/super.service';
 import useIsMobile from '../../hooks/useIsMobile';
+import ConfirmDialog from '../../components/super/ConfirmDialog';
 
 const fmtINR = (n) => (n ?? 0) === 0 ? '₹0' : '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const fmtNum = (n) => (n ?? 0).toLocaleString();
@@ -10,13 +11,12 @@ const PERIOD_LABELS = { month: 'Monthly', quarter: 'Quarterly', year: 'Yearly', 
 const FEATURE_TYPES = ['boolean', 'limit', 'config', 'section'];
 
 const ALL_FEATURE_DEFS = [
-  { key: 'entities', label: 'Entities', type: 'limit', defaultMax: 5 },
-  { key: 'customers', label: 'Customers', type: 'limit', defaultMax: 50 },
-  { key: 'suppliers', label: 'Suppliers', type: 'limit', defaultMax: 20 },
-  { key: 'staff_members', label: 'Staff Members', type: 'limit', defaultMax: 2 },
-  { key: 'branches', label: 'Branches', type: 'limit', defaultMax: 1 },
-  { key: 'monthly_transactions', label: 'Monthly Transactions', type: 'limit', defaultMax: 500 },
-  { key: 'products', label: 'Products', type: 'limit', defaultMax: 20 },
+  { key: 'max_customers', label: 'Customers', type: 'limit', defaultMax: 50 },
+  { key: 'max_suppliers', label: 'Suppliers', type: 'limit', defaultMax: 20 },
+  { key: 'max_staff', label: 'Staff Members', type: 'limit', defaultMax: 2 },
+  { key: 'max_branches', label: 'Branches', type: 'limit', defaultMax: 1 },
+  { key: 'max_monthly_txns', label: 'Monthly Transactions', type: 'limit', defaultMax: 500 },
+  { key: 'max_products', label: 'Products', type: 'limit', defaultMax: 20 },
   { key: 'invoices', label: 'Invoices', type: 'boolean' },
   { key: 'purchase_orders', label: 'Purchase Orders', type: 'boolean' },
   { key: 'credit_debit_notes', label: 'Credit/Debit Notes', type: 'boolean' },
@@ -62,7 +62,7 @@ const StatusBadge = ({ status }) => {
 };
 
 // ─── Plan Card ────────────────────────────────────────
-const PlanCard = ({ plan, onEdit, onFeatures, onDeactivate, onAssign }) => {
+const PlanCard = ({ plan, onEdit, onFeatures, onDeactivate, onDelete }) => {
   const status = plan.is_active === false ? 'inactive' : 'active';
   const periodLabel = PERIOD_LABELS[plan.period] || plan.period || '';
   return (
@@ -95,9 +95,11 @@ const PlanCard = ({ plan, onEdit, onFeatures, onDeactivate, onAssign }) => {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => onEdit(plan)} className="btn-secondary !py-1.5 !px-3 text-xs">Edit</button>
         <button onClick={() => onFeatures(plan)} className="btn-secondary !py-1.5 !px-3 text-xs">Features</button>
-        <button onClick={() => onAssign(plan)} className="btn-secondary !py-1.5 !px-3 text-xs">Assign</button>
         {status === 'active' && (
           <button onClick={() => onDeactivate(plan)} className="btn-secondary !py-1.5 !px-3 text-xs !text-red-600">Deactivate</button>
+        )}
+        {status === 'inactive' && (
+          <button onClick={() => onDelete(plan)} className="btn-secondary !py-1.5 !px-3 text-xs !text-red-600">Delete</button>
         )}
       </div>
     </div>
@@ -368,123 +370,22 @@ const FeaturesModal = ({ plan, onClose, onSave }) => {
   );
 };
 
-// ─── Tenant Plan Change Modal ─────────────────────────
-const ChangePlanModal = ({ plan, onClose, onSave, tenants, allPlans }) => {
-  const [selectedTenant, setSelectedTenant] = useState('');
-  const [targetPlan, setTargetPlan] = useState(plan?.id || '');
-  const [reason, setReason] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [trialStartDate, setTrialStartDate] = useState('');
-  const [trialEndDate, setTrialEndDate] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedTenant) return setErr('Please select a tenant.');
-    if (!targetPlan) return setErr('Please select a target plan.');
-    setSaving(true);
-    setErr('');
-    try {
-      await onSave(selectedTenant, {
-        plan: targetPlan,
-        reason: reason || undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        trialStartDate: trialStartDate || undefined,
-        trialEndDate: trialEndDate || undefined,
-      });
-      onClose();
-    } catch (e) {
-      setErr(e.response?.data?.error || e.message || 'Failed to change plan.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30 animate-fade-in" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Assign Plan to Tenant</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {err && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{err}</div>}
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Tenant</label>
-            <select value={selectedTenant} onChange={e => setSelectedTenant(e.target.value)} required className="input-field">
-              <option value="">Select tenant...</option>
-              {tenants.map(t => (
-                <option key={t.id} value={t.id}>{t.company_name} ({t.subdomain})</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Target Plan</label>
-            <select value={targetPlan} onChange={e => setTargetPlan(e.target.value)} required className="input-field">
-              <option value="">Select plan...</option>
-              {(allPlans || []).map(p => (
-                <option key={p.id} value={p.id}>{p.name || p.id} ({fmtINR(p.price_inr)}/{p.period}){p.is_active === false ? ' [inactive]' : ''}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Reason (optional)</label>
-            <input type="text" value={reason} onChange={e => setReason(e.target.value)} className="input-field" placeholder="Why is this plan being assigned?" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-field" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-field" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Trial Start</label>
-              <input type="date" value={trialStartDate} onChange={e => setTrialStartDate(e.target.value)} className="input-field" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Trial End</label>
-              <input type="date" value={trialEndDate} onChange={e => setTrialEndDate(e.target.value)} className="input-field" />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary text-sm">{saving ? 'Assigning...' : 'Assign Plan'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
 // ═══════════════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════
 const SubscriptionPlans = () => {
   const isMobile = useIsMobile();
   const [plans, setPlans] = useState([]);
-  const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState('all');
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [editPlan, setEditPlan] = useState(null);
   const [featurePlan, setFeaturePlan] = useState(null);
-  const [assignPlan, setAssignPlan] = useState(null);
+  const [confirm, setConfirm] = useState({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
 
   const fetchPlans = useCallback(async () => {
     setLoading(true);
@@ -498,14 +399,7 @@ const SubscriptionPlans = () => {
     }
   }, []);
 
-  const fetchTenants = useCallback(async () => {
-    try {
-      const data = await superService.getTenants({ limit: 500 });
-      setTenants(data.tenants || []);
-    } catch {}
-  }, []);
-
-  useEffect(() => { fetchPlans(); fetchTenants(); }, [fetchPlans, fetchTenants]);
+  useEffect(() => { fetchPlans(); }, [fetchPlans]);
 
   const handleCreate = async (data) => {
     await superService.createPlan(data);
@@ -518,14 +412,24 @@ const SubscriptionPlans = () => {
     setEditPlan(null);
   };
 
-  const handleDeactivate = async (plan) => {
-    if (!window.confirm(`Deactivate "${plan.name || plan.id}"? Existing subscribers will retain access but no new assignments can use this plan.`)) return;
-    try {
-      await superService.deactivatePlan(plan.id);
-      fetchPlans();
-    } catch (e) {
-      setError(e.response?.data?.error || 'Failed to deactivate plan.');
-    }
+  const handleDeactivate = (plan) => {
+    setConfirm({
+      open: true,
+      variant: 'warning',
+      title: 'Deactivate Plan',
+      message: `Deactivate "${plan.name || plan.id}"? Existing subscribers will retain access but no new assignments can use this plan.`,
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, loading: true }));
+        try {
+          await superService.deactivatePlan(plan.id);
+          fetchPlans();
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        } catch (e) {
+          setError(e.response?.data?.error || 'Failed to deactivate plan.');
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        }
+      },
+    });
   };
 
   const handleSaveFeatures = async (planId, features) => {
@@ -533,15 +437,42 @@ const SubscriptionPlans = () => {
     fetchPlans();
   };
 
-  const handleChangePlan = async (tenantId, data) => {
-    await superService.changeTenantPlan(tenantId, data);
+  const handleDelete = (plan) => {
+    setConfirm({
+      open: true,
+      variant: 'danger',
+      title: 'Delete Plan',
+      message: `Delete "${plan.name || plan.id}" permanently? This cannot be undone. Only plans with no active subscribers or tenant assignments can be deleted.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, loading: true }));
+        try {
+          await superService.deletePlan(plan.id);
+          fetchPlans();
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        } catch (e) {
+          setError(e.response?.data?.error || 'Failed to delete plan.');
+          setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null });
+        }
+      },
+    });
   };
 
+  // Filters
+  const filteredPlans = [...plans].filter(p => {
+    if (statusFilter === 'active' && p.is_active === false) return false;
+    if (statusFilter === 'inactive' && p.is_active !== false) return false;
+    if (periodFilter !== 'all' && p.period !== periodFilter) return false;
+    return true;
+  });
+
   // Sort: active first, then by price
-  const sortedPlans = [...plans].sort((a, b) => {
+  const sortedPlans = filteredPlans.sort((a, b) => {
     if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
     return (a.price_inr || 0) - (b.price_inr || 0);
   });
+
+  const PERIOD_OPTIONS = [...new Set(plans.map(p => p.period).filter(Boolean))];
 
   return (
     <div className="space-y-6">
@@ -558,6 +489,21 @@ const SubscriptionPlans = () => {
           <p className="text-sm text-gray-500 mt-0.5">{plans.length} plans · {plans.filter(p => p.is_active !== false).length} active</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">+ Create Plan</button>
+      </div>
+
+      {/* ── Filters ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field !w-auto !py-1.5 text-sm">
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)} className="input-field !w-auto !py-1.5 text-sm">
+          <option value="all">All Types</option>
+          {PERIOD_OPTIONS.map(opt => (
+            <option key={opt} value={opt}>{PERIOD_LABELS[opt] || opt}</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -584,7 +530,7 @@ const SubscriptionPlans = () => {
               onEdit={p => setEditPlan(p)}
               onFeatures={p => setFeaturePlan(p)}
               onDeactivate={handleDeactivate}
-              onAssign={p => setAssignPlan(p)}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -616,16 +562,17 @@ const SubscriptionPlans = () => {
         />
       )}
 
-      {/* Assign Plan Modal */}
-      {assignPlan && (
-        <ChangePlanModal
-          plan={assignPlan}
-          tenants={tenants}
-          allPlans={plans}
-          onClose={() => setAssignPlan(null)}
-          onSave={handleChangePlan}
-        />
-      )}
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmLabel={confirm.confirmLabel || 'Confirm'}
+        variant={confirm.variant}
+        loading={confirm.loading}
+        onClose={() => setConfirm({ open: false, title: '', message: '', variant: 'danger', onConfirm: null })}
+        onConfirm={confirm.onConfirm}
+      />
     </div>
   );
 };

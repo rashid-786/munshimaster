@@ -14,6 +14,16 @@ const SECTION_LABELS = {
   expenses: 'Expenses',
   campaigns: 'Campaigns',
   settings: 'Settings',
+  my_bahi_book: 'My Bahi Book',
+  my_business: 'My Business',
+  my_staff: 'My Staff (HR)',
+  entities: 'Entities',
+  staff_directory: 'Staff Directory',
+  attendance: 'Attendance',
+  leaves: 'Leaves',
+  payroll: 'Payroll',
+  advances: 'Advances',
+  replacements: 'Replacements',
 };
 
 /**
@@ -27,7 +37,20 @@ exports.getSections = async (req, res) => {
     const [tenant] = await db.execute('SELECT id, subscription_plan FROM hris_saas.tenants WHERE id = ?', [tenantId]);
     if (tenant.length === 0) return res.status(404).json({ error: 'Tenant not found.' });
 
-    const plan = (tenant[0].subscription_plan || 'FREE').toUpperCase();
+    const planCode = (tenant[0].subscription_plan || 'FREE').toLowerCase();
+
+    // Get ALL plan features for default visibility + section-type identification
+    const [allPlanFeatures] = await db.execute(
+      `SELECT feature_key, feature_type, enabled FROM hris_saas.plan_features
+       WHERE plan_id = ?`,
+      [planCode]
+    );
+    const planDefaults = {};
+    const planSectionKeys = [];
+    allPlanFeatures.forEach(f => {
+      planDefaults[f.feature_key] = f.enabled;
+      if (f.feature_type === 'section') planSectionKeys.push(f.feature_key);
+    });
 
     // Get all overrides from DB
     const [overrides] = await db.execute(
@@ -40,22 +63,53 @@ exports.getSections = async (req, res) => {
     const overrideMap = {};
     overrides.forEach(o => { overrideMap[o.section_key] = o; });
 
-    // Build all sections with their state
-    const sections = Object.keys(SECTION_LABELS).map(key => {
+    // Build children of plan-level sections from hierarchy
+    const childrenOfPlanSection = {};
+    Object.entries(SECTION_HIERARCHY).forEach(([child, parent]) => {
+      if (parent && planSectionKeys.includes(parent)) {
+        childrenOfPlanSection[child] = parent;
+      }
+    });
+
+    // Determine which keys to show
+    let allKeys;
+    if (planSectionKeys.length > 0) {
+      // Show plan section features + their hierarchy children
+      allKeys = [...planSectionKeys, ...Object.keys(childrenOfPlanSection)];
+    } else {
+      // Fallback for plans without section-type features: show SECTION_LABELS keys
+      // that have a matching plan feature or any old override
+      const overrideKeys = new Set(overrides.map(o => o.section_key));
+      allKeys = Object.keys(SECTION_LABELS).filter(k =>
+        k in planDefaults || overrideKeys.has(k)
+      );
+    }
+
+    const sections = Array.from(allKeys).map(key => {
       const ov = overrideMap[key];
       const isOverridden = !!ov;
+      const parent = SECTION_HIERARCHY[key] || null;
       const isParent = Object.values(SECTION_HIERARCHY).includes(key);
       const children = Object.entries(SECTION_HIERARCHY)
-        .filter(([, parent]) => parent === key)
+        .filter(([, p]) => p === key)
         .map(([childKey]) => childKey);
+
+      // Default visibility: plan's enabled field, or fallback to false
+      const planDefault = key in planDefaults ? planDefaults[key] : false;
+
+      // Cascade parent visibility only if child has no plan feature of its own
+      let visible = ov ? ov.visible : planDefault;
+      if (!ov && parent && !(key in planDefaults) && parent in planDefaults && !planDefaults[parent]) {
+        visible = false;
+      }
 
       return {
         sectionKey: key,
-        label: SECTION_LABELS[key],
-        parentSectionKey: SECTION_HIERARCHY[key] || null,
+        label: SECTION_LABELS[key] || key,
+        parentSectionKey: parent,
         children,
         isParent,
-        visible: ov ? ov.visible : getPlanDefaultVisible(key, plan),
+        visible,
         readOnly: ov ? ov.read_only : false,
         source: isOverridden ? 'override' : 'plan',
         reason: ov?.reason || null,
@@ -75,14 +129,41 @@ exports.getSections = async (req, res) => {
 /**
  * Set visibility for a section (create or update override).
  */
+/**
+ * Get section visibility for the current tenant (tenant-facing).
+ * Returns only visible + readOnly flags for each section.
+ */
+exports.getTenantSections = async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+
+    const [overrides] = await db.execute(
+      `SELECT section_key, visible, read_only
+       FROM hris_saas.tenant_section_visibility
+       WHERE tenant_id = ?`,
+      [tenantId]
+    );
+
+    const sections = {};
+    overrides.forEach(o => {
+      sections[o.section_key] = { visible: o.visible, readOnly: o.read_only };
+    });
+
+    return res.json({ sections });
+  } catch (err) {
+    console.error('[SectionVisibility] getTenantSections error:', err);
+    return res.status(500).json({ error: 'Failed to fetch section visibility.' });
+  }
+};
+
 exports.setSectionVisibility = async (req, res) => {
   try {
     const { tenantId } = req.params;
     const { sectionKey, visible, readOnly, reason } = req.body;
     const admin = req.user;
 
-    if (!sectionKey || visible === undefined) {
-      return res.status(400).json({ error: 'sectionKey and visible are required.' });
+    if (!sectionKey) {
+      return res.status(400).json({ error: 'sectionKey is required.' });
     }
 
     if (!SECTION_LABELS[sectionKey]) {
@@ -107,29 +188,34 @@ exports.setSectionVisibility = async (req, res) => {
 
     // Upsert
     if (existing.length > 0) {
+      const sets = [];
+      const params = [];
+      if (visible !== undefined) { sets.push('visible = ?'); params.push(visible); }
+      if (readOnly !== undefined) { sets.push('read_only = ?'); params.push(readOnly); }
+      sets.push('reason = ?', 'set_by = ?', 'updated_at = NOW()');
+      params.push(reason, admin.id, tenantId, sectionKey);
       await db.execute(
-        `UPDATE hris_saas.tenant_section_visibility
-         SET visible = ?, read_only = COALESCE(?, read_only), reason = ?, set_by = ?, updated_at = NOW()
-         WHERE tenant_id = ? AND section_key = ?`,
-        [visible, readOnly !== undefined ? readOnly : null, reason, admin.id, tenantId, sectionKey]
+        `UPDATE hris_saas.tenant_section_visibility SET ${sets.join(', ')} WHERE tenant_id = ? AND section_key = ?`,
+        params
       );
     } else {
       await db.execute(
         `INSERT INTO hris_saas.tenant_section_visibility (id, tenant_id, section_key, visible, read_only, reason, set_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [uuidv4(), tenantId, sectionKey, visible, readOnly || false, reason, admin.id]
+        [uuidv4(), tenantId, sectionKey, visible ?? true, readOnly ?? false, reason, admin.id]
       );
     }
 
     // Record in history
+    const action = visible !== undefined ? (visible ? 'visible' : 'hidden') : (readOnly !== undefined ? 'read_only_toggled' : 'updated');
     await db.execute(
       `INSERT INTO hris_saas.tenant_section_visibility_history
          (id, tenant_id, section_key, action, old_visible, new_visible, old_read_only, new_read_only, reason, changed_by, changed_by_name, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         uuidv4(), tenantId, sectionKey,
-        visible ? 'visible' : 'hidden',
-        oldVisible, visible,
+        action,
+        oldVisible, visible !== undefined ? visible : oldVisible,
         oldReadOnly, readOnly !== undefined ? readOnly : oldReadOnly,
         reason, admin.id, admin.name,
       ]

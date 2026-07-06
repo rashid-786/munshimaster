@@ -8,15 +8,29 @@ const db = require('../config/db');
  */
 
 const SECTION_HIERARCHY = {
+  // Plan-level sections (new)
+  my_bahi_book: null,
+  my_business: null,
+  my_staff: null,
+  entities: null,
+  // Child items → reparented under plan sections
+  buyers: 'my_bahi_book',
+  sellers: 'my_bahi_book',
+  cashbook: 'my_bahi_book',
+  reports: 'my_bahi_book',
+  expenses: 'my_business',
+  campaigns: 'my_business',
+  // HR sub-menus under my_staff
+  staff_directory: 'my_staff',
+  attendance: 'my_staff',
+  leaves: 'my_staff',
+  payroll: 'my_staff',
+  advances: 'my_staff',
+  replacements: 'my_staff',
+  // Legacy top-level keys (retained for backward compat)
   bahi_book: null,
-  buyers: 'bahi_book',
-  sellers: 'bahi_book',
-  cashbook: 'bahi_book',
-  reports: 'bahi_book',
   business_dashboard: null,
   staff_management: null,
-  expenses: 'business_dashboard',
-  campaigns: 'business_dashboard',
   settings: null,
 };
 
@@ -104,16 +118,22 @@ async function canTenantPerformAction(tenantId, sectionKey, action) {
  */
 function getPlanDefaultVisible(sectionKey, plan) {
   const defaults = {
-    bahi_book: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
-    buyers: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
-    sellers: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
-    cashbook: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
-    reports: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
+    // New plan-level sections
+    my_bahi_book: ['free', 'manage', 'manage_monthly', 'business', 'business_monthly', 'business_pro_monthly'],
+    my_business: ['business', 'business_monthly', 'business_pro_monthly'],
+    my_staff: ['free', 'manage', 'manage_monthly', 'business', 'business_monthly', 'business_pro_monthly'],
+    entities: ['free', 'manage', 'manage_monthly', 'business', 'business_monthly', 'business_pro_monthly'],
+    // Legacy keys
+    bahi_book: ['FREE', 'MANAGE', 'MANAGE_MONTHLY'],
+    buyers: ['MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
+    sellers: ['MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
+    cashbook: ['MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
+    reports: ['MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
     business_dashboard: ['BUSINESS', 'BUSINESS_PRO'],
-    staff_management: ['MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
+    staff_management: ['MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
     expenses: ['BUSINESS', 'BUSINESS_PRO'],
     campaigns: ['BUSINESS', 'BUSINESS_PRO'],
-    settings: ['FREE', 'MANAGE', 'BUSINESS', 'BUSINESS_PRO'],
+    settings: ['FREE', 'MANAGE', 'MANAGE_MONTHLY', 'BUSINESS', 'BUSINESS_PRO'],
   };
   return (defaults[sectionKey] || []).includes(plan);
 }

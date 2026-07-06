@@ -8,14 +8,14 @@ const PLAN_ICONS = {
   free: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
   manage: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
   business: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>,
-  pro: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+  business_pro: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
 };
 
 const PLAN_COLORS = {
   free: { border: 'border-gray-200', badge: 'bg-gray-100 text-gray-700', hover: 'hover:border-gray-300', selected: 'ring-2 ring-gray-400' },
   manage: { border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700', hover: 'hover:border-blue-300', selected: 'ring-2 ring-blue-500' },
   business: { border: 'border-indigo-200', badge: 'bg-indigo-100 text-indigo-700', hover: 'hover:border-indigo-300', selected: 'ring-2 ring-indigo-500' },
-  pro: { border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', hover: 'hover:border-purple-300', selected: 'ring-2 ring-purple-500' },
+  business_pro: { border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', hover: 'hover:border-purple-300', selected: 'ring-2 ring-purple-500' },
 };
 
 const PlanSelection = () => {
@@ -35,8 +35,9 @@ const PlanSelection = () => {
       .then(data => setPlans(data.plans.filter(p => !p.id.endsWith('_monthly'))))
       .catch(() => setPlans([
         { id: 'free', name: 'Free', price: 0, features: ['My Bahi Book'] },
-        { id: 'business', name: 'Business', price: 1069, features: ['Everything in Free', 'Business Module'] },
-        { id: 'pro', name: 'Pro', price: 1609, features: ['Everything in Business', 'Staff Management'] },
+        { id: 'manage', name: 'Manage', price: 499, features: ['Invoicing + Payroll', 'Staff & Attendance'] },
+        { id: 'business', name: 'Business', price: 1069, features: ['Everything in Manage', 'Unlimited Customers & Suppliers'] },
+        { id: 'business_pro', name: 'Business Pro', price: 1609, features: ['Everything in Business', 'Inventory, Branches, API, Support'] },
       ]))
       .finally(() => setLoading(false));
   }, [user, navigate]);

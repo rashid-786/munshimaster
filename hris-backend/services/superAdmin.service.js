@@ -672,6 +672,64 @@ async function createPlan(data) {
     [id, name, price || 0, period || 'year', trialDays || 0, isActive !== undefined ? isActive : true]
   );
 
+  // Seed default plan_features so the toggle UI has entries to work with
+  const DEFAULT_FEATURES = [
+    { feature_key: 'entities', feature_type: 'section', enabled: true, max_value: null },
+    { feature_key: 'my_bahi_book', feature_type: 'section', enabled: true, max_value: null },
+    { feature_key: 'settings', feature_type: 'section', enabled: true, max_value: null },
+    { feature_key: 'invoices', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'payroll', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'attendance', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'leaves', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'advances', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'replacements', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'purchase_orders', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'inventory', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'balance_sheet', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'reports', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'advanced_reports', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'bank_import', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'gst_returns', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'e_invoicing', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'bulk_import', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'tally_export', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'tds_management', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'gstr2b_reco', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'audit_logs', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'recurring_invoices', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'credit_debit_notes', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'pl_statement', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'cash_flow', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'whatsapp', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'api_access', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'white_label', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'priority_support', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'multi_branch', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'staff_directory', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'customers', feature_type: 'limit', enabled: true, max_value: null },
+    { feature_key: 'suppliers', feature_type: 'limit', enabled: true, max_value: null },
+    { feature_key: 'staff_members', feature_type: 'limit', enabled: true, max_value: 2 },
+    { feature_key: 'branches', feature_type: 'limit', enabled: true, max_value: 1 },
+    { feature_key: 'monthly_transactions', feature_type: 'limit', enabled: true, max_value: 500 },
+    { feature_key: 'products', feature_type: 'limit', enabled: true, max_value: null },
+    { feature_key: 'cashbook_entries', feature_type: 'limit', enabled: true, max_value: 500 },
+    { feature_key: 'buyers', feature_type: 'limit', enabled: true, max_value: null },
+    { feature_key: 'sellers', feature_type: 'limit', enabled: true, max_value: null },
+    { feature_key: 'expenses', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'business_dashboard', feature_type: 'boolean', enabled: false, max_value: null },
+    { feature_key: 'kirana', feature_type: 'boolean', enabled: true, max_value: null },
+    { feature_key: 'staff_count', feature_type: 'limit', enabled: true, max_value: 2 },
+    { feature_key: 'transactions', feature_type: 'limit', enabled: true, max_value: 500 },
+  ];
+
+  for (const f of DEFAULT_FEATURES) {
+    await db.execute(
+      `INSERT INTO hris_saas.plan_features (id, plan_id, feature_key, feature_type, enabled, max_value, config)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      [uuidv4(), id, f.feature_key, f.feature_type, f.enabled, f.max_value]
+    );
+  }
+
   const [plan] = await db.execute('SELECT * FROM hris_saas.subscription_plans WHERE id = ?', [id]);
   return plan[0];
 }
@@ -722,6 +780,42 @@ async function deactivatePlan(planId, status = 'inactive') {
 }
 
 /**
+ * Delete a plan permanently (with safeguards)
+ */
+async function deletePlan(planId) {
+  const [existing] = await db.execute('SELECT id, name, is_active FROM hris_saas.subscription_plans WHERE id = ?', [planId]);
+  if (existing.length === 0) throw new Error('Plan not found.');
+
+  // Prevent deleting plans that have active/trialing subscribers
+  const [activeSubs] = await db.execute(
+    "SELECT COUNT(*) as cnt FROM hris_saas.subscriptions WHERE plan_id = ? AND status IN ('active','trialing')",
+    [planId]
+  );
+  if (Number(activeSubs[0].cnt) > 0) {
+    throw new Error(`Cannot delete "${existing[0].name}" — ${activeSubs[0].cnt} tenant(s) have active subscriptions. Deactivate the plan instead.`);
+  }
+
+  // Check if any tenants currently have this plan assigned
+  const [tenantsOnPlan] = await db.execute(
+    'SELECT COUNT(*) as cnt FROM hris_saas.tenants WHERE subscription_plan = ?',
+    [planId]
+  );
+  const tenantCount = Number(tenantsOnPlan[0].cnt);
+  if (tenantCount > 0) {
+    throw new Error(`Cannot delete "${existing[0].name}" — ${tenantCount} tenant(s) are currently assigned to this plan. Reassign them first.`);
+  }
+
+  // Delete plan features
+  await db.execute('DELETE FROM hris_saas.plan_features WHERE plan_id = ?', [planId]);
+  // Delete expired/cancelled subscriptions referencing this plan
+  await db.execute("DELETE FROM hris_saas.subscriptions WHERE plan_id = ? AND status NOT IN ('active','trialing')", [planId]);
+  // Delete the plan itself
+  await db.execute('DELETE FROM hris_saas.subscription_plans WHERE id = ?', [planId]);
+
+  return { deleted: true, planId };
+}
+
+/**
  * Bulk-upsert features for a plan (replaces all existing features)
  */
 async function bulkUpdatePlanFeatures(planId, features) {
@@ -748,6 +842,55 @@ async function bulkUpdatePlanFeatures(planId, features) {
       ]
     );
   }
+
+  // Clear the features cache so subsequent reads get fresh data
+  try { require('../utils/subscription').invalidateCache(planId); } catch (e) {}
+
+  // Sync plan_features back to the JSONB column on subscription_plans,
+  // including legacy key mappings so frontend DB_LIMIT_MAP lookups work
+  await db.execute(
+    `UPDATE hris_saas.subscription_plans sp
+     SET features = COALESCE(sp.features, '{}'::jsonb) || (
+       WITH pf_values AS (
+         SELECT feature_key,
+            CASE
+              WHEN feature_type IN ('boolean','section') THEN to_jsonb(enabled)
+              WHEN feature_type = 'limit' AND NOT enabled THEN to_jsonb(0)
+              WHEN feature_type = 'limit' AND max_value IS NOT NULL THEN to_jsonb(max_value)
+              WHEN feature_type = 'limit' AND max_value IS NULL THEN to_jsonb(-1)
+              WHEN feature_type = 'config' AND config IS NOT NULL THEN config
+              ELSE to_jsonb(enabled)
+            END AS val
+         FROM hris_saas.plan_features
+         WHERE plan_id = sp.id
+       ),
+       pf_mapped AS (
+         SELECT feature_key, val FROM pf_values
+         UNION ALL
+         SELECT mk.legacy_key, pfv.val
+         FROM pf_values pfv
+         JOIN (VALUES
+           ('monthly_transactions','monthly_txns'),
+           ('max_monthly_txns','monthly_txns'),
+           ('customers','ledger_customers'),
+           ('max_customers','ledger_customers'),
+           ('staff_members','staff_members'),
+           ('max_staff','staff_members'),
+           ('branches','branches'),
+           ('max_branches','branches'),
+           ('suppliers','suppliers'),
+           ('max_suppliers','suppliers'),
+           ('products','products'),
+           ('max_products','products')
+         ) AS mk(plan_key, legacy_key) ON pfv.feature_key = mk.plan_key
+       )
+       SELECT COALESCE(jsonb_object_agg(feature_key, val), '{}'::jsonb)
+       FROM pf_mapped
+       WHERE feature_key IS NOT NULL
+     )
+     WHERE sp.id = ?`,
+    [planId]
+  );
 
   return { planId, featureCount: features.length };
 }
@@ -856,6 +999,7 @@ module.exports = {
   createPlan,
   updatePlan,
   deactivatePlan,
+  deletePlan,
   bulkUpdatePlanFeatures,
   changeTenantPlan,
   extendTrial,

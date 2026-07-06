@@ -17,9 +17,9 @@ async function proGateForAdvancedReports(req, res, next) {
       if (planRank(currentPlan) < 2) {
         return res.status(403).json({
           error: 'Upgrade required.',
-          message: `This report requires Pro plan. Your current plan is ${currentPlan}.`,
+          message: `This report requires Business Pro plan. Your current plan is ${currentPlan}.`,
           currentPlan,
-          requiredPlan: 'pro',
+          requiredPlan: 'business_pro',
         });
       }
     } catch (error) {

@@ -26,8 +26,8 @@
  *           'pl_statement'|'tally_export'|'tds_management'|
  *           'gstr2b_reco'|'sidepanel_customization'} FeatureType
  *
- * @typedef {'customers'|'suppliers'|'staff_members'|'branches'|
- *           'monthly_transactions'|'products'} LimitType
+ * @typedef {'max_customers'|'max_suppliers'|'max_staff'|'max_branches'|
+ *           'max_monthly_txns'|'max_products'} LimitType
  *
  * @typedef {Object} PlanDefinition
  * @property {PlanType} id
@@ -52,12 +52,15 @@ export const PLANS = {
     rank: 0,
     legacyIds: ['free'],
     limits: {
-      customers: 50,
-      suppliers: 10,
-      staff_members: 0,
-      branches: 2,
-      monthly_transactions: 500,
-      products: 0,
+      max_customers: 50,
+      max_suppliers: 10,
+      max_staff: 0,
+      max_branches: 2,
+      max_monthly_txns: 500,
+      max_products: 0,
+      buyers: -1,
+      sellers: -1,
+      cashbook_entries: -1,
     },
     features: {
       entities: true,
@@ -107,12 +110,15 @@ export const PLANS = {
     rank: 1,
     legacyIds: ['manage', 'manage_monthly'],
     limits: {
-      customers: 250,
-      suppliers: 50,
-      staff_members: 10,
-      branches: 2,
-      monthly_transactions: 3000,
-      products: 0,
+      max_customers: 250,
+      max_suppliers: 50,
+      max_staff: 10,
+      max_branches: 2,
+      max_monthly_txns: 3000,
+      max_products: 0,
+      buyers: -1,
+      sellers: -1,
+      cashbook_entries: -1,
     },
     features: {
       entities: true,
@@ -162,12 +168,15 @@ export const PLANS = {
     rank: 2,
     legacyIds: ['business', 'business_monthly'],
     limits: {
-      customers: -1,
-      suppliers: -1,
-      staff_members: 25,
-      branches: 3,
-      monthly_transactions: 10000,
-      products: -1,
+      max_customers: -1,
+      max_suppliers: -1,
+      max_staff: 25,
+      max_branches: 3,
+      max_monthly_txns: 10000,
+      max_products: -1,
+      buyers: -1,
+      sellers: -1,
+      cashbook_entries: -1,
     },
     features: {
       entities: true,
@@ -215,14 +224,17 @@ export const PLANS = {
     id: 'BUSINESS_PRO',
     name: 'Business Pro',
     rank: 3,
-    legacyIds: ['pro', 'pro_monthly'],
+    legacyIds: ['business_pro', 'business_pro_monthly', 'pro', 'pro_monthly'],
     limits: {
-      customers: -1,
-      suppliers: -1,
-      staff_members: 50,
-      branches: 5,
-      monthly_transactions: 20000,
-      products: -1,
+      max_customers: -1,
+      max_suppliers: -1,
+      max_staff: 50,
+      max_branches: 5,
+      max_monthly_txns: 20000,
+      max_products: -1,
+      buyers: -1,
+      sellers: -1,
+      cashbook_entries: -1,
     },
     features: {
       entities: true,
@@ -411,16 +423,24 @@ export const FEATURE_LABELS = {
   tds_management: 'TDS Management',
   gstr2b_reco: 'GSTR-2B Reconciliation',
   sidepanel_customization: 'Side Panel Customization',
+  kirana: 'Kirana Store',
+  reports_basic: 'Basic Reports',
+  my_bahi_book: 'My Bahi Book',
+  settings: 'Settings',
+  expenses: 'Expenses',
 };
 
 /** @type {Record<LimitType, string>} */
 export const LIMIT_LABELS = {
-  customers: 'Customers',
-  suppliers: 'Suppliers',
-  staff_members: 'Staff Members',
-  branches: 'Branches',
-  monthly_transactions: 'Monthly Transactions',
-  products: 'Products',
+  max_customers: 'Customers',
+  max_suppliers: 'Suppliers',
+  max_staff: 'Staff Members',
+  max_branches: 'Branches',
+  max_monthly_txns: 'Monthly Transactions',
+  max_products: 'Products',
+  buyers: 'Buyers',
+  sellers: 'Sellers',
+  cashbook_entries: 'Cashbook Entries',
 };
 
 // ─── Sidebar/Route Configuration ────────────────────

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { subscriptionService } from '../services/subscription.service';
 import Loading from './Loading';
 
-export default function DowngradeModal({ open, onClose, onDowngraded }) {
+export default function DowngradeModal({ open, onClose, onDowngraded, targetPlan = 'free' }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -13,7 +13,7 @@ export default function DowngradeModal({ open, onClose, onDowngraded }) {
       setLoading(true);
       setError('');
       setConfirming(false);
-      subscriptionService.getDowngradePreview()
+      subscriptionService.getDowngradePreview(targetPlan !== 'free' ? targetPlan : undefined)
         .then(setPreview)
         .catch(err => setError(err.response?.data?.error || 'Failed to load preview'))
         .finally(() => setLoading(false));
@@ -24,7 +24,7 @@ export default function DowngradeModal({ open, onClose, onDowngraded }) {
     setConfirming(true);
     setError('');
     try {
-      await subscriptionService.downgradeToFree();
+      await subscriptionService.changePlan(targetPlan);
       onDowngraded?.();
       onClose();
     } catch (err) {
@@ -33,13 +33,15 @@ export default function DowngradeModal({ open, onClose, onDowngraded }) {
     }
   };
 
+  const targetName = targetPlan === 'free' ? 'Free' : targetPlan === 'manage' ? 'Manage' : targetPlan === 'business' ? 'Business' : 'Business Pro';
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-lg font-semibold text-gray-900">Downgrade to Free</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Downgrade to {targetName}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
 
@@ -56,7 +58,7 @@ export default function DowngradeModal({ open, onClose, onDowngraded }) {
             <>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                 <p className="font-medium">Current Plan: <strong>{preview.currentPlanName || preview.currentPlan}</strong></p>
-                <p className="mt-1">Downgrading will limit access to these features:</p>
+                <p className="mt-1">Downgrading to <strong>{targetName}</strong> will limit access to these features:</p>
               </div>
 
               {preview.warnings?.length > 0 && (
@@ -96,20 +98,24 @@ export default function DowngradeModal({ open, onClose, onDowngraded }) {
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500">
                 Your data will not be deleted. If you upgrade again in the future, everything will be restored.
               </div>
-
-              <div className="flex gap-3 pt-2">
-                <button onClick={onClose} className="btn-secondary flex-1">Keep Current Plan</button>
-                <button
-                  onClick={handleDowngrade}
-                  disabled={confirming}
-                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  {confirming ? 'Downgrading...' : 'Confirm Downgrade'}
-                </button>
-              </div>
             </>
           )}
         </div>
+
+        {preview && !loading && (
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+            <button onClick={onClose} className="text-sm px-4 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-white transition-all">
+              Maybe Later
+            </button>
+            <button
+              onClick={handleDowngrade}
+              disabled={confirming}
+              className="text-sm px-5 py-2 rounded-xl text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium bg-red-600 hover:bg-red-700"
+            >
+              {confirming ? 'Downgrading...' : `Downgrade to ${targetName}`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

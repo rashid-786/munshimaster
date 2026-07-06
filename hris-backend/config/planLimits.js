@@ -37,10 +37,16 @@ const PLAN_LIMITS = {
  * Map user-facing limit keys to plan config dimensions.
  */
 const LIMIT_KEY_MAP = {
-  entities: 'branches',
-  transactions: 'monthly_transactions',
+  entities: 'max_branches',
+  branches: 'max_branches',
+  transactions: 'max_monthly_txns',
+  monthly_transactions: 'max_monthly_txns',
   cashbook_entries: 'cashbook_entries',
-  staff_count: 'staff_members',
+  staff_count: 'max_staff',
+  staff_members: 'max_staff',
+  customers: 'max_customers',
+  suppliers: 'max_suppliers',
+  products: 'max_products',
 };
 
 const PLAN_RANK = { FREE: 0, MANAGE: 1, BUSINESS: 2, BUSINESS_PRO: 3 };

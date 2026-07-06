@@ -158,16 +158,19 @@ exports.getTenants = async (req, res) => {
     if (status) {
       switch (status) {
         case 'active':
-          conditions.push(`t.subscription_status = 'active'`);
+          conditions.push(`t.status != 'inactive' AND t.subscription_status NOT IN ('suspended','expired','trialing')`);
           break;
-        case 'trial':
-          conditions.push(`t.subscription_status = 'trialing'`);
+        case 'trial': {
+          conditions.push(`t.status != 'inactive'`);
+          const trialSql = `(SELECT s.status FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id ORDER BY s.created_at DESC LIMIT 1) = 'trialing'`;
+          conditions.push(trialSql);
           break;
+        }
         case 'paid':
           conditions.push(`t.subscription_status = 'active'`);
           break;
         case 'expired':
-          conditions.push(`t.subscription_status = 'expired'`);
+          conditions.push(`(t.subscription_status = 'expired' OR (SELECT s.status FROM hris_saas.subscriptions s WHERE s.tenant_id = t.id ORDER BY s.created_at DESC LIMIT 1) = 'expired')`);
           break;
         case 'suspended':
           conditions.push(`(t.status = 'inactive' OR t.subscription_status = 'suspended')`);
@@ -699,7 +702,7 @@ exports.activateTrial = async (req, res) => {
     });
 
     res.json({
-      message: `14-day trial activated on ${targetPlan.toUpperCase()} plan.`,
+      message: `${days}-day trial activated on ${targetPlan.toUpperCase()} plan.`,
       plan: targetPlan.toUpperCase(),
       trialEndsAt: trialEnd,
     });
@@ -813,7 +816,26 @@ exports.getTenantUsage = async (req, res) => {
 
     // Usage from tenant_usage table (current & historical)
     const [usageRecords] = await db.execute(
-      `SELECT * FROM hris_saas.tenant_usage WHERE tenant_id = ? ORDER BY usage_month DESC LIMIT 12`,
+      `SELECT tu.*,
+              (SELECT COUNT(*) FROM hris_saas.employees e WHERE e.tenant_id = tu.tenant_id
+               AND (e.created_at IS NULL OR e.created_at <= (tu.usage_month + INTERVAL '1 month - 1 day'))) as employee_count,
+              (SELECT COUNT(*) FROM hris_saas.attendance a WHERE a.tenant_id = tu.tenant_id
+               AND a.date >= tu.usage_month AND a.date < tu.usage_month + INTERVAL '1 month') as attendance_count,
+              (SELECT COUNT(*) FROM hris_saas.leaves l WHERE l.tenant_id = tu.tenant_id
+               AND l.created_at >= tu.usage_month AND l.created_at < tu.usage_month + INTERVAL '1 month') as leave_count,
+              (SELECT COUNT(*) FROM hris_saas.payroll p WHERE p.tenant_id = tu.tenant_id
+               AND p.created_at >= tu.usage_month AND p.created_at < tu.usage_month + INTERVAL '1 month') as payroll_count,
+              (SELECT COUNT(*) FROM hris_saas.kirana_parties kp WHERE kp.tenant_id = tu.tenant_id
+               AND kp.type = 'buyer' AND kp.created_at <= (tu.usage_month + INTERVAL '1 month - 1 day')) as buyer_count,
+              (SELECT COUNT(*) FROM hris_saas.kirana_parties kp WHERE kp.tenant_id = tu.tenant_id
+               AND kp.type = 'seller' AND kp.created_at <= (tu.usage_month + INTERVAL '1 month - 1 day')) as seller_count,
+              (SELECT COUNT(*) FROM hris_saas.kirana_transactions kt WHERE kt.tenant_id = tu.tenant_id
+               AND kt.created_at >= tu.usage_month AND kt.created_at < tu.usage_month + INTERVAL '1 month') as txn_count,
+              (SELECT COUNT(*) FROM hris_saas.kirana_cashbook kc WHERE kc.tenant_id = tu.tenant_id
+               AND kc.created_at >= tu.usage_month AND kc.created_at < tu.usage_month + INTERVAL '1 month') as cashbook_count
+       FROM hris_saas.tenant_usage tu
+       WHERE tu.tenant_id = ?
+       ORDER BY tu.usage_month DESC LIMIT 12`,
       [id]
     );
 
@@ -822,6 +844,26 @@ exports.getTenantUsage = async (req, res) => {
     const [attendanceCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.attendance WHERE tenant_id = ?', [id]);
     const [leaveCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.leaves WHERE tenant_id = ?', [id]);
     const [payrollCount] = await db.execute('SELECT COUNT(*) as c FROM hris_saas.payroll WHERE tenant_id = ?', [id]);
+    const [buyerCount] = await db.execute("SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'buyer'", [id]);
+    const [sellerCount] = await db.execute("SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'seller'", [id]);
+    const [txnCount] = await db.execute(
+      `SELECT COALESCE((
+        SELECT COUNT(*) FROM hris_saas.kirana_transactions kt
+        WHERE kt.tenant_id = ?
+          AND kt.created_at >= (SELECT MAX(tu2.usage_month) FROM hris_saas.tenant_usage tu2 WHERE tu2.tenant_id = ?)
+          AND kt.created_at < (SELECT MAX(tu2.usage_month) FROM hris_saas.tenant_usage tu2 WHERE tu2.tenant_id = ?) + INTERVAL '1 month'
+      ), 0) as c`,
+      [id, id, id]
+    );
+    const [cashbookCount] = await db.execute(
+      `SELECT COALESCE((
+        SELECT COUNT(*) FROM hris_saas.kirana_cashbook kc
+        WHERE kc.tenant_id = ?
+          AND kc.created_at >= (SELECT MAX(tu2.usage_month) FROM hris_saas.tenant_usage tu2 WHERE tu2.tenant_id = ?)
+          AND kc.created_at < (SELECT MAX(tu2.usage_month) FROM hris_saas.tenant_usage tu2 WHERE tu2.tenant_id = ?) + INTERVAL '1 month'
+      ), 0) as c`,
+      [id, id, id]
+    );
 
     // Subscription info
     const [subscriptions] = await db.execute(
@@ -850,6 +892,10 @@ exports.getTenantUsage = async (req, res) => {
         attendance: Number(attendanceCount[0]?.c || 0),
         leaves: Number(leaveCount[0]?.c || 0),
         payroll: Number(payrollCount[0]?.c || 0),
+        buyers: Number(buyerCount[0]?.c || 0),
+        sellers: Number(sellerCount[0]?.c || 0),
+        total_txns: Number(txnCount[0]?.c || 0),
+        cashbook_entries: Number(cashbookCount[0]?.c || 0),
       },
       usageHistory: usageRecords,
       subscription: subscriptions[0] || null,
@@ -873,12 +919,28 @@ exports.getTenantSubscription = async (req, res) => {
       return res.status(404).json({ error: 'Tenant not found.' });
     }
 
+    const historyLimit = parseInt(req.query.historyLimit) || 10;
+    const historyOffset = parseInt(req.query.historyOffset) || 0;
+
     const [subscriptions] = await db.execute(
       `SELECT s.*, sp.name as plan_name, sp.price_inr, sp.period, sp.features
        FROM hris_saas.subscriptions s
        JOIN hris_saas.subscription_plans sp ON s.plan_id = sp.id
        WHERE s.tenant_id = ?
        ORDER BY s.created_at DESC`,
+      [id]
+    );
+
+    const [events] = await db.execute(
+      `SELECT se.* FROM hris_saas.subscription_events se
+       WHERE se.tenant_id = ?
+       ORDER BY se.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [id, String(historyLimit), String(historyOffset)]
+    );
+
+    const [eventCount] = await db.execute(
+      `SELECT COUNT(*) as count FROM hris_saas.subscription_events WHERE tenant_id = ?`,
       [id]
     );
 
@@ -898,7 +960,8 @@ exports.getTenantSubscription = async (req, res) => {
     res.json({
       tenant: tenantRows[0],
       currentSubscription: subscriptions[0] || null,
-      subscriptionHistory: subscriptions,
+      subscriptionHistory: events,
+      subscriptionHistoryTotal: parseInt(eventCount[0]?.count || 0),
       planFeatures,
       paymentSummary: payments[0],
     });
@@ -1095,6 +1158,8 @@ exports.getTenantAuditLog = async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
     const action = req.query.action || null;
+    const dateFrom = req.query.dateFrom || null;
+    const dateTo = req.query.dateTo || null;
 
     let sql = `SELECT * FROM hris_saas.audit_logs WHERE tenant_id = ?`;
     const params = [req.params.id];
@@ -1103,16 +1168,26 @@ exports.getTenantAuditLog = async (req, res) => {
       sql += ` AND action = ?`;
       params.push(action);
     }
+    if (dateFrom) {
+      sql += ` AND created_at >= ?`;
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      sql += ` AND created_at <= ?`;
+      params.push(dateTo + ' 23:59:59');
+    }
 
     sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
     params.push(String(limit), String(offset));
 
     const [rows] = await db.execute(sql, params);
 
-    const [countResult] = await db.execute(
-      `SELECT COUNT(*) as count FROM hris_saas.audit_logs WHERE tenant_id = ?${action ? ' AND action = ?' : ''}`,
-      action ? [req.params.id, action] : [req.params.id]
-    );
+    let countSql = `SELECT COUNT(*) as count FROM hris_saas.audit_logs WHERE tenant_id = ?`;
+    const countParams = [req.params.id];
+    if (action) { countSql += ` AND action = ?`; countParams.push(action); }
+    if (dateFrom) { countSql += ` AND created_at >= ?`; countParams.push(dateFrom); }
+    if (dateTo) { countSql += ` AND created_at <= ?`; countParams.push(dateTo + ' 23:59:59'); }
+    const [countResult] = await db.execute(countSql, countParams);
 
     res.json({
       logs: rows,
@@ -1630,6 +1705,26 @@ exports.deactivatePlan = async (req, res) => {
 };
 
 // =============================================
+// PLANS — Delete a plan permanently
+// =============================================
+exports.deletePlan = async (req, res) => {
+  try {
+    const result = await saService.deletePlan(req.params.planId);
+    await saService.logAction({
+      adminId: req.user?.id, adminName: req.user?.name,
+      action: 'plan.deleted',
+      entityType: 'plan', entityId: req.params.planId,
+      details: {},
+      req,
+    });
+    res.json({ message: 'Plan deleted.', result });
+  } catch (error) {
+    console.error('deletePlan error:', error);
+    res.status(400).json({ error: error.message || 'Failed to delete plan.' });
+  }
+};
+
+// =============================================
 // PLAN FEATURES — Bulk update features for a plan
 // =============================================
 exports.bulkUpdatePlanFeatures = async (req, res) => {
@@ -1793,10 +1888,10 @@ exports.getActionLogTypes = async (req, res) => {
 exports.getActionLogActors = async (req, res) => {
   try {
     const [rows] = await db.execute(
-      `SELECT DISTINCT admin_id, admin_name
+      `SELECT DISTINCT ON (admin_id) admin_id, admin_name
        FROM hris_saas.sa_action_log
        WHERE admin_id IS NOT NULL
-       ORDER BY admin_name`
+       ORDER BY admin_id, admin_name`
     );
     res.json({ actors: rows });
   } catch (error) {

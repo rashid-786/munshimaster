@@ -65,6 +65,42 @@ async function getSubscriptionStatus(tenantId) {
     [tenantId]
   );
 
+  // Merge plan_features into the JSONB features column
+  const LEGACY_KEY_MAP = {
+    monthly_transactions: 'monthly_txns',
+    max_monthly_txns: 'monthly_txns',
+    customers: 'ledger_customers',
+    max_customers: 'ledger_customers',
+    staff_members: 'staff_members',
+    max_staff: 'staff_members',
+    branches: 'branches',
+    max_branches: 'branches',
+    suppliers: 'suppliers',
+    max_suppliers: 'suppliers',
+    products: 'products',
+    max_products: 'products',
+  };
+  const baseFeatures = sub[0].features || {};
+  const [planFeatures] = await db.execute(
+    'SELECT feature_key, feature_type, enabled, max_value, config FROM hris_saas.plan_features WHERE plan_id = ?',
+    [sub[0].plan_id]
+  );
+  const mergedFeatures = { ...baseFeatures };
+  for (const pf of planFeatures) {
+    const val = pf.feature_type === 'boolean' || pf.feature_type === 'section'
+      ? !!pf.enabled
+      : pf.feature_type === 'limit'
+        ? pf.enabled ? (pf.max_value !== null ? pf.max_value : -1) : 0
+        : pf.feature_type === 'config' && pf.config
+          ? pf.config
+          : !!pf.enabled;
+    mergedFeatures[pf.feature_key] = val;
+    const legacyKey = LEGACY_KEY_MAP[pf.feature_key];
+    if (legacyKey && legacyKey !== pf.feature_key) {
+      mergedFeatures[legacyKey] = val;
+    }
+  }
+
   return {
     plan: sub[0].plan_id,
     planName: sub[0].plan_name,
@@ -72,7 +108,7 @@ async function getSubscriptionStatus(tenantId) {
     status: sub[0].status,
     trialEndsAt: sub[0].trial_ends_at,
     validUntil: sub[0].current_period_end,
-    features: sub[0].features,
+    features: mergedFeatures,
     usage: {
       customers: customerCount[0].c,
       staff: staffCount[0].c,
@@ -83,16 +119,19 @@ async function getSubscriptionStatus(tenantId) {
 /**
  * Plan rank for comparison
  * New plans: FREE=0, MANAGE=1, BUSINESS=2, BUSINESS_PRO=3
- * Legacy: free=0, business=1, pro=2
+ * Legacy: free=0, manage=1, business=2
  */
-const PLAN_RANK = { free: 0, manage: 1, manage_monthly: 1, business: 2, business_monthly: 2, pro: 3, pro_monthly: 3 };
+const PLAN_RANK = { free: 0, manage: 1, manage_monthly: 1, business: 2, business_monthly: 2, business_pro: 3, business_pro_monthly: 3, pro: 3, pro_monthly: 3 };
 const NEW_PLAN_RANK = { FREE: 0, MANAGE: 1, BUSINESS: 2, BUSINESS_PRO: 3 };
 
 // Backward compat: old plan names used in existing data
 const LEGACY_RANK = { free: 0, pro: 1, enterprise: 2 };
 
 function planRank(planId) {
-  return NEW_PLAN_RANK[planId] ?? PLAN_RANK[planId] ?? LEGACY_RANK[planId] ?? 0;
+  if (!planId) return 0;
+  // Try exact match first, then uppercase (for NEW_PLAN_RANK keys like BUSINESS_PRO)
+  return NEW_PLAN_RANK[planId] ?? PLAN_RANK[planId] ?? LEGACY_RANK[planId]
+    ?? NEW_PLAN_RANK[planId.toUpperCase()] ?? 0;
 }
 
 module.exports = {
