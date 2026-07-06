@@ -24,6 +24,23 @@ const SECTION_LABELS = {
   payroll: 'Payroll',
   advances: 'Advances',
   replacements: 'Replacements',
+  suppliers: 'Suppliers',
+  customers: 'Customers',
+  purchase_orders: 'Purchase Orders',
+  invoices: 'Invoices',
+  recurring_invoices: 'Recurring',
+  bank_import: 'Bank Import',
+  credit_debit_notes: 'Credit/Debit Notes',
+  balance_sheet: 'Balance Sheet',
+  advanced_reports: 'Reports',
+  pl_statement: 'P&L Statement',
+  cash_flow: 'Cash Flow',
+  gst_returns: 'GST Returns',
+  gstr2b_reco: 'GSTR-2B Reco',
+  tds_management: 'TDS Management',
+  tally_export: 'Tally Export',
+  bulk_import: 'Bulk Import',
+  products: 'Inventory',
 };
 
 /**
