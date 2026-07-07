@@ -46,12 +46,10 @@ async function sendOtpSms(phone, otp) {
         console.log(`========================================\n`);
       }
     }
-  } else if (isDev) {
-    console.log(`\n========================================`);
-    console.log(`📱 [DEV FALLBACK] OTP for ${phone}: ${otp}`);
-    console.log(`========================================\n`);
   } else {
-    console.error(`❌ Twilio not configured and NODE_ENV=production — cannot send OTP`);
+    console.log(`\n========================================`);
+    console.log(`📱 [FALLBACK] OTP for ${phone}: ${otp}`);
+    console.log(`========================================\n`);
   }
 }
 
