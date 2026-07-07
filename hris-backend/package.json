@@ -6,7 +6,8 @@
   "scripts": {
     "test": "jest --forceExit --detectOpenHandles",
     "test:watch": "jest --watch",
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate": "node run-migrations.js"
   },
   "keywords": [],
   "author": "",
