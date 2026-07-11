@@ -37,6 +37,7 @@ const Employees = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const isAdmin = user?.role === 'tenant_admin';
+  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
@@ -64,7 +65,7 @@ const Employees = () => {
   const fetchRoster = async () => {
     setLoading(true);
     try {
-      const data = await hrService.getEmployees(includeDeactivated);
+      const data = await hrService.getEmployees(true);
       setEmployees(data);
     } catch (err) {
       setError('Could not download employee records.');
@@ -73,13 +74,17 @@ const Employees = () => {
     }
   };
 
-  useEffect(() => { fetchRoster(); }, [includeDeactivated]);
+  useEffect(() => { fetchRoster(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setPhoneErr('');
     if (form.phone && !isValidPhoneNumber(form.phone)) {
       setPhoneErr('Please enter a valid phone number.');
+      return;
+    }
+    if (!fieldVisible('baseSalary') && fieldVisible('payPerHour') && !form.payPerHour) {
+      setError('Pay Per Hour is required when Monthly Salary is not used.');
       return;
     }
     try {
@@ -196,16 +201,17 @@ const Employees = () => {
   };
 
   const filtered = useMemo(() => {
-    if (!search) return employees;
+    let result = includeDeactivated ? employees : employees.filter(e => e.status !== 'deactivated');
+    if (!search) return result;
     const q = search.toLowerCase();
-    return employees.filter(e =>
+    return result.filter(e =>
       e.first_name?.toLowerCase().includes(q) ||
       e.last_name?.toLowerCase().includes(q) ||
       `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
       e.email?.toLowerCase().includes(q) ||
       e.phone?.includes(q)
     );
-  }, [employees, search]);
+  }, [employees, search, includeDeactivated]);
 
   const activeCount = employees.filter(e => e.status !== 'deactivated').length;
   const deactivatedCount = employees.length - activeCount;
@@ -494,14 +500,14 @@ const Employees = () => {
                 )}
                 {fieldVisible('baseSalary') && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary (Rs.)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary ({currencySymbol})</label>
                     <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
                   </div>
                 )}
                 {fieldVisible('payPerHour') && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour (Rs.)</label>
-                    <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => setForm({ ...form, payPerHour: e.target.value })} className="input-field" placeholder="Optional" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
+                    <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => setForm({ ...form, payPerHour: e.target.value })} className="input-field" placeholder={!fieldVisible('baseSalary') ? 'Required' : 'Optional'} required={!fieldVisible('baseSalary')} />
                   </div>
                 )}
                 {fieldVisible('profession') && (

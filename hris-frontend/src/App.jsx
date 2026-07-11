@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { GlobalConfigProvider } from './context/GlobalConfigContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 import { applyTheme } from './utils/currency';
@@ -74,6 +75,7 @@ import ConversionAnalytics from './pages/super/ConversionAnalytics';
 import PlanAdoption from './pages/super/PlanAdoption';
 import UsageAnalytics from './pages/super/UsageAnalytics';
 import SuperAuditLogs from './pages/super/SuperAuditLogs';
+import GlobalConfig from './pages/super/GlobalConfig';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -109,6 +111,7 @@ function App() {
 
   return (
     <AuthProvider>
+      <GlobalConfigProvider>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/super/login" element={<SuperLogin />} />
@@ -133,6 +136,7 @@ function App() {
             <Route path="analytics/plan-adoption" element={<PlanAdoption />} />
             <Route path="analytics/usage" element={<UsageAnalytics />} />
             <Route path="audit-logs" element={<SuperAuditLogs />} />
+            <Route path="global-config" element={<GlobalConfig />} />
 
           </Route>
 
@@ -214,6 +218,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+    </GlobalConfigProvider>
     </AuthProvider>
   );
 }

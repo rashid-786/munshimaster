@@ -49,10 +49,17 @@ exports.getSummary = async (req, res) => {
     const totalPaidHours = parseFloat(attendanceStats[0].paid_hours) || 0;
     const totalUnpaidHours = (parseFloat(attendanceStats[0].total_hours) || 0) - totalPaidHours;
 
-    let leaveQ = "SELECT COUNT(*) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'";
+    let leaveQ = `SELECT COALESCE(SUM(
+      LEAST(end_date, ?::date) - GREATEST(start_date, ?::date) + 1
+    ), 0) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'
+      AND start_date <= ? AND end_date >= ?`;
     const leaveP = [tenantId];
-    if (startDate) { leaveQ += ' AND start_date >= ?'; leaveP.push(startDate); }
-    if (endDate) { leaveQ += ' AND end_date <= ?'; leaveP.push(endDate); }
+    if (startDate && endDate) {
+      leaveP.unshift(endDate, startDate);
+      leaveP.push(endDate, startDate);
+    } else {
+      leaveQ = "SELECT COUNT(*) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'";
+    }
     const [leaveStats] = await db.execute(leaveQ, leaveP);
     const totalLeaveDays = Number(leaveStats[0].total_leaves) || 0;
 
@@ -138,8 +145,9 @@ exports.getLeaveReport = async (req, res) => {
                  JOIN employees e ON l.employee_id = e.id
                  WHERE l.tenant_id = ?`;
     const params = [tenantId];
-    if (startDate) { query += ' AND l.start_date >= ?'; params.push(startDate); }
-    if (endDate) { query += ' AND l.end_date <= ?'; params.push(endDate); }
+    if (startDate && endDate) { query += ' AND l.start_date <= ? AND l.end_date >= ?'; params.push(endDate, startDate); }
+    else if (startDate) { query += ' AND l.start_date >= ?'; params.push(startDate); }
+    else if (endDate) { query += ' AND l.end_date <= ?'; params.push(endDate); }
     if (search) { query += ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ?)`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (leaveType) { query += ' AND l.leave_type = ?'; params.push(leaveType); }
     if (status) { query += ' AND l.status = ?'; params.push(status); }
@@ -201,8 +209,9 @@ async function getTabData(tenantId, tab, params) {
     case 'leaves': {
       let q = `SELECT l.*, e.first_name, e.last_name FROM leaves l JOIN employees e ON l.employee_id = e.id WHERE l.tenant_id = ?`;
       const p = [tenantId];
-      if (params.startDate) { q += ' AND l.start_date >= ?'; p.push(params.startDate); }
-      if (params.endDate) { q += ' AND l.end_date <= ?'; p.push(params.endDate); }
+      if (params.startDate && params.endDate) { q += ' AND l.start_date <= ? AND l.end_date >= ?'; p.push(params.endDate, params.startDate); }
+      else if (params.startDate) { q += ' AND l.start_date >= ?'; p.push(params.startDate); }
+      else if (params.endDate) { q += ' AND l.end_date <= ?'; p.push(params.endDate); }
       q += ' ORDER BY l.created_at DESC';
       const [rows] = await db.execute(q, p);
       return rows;

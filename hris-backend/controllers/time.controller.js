@@ -464,7 +464,7 @@ exports.getEmployeeCalendar = async (req, res) => {
 
     const [employees] = await db.execute(
       `SELECT id, first_name, last_name, role
-       FROM employees WHERE tenant_id = ?
+       FROM employees WHERE tenant_id = ? AND status = 'active'
        ${employeeId ? 'AND id = ?' : ''}
        ORDER BY first_name`,
       employeeId ? [tenantId, employeeId] : [tenantId]

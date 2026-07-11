@@ -5,6 +5,7 @@ import { subscriptionService } from '../../services/subscription.service';
 import { useAuth } from '../../context/AuthContext';
 import Loading from '../../components/Loading';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../../config/subscriptionPlans';
+import { useGlobalConfig } from '../../context/GlobalConfigContext';
 
 const MODULE_SECTIONS = [
   {
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
 
   const currentPlan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+  const { globalConfig } = useGlobalConfig();
   const planRank = getRank(currentPlan);
 
   useEffect(() => {
@@ -114,9 +116,11 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${PLAN_COLORS[currentPlan]}`}>
-            {PLAN_LABELS[currentPlan]}
-          </span>
+          {!globalConfig.hideSubscriptionLabels && (
+            <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${PLAN_COLORS[currentPlan]}`}>
+              {PLAN_LABELS[currentPlan]}
+            </span>
+          )}
           <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${badge.color}`}>
             {badge.label}
           </span>

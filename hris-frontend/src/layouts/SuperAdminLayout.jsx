@@ -14,6 +14,7 @@ const PAGE_TITLES = {
   '/super/analytics/plan-adoption': 'Plan Adoption',
   '/super/analytics/usage': 'Usage Analytics',
   '/super/audit-logs': 'Audit Logs',
+  '/super/global-config': 'Global Configuration',
 
 };
 

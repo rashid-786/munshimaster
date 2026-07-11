@@ -4,6 +4,7 @@ import { subscriptionService } from '../../services/subscription.service';
 import UsageCard from '../../components/UsageCard';
 import UpgradeModal from '../../components/UpgradeModal';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../../config/subscriptionPlans';
+import { useGlobalConfig } from '../../context/GlobalConfigContext';
 
 const USAGE_LABELS = {
   transactions: 'Transactions',
@@ -39,6 +40,7 @@ export default function UsageDashboard() {
   const [loading, setLoading] = useState(true);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  const { globalConfig } = useGlobalConfig();
   const rawPlan = tenant?.subscriptionPlan || 'free';
   const currentPlan = resolvePlan(rawPlan);
   const planRank = getRank(currentPlan);
@@ -73,9 +75,11 @@ export default function UsageDashboard() {
           <h2 className="text-lg font-bold text-gray-900">Subscription Usage</h2>
           <p className="text-sm text-gray-500 mt-0.5">Monthly usage across your account</p>
         </div>
-        <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
-          {PLAN_LABELS[currentPlan] || currentPlan} Plan
-        </span>
+        {!globalConfig.hideSubscriptionLabels && (
+          <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
+            {PLAN_LABELS[currentPlan] || currentPlan} Plan
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -91,7 +95,7 @@ export default function UsageDashboard() {
         ))}
       </div>
 
-      {!isMaxPlan && (
+      {!isMaxPlan && !globalConfig.hideSubscriptionLabels && (
         <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 p-5 text-center">
           <p className="text-sm font-medium text-gray-700 mb-1">
             Need more capacity?

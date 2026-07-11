@@ -715,12 +715,16 @@ exports.activateTrial = async (req, res) => {
 // System Settings
 exports.getSystemSettings = async (req, res) => {
   try {
-    const [rows] = await db.execute('SELECT default_country_code, updated_at FROM system_settings WHERE id = 1');
+    const [rows] = await db.execute('SELECT default_country_code, global_config, updated_at FROM system_settings WHERE id = 1');
     if (rows.length === 0) {
-      return res.json({ defaultCountryCode: '+965' });
+      return res.json({ defaultCountryCode: '+965', globalConfig: {} });
     }
+    const globalConfig = typeof rows[0].global_config === 'string'
+      ? JSON.parse(rows[0].global_config)
+      : (rows[0].global_config || {});
     res.json({
       defaultCountryCode: rows[0].default_country_code,
+      globalConfig,
       updatedAt: rows[0].updated_at,
     });
   } catch (error) {
@@ -972,18 +976,32 @@ exports.getTenantSubscription = async (req, res) => {
 };
 
 exports.updateSystemSettings = async (req, res) => {
-  const { default_country_code } = req.body;
+  const { default_country_code, global_config } = req.body;
 
-  if (!default_country_code) {
-    return res.status(400).json({ error: 'default_country_code is required.' });
+  const updates = [];
+  const params = [];
+
+  if (default_country_code) {
+    updates.push('default_country_code = ?');
+    params.push(default_country_code);
+  }
+
+  if (global_config !== undefined) {
+    updates.push('global_config = ?');
+    params.push(typeof global_config === 'string' ? global_config : JSON.stringify(global_config));
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update.' });
   }
 
   try {
+    params.push(1);
     await db.execute(
-      'UPDATE system_settings SET default_country_code = ? WHERE id = 1',
-      [default_country_code]
+      `UPDATE system_settings SET ${updates.join(', ')} WHERE id = ?`,
+      params
     );
-    res.json({ message: 'System settings updated.', defaultCountryCode: default_country_code });
+    res.json({ message: 'System settings updated.' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update system settings.' });

@@ -146,7 +146,8 @@ exports.switch = async (req, res) => {
     const subPlan = target.subscription_plan;
     const [user] = await db.query(
       `SELECT id, email, first_name, last_name, role FROM hris_saas.employees
-       WHERE tenant_id = $1 AND status = 'active' LIMIT 1`,
+       WHERE tenant_id = $1 AND status = 'active'
+       ORDER BY CASE WHEN role = 'tenant_admin' THEN 0 ELSE 1 END LIMIT 1`,
       [targetTenantId]
     );
     if (user.length === 0) return res.status(403).json({ error: `No user found for target ${entityLabel(subPlan)}.` });

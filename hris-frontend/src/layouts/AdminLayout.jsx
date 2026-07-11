@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useGlobalConfig } from '../context/GlobalConfigContext';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { hrService } from '../services/hr.service';
 import { subscriptionService } from '../services/subscription.service';
@@ -42,24 +43,50 @@ export default function AdminLayout() {
   const menuRef = useRef(null);
   const entityRef = useRef(null);
 
+  const { globalConfig } = useGlobalConfig();
   const rawPlan = tenant?.subscriptionPlan || 'free';
   const currentPlan = resolvePlan(rawPlan);
 
+  const HIDDEN_ROUTES = useMemo(() => {
+    const routes = [];
+    if (globalConfig.hidePayments) routes.push('/admin/payments');
+    if (globalConfig.hideSubscription) routes.push('/admin/subscription');
+    if (globalConfig.hideUsage) routes.push('/admin/usage');
+    if (globalConfig.hideReferEarn) routes.push('/admin/referrals');
+    return routes;
+  }, [globalConfig]);
+
   const menuItems = useMemo(() => {
     const menu = buildMenu(currentPlan);
-    if (!disabledFeatures) return menu;
-    return menu.reduce((acc, m) => {
-      if (m.feature && disabledFeatures[m.feature]) return acc;
-      if (m.items) {
-        const filteredItems = m.items.filter(i => !(i.feature && disabledFeatures[i.feature]));
-        if (filteredItems.length === 0 && m.type === 'group') return acc;
-        acc.push({ ...m, items: filteredItems });
-      } else {
-        acc.push(m);
-      }
-      return acc;
-    }, []);
-  }, [currentPlan, disabledFeatures]);
+    const filterByConfig = (items) => {
+      return items.reduce((acc, m) => {
+        if (m.route && HIDDEN_ROUTES.includes(m.route)) return acc;
+        if (m.items) {
+          const filteredItems = filterByConfig(m.items);
+          if (filteredItems.length === 0 && m.type === 'group') return acc;
+          acc.push({ ...m, items: filteredItems });
+        } else {
+          acc.push(m);
+        }
+        return acc;
+      }, []);
+    };
+    let result = filterByConfig(menu);
+    if (disabledFeatures) {
+      result = result.reduce((acc, m) => {
+        if (m.feature && disabledFeatures[m.feature]) return acc;
+        if (m.items) {
+          const filteredItems = m.items.filter(i => !(i.feature && disabledFeatures[i.feature]));
+          if (filteredItems.length === 0 && m.type === 'group') return acc;
+          acc.push({ ...m, items: filteredItems });
+        } else {
+          acc.push(m);
+        }
+        return acc;
+      }, []);
+    }
+    return result;
+  }, [currentPlan, disabledFeatures, HIDDEN_ROUTES]);
 
   const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'Store', MANAGE: 'Store', BUSINESS: 'Store', BUSINESS_PRO: 'Store' } };
   const labelOf = (key) => {
@@ -366,20 +393,21 @@ export default function AdminLayout() {
         </button>
       </div>
 
-      {/* Plan badge */}
-      <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
-          {PLAN_LABELS[currentPlan] || currentPlan} Plan
-        </span>
-        <div className="flex items-center gap-2">
-          {getRank(currentPlan) >= 1 && (
-            <button onClick={() => setShowDowngrade(true)} className="text-xs text-gray-400 hover:text-red-600 font-medium">Cancel</button>
-          )}
-          {getRank(currentPlan) < 3 && (
-            <button onClick={() => setShowUpgrade(true)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Upgrade</button>
-          )}
+      {!globalConfig.hideSubscriptionLabels && (
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
+            {PLAN_LABELS[currentPlan] || currentPlan} Plan
+          </span>
+          <div className="flex items-center gap-2">
+            {getRank(currentPlan) >= 1 && (
+              <button onClick={() => setShowDowngrade(true)} className="text-xs text-gray-400 hover:text-red-600 font-medium">Cancel</button>
+            )}
+            {getRank(currentPlan) < 3 && (
+              <button onClick={() => setShowUpgrade(true)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Upgrade</button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <nav className="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto">
         {menuItems.map((section) => {
@@ -571,9 +599,11 @@ export default function AdminLayout() {
           </div>
           <div className="flex items-center gap-1 md:gap-3 shrink-0">
             <NotificationBell />
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full hidden sm:inline-block ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
-              {PLAN_LABELS[currentPlan] || currentPlan}
-            </span>
+            {!globalConfig.hideSubscriptionLabels && (
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full hidden sm:inline-block ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
+                {PLAN_LABELS[currentPlan] || currentPlan}
+              </span>
+            )}
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}

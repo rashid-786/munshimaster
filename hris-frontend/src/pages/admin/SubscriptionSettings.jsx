@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useGlobalConfig } from '../../context/GlobalConfigContext';
 import { subscriptionService } from '../../services/subscription.service';
 import UpgradeModal from '../../components/UpgradeModal';
 import DowngradeModal from '../../components/DowngradeModal';
@@ -53,6 +54,7 @@ function formatLimit(val) {
 
 export default function SubscriptionSettings() {
   const { tenant, refreshTenant } = useAuth();
+  const { globalConfig } = useGlobalConfig();
   const navigate = useNavigate();
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -202,9 +204,11 @@ export default function SubscriptionSettings() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-gray-900">
-                  {PLAN_LABELS[currentPlan] || currentPlan}
-                </h2>
+                {!globalConfig.hideSubscriptionLabels && (
+                  <h2 className="text-lg font-bold text-gray-900">
+                    {PLAN_LABELS[currentPlan] || currentPlan}
+                  </h2>
+                )}
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isTrialing ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                   {isTrialing ? 'Trial' : 'Active'}
                 </span>

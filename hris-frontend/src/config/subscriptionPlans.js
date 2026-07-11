@@ -563,8 +563,9 @@ export const MENU_SECTIONS = [
       { feature: null,                requiredPlan: 'FREE',          label: 'Business',      route: '/admin/settings/business' },
       { feature: 'e_invoicing',       requiredPlan: 'BUSINESS',      label: 'E-Invoicing',   route: '/admin/settings/einvoice' },
       { feature: 'whatsapp',          requiredPlan: 'BUSINESS',      label: 'WhatsApp',      route: '/admin/settings/whatsapp' },
-      { feature: 'sidepanel_customization', requiredPlan: 'BUSINESS', label: 'Sidebar',      route: '/admin/settings/sidebar' },
+      { feature: null,                requiredPlan: 'FREE',          label: 'Sidebar',       route: '/admin/settings/sidebar' },
       { feature: null,                requiredPlan: 'FREE',          label: 'Password',      route: '/admin/settings/password' },
+      { feature: null,                requiredPlan: 'FREE',          label: 'My Staff',      route: '/admin/settings/staff' },
     ],
   },
   {

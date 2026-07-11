@@ -159,9 +159,9 @@ export default function StaffReports() {
 
   const leavesColumns = useMemo(() => [
     { key: 'name', label: 'Employee', render: (_, r) => <span className="font-medium">{r.first_name} {r.last_name}</span> },
-    { key: 'type', label: 'Leave Type', render: (v) => <span className="badge badge-info">{v}</span> },
-    { key: 'start', label: 'Start', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-    { key: 'end', label: 'End', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
+    { key: 'leave_type', label: 'Leave Type', render: (v) => <span className="badge badge-info">{v || '—'}</span> },
+    { key: 'start_date', label: 'Start', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
+    { key: 'end_date', label: 'End', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
     { key: 'days', label: 'Days', render: (_, r) => {
       if (!r.start_date) return '—';
       const s = new Date(r.start_date), e = new Date(r.end_date);
@@ -188,7 +188,6 @@ export default function StaffReports() {
       { label: 'Total Salary Paid',  value: formatINR(summary.totalSalaryPaid), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-emerald-50 text-emerald-600' },
       { label: 'Salary Pending',     value: formatINR(summary.totalSalaryPending), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-amber-50 text-amber-600' },
       { label: 'Hours Logged',       value: `${summary.totalPaidHours}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-blue-50 text-blue-600' },
-      { label: 'Leave Days',         value: summary.totalLeaveDays,        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>, color: 'bg-pink-50 text-pink-600' },
       { label: 'Advances Issued',    value: formatINR(summary.totalAdvancesIssued), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, color: 'bg-teal-50 text-teal-600' },
       { label: 'Outstanding Advance', value: formatINR(summary.outstandingBalance), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-orange-50 text-orange-500' },
     ];

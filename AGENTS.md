@@ -1,7 +1,7 @@
 # Session Context
 
 ## Goal
-Build full notification system, add "Load More" + search across tables, fix PostgreSQL compatibility bugs (boolean vs int, audit logs), implement tenant-customizable sidebar labels, and improve phone input with country picker.
+Build full notification system, add "Load More" + search across tables, fix PostgreSQL compatibility bugs (boolean vs int, audit logs), implement tenant-customizable sidebar labels, improve phone input with country picker, add Super Admin Global Configuration panel, and wire subscription label hiding across the app.
 
 ## Constraints & Preferences
 - `btn-primary` must use tenant's primary color (`var(--primary-600)`) not green
@@ -14,6 +14,7 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - Sidebar labels (My Ledger Book, My Business, My HR) configurable from Settings; stable internal keys preserved
 - Phone input: `react-phone-number-input` with country flag selector, E.164 output, `isValidPhoneNumber` validation, country prefill by priority (stored > tenant settings > system country code > browser locale > 'KW')
 - `is_read` is SMALLINT not boolean — `= 0/1` comparisons are fine for that column
+- Global config (hidePayments, hideSubscription, hideUsage, hideReferEarn, hideSubscriptionLabels) stored in system_settings.global_config JSONB, fetched via public endpoint, cached in localStorage, consumed across all components
 
 ## Done
 - **Loading component** (`src/components/Loading.jsx`): SVG arc spinner using `var(--primary-600)`, used by `ResponsiveTable.jsx`
@@ -42,6 +43,15 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Cancel/Downgrade buttons for Manage**: Changed `>= 2` → `>= 1` in `AdminLayout.jsx` and `SubscriptionSettings.jsx` so Cancel/Downgrade shows for all paid plans.
 - **Frontend plan sync**: Added `updateTenantPlan()` to `AuthContext` — `UpgradeModal` now directly updates tenant context from trial/payment API response (`res.plan`) instead of relying solely on `refreshTenant()` API call (which could fail silently).
 - **Subscription_status consistency**: `startTrial`, `selectPlan`, and `downgradeToFree` controllers now all update `subscription_status` in `tenants` table.
+
+## Completed (Jul 11)
+- **Global Config backend**: Migration `20260723_add_global_config.sql` adds `global_config` JSONB to `system_settings`. `super.controller.js` updated to read/write `global_config`. `server.js` adds `GET /api/v1/public/global-config` public endpoint.
+- **GlobalConfigContext.jsx**: React context that fetches global config from public endpoint on mount, caches in `localStorage('global_config')`, dispatches `global-config-changed` CustomEvent on save. Exported `useGlobalConfig()` hook.
+- **GlobalConfig.jsx page**: Super Admin panel with toggle switches for `hidePayments`, `hideSubscription`, `hideUsage`, `hideReferEarn`, `hideSubscriptionLabels`. Saves via `PUT /api/v1/super/settings` and updates localStorage + dispatches event.
+- **Route + nav**: GlobalConfig route (`/super/global-config`) registered in `App.jsx`, nav link added to `SuperAdminSidebar.jsx` in System section.
+- **Menu filtering in AdminLayout**: `HIDDEN_ROUTES` derived from `globalConfig` filters `menuItems` — removes Payments, Subscription, Usage, and Refer & Earn nav items before render.
+- **Subscription label hiding in AdminLayout**: Sidebar plan badge + Cancel/Upgrade buttons and header plan badge wrapped with `!globalConfig.hideSubscriptionLabels`.
+- **Subscription label hiding in consumer components**: Admin `Dashboard.jsx` plan badge, `SubscriptionSettings.jsx` plan name, `UsageDashboard.jsx` plan badge + upgrade prompt, `FeatureLocked.jsx` plan comparison section + upgrade button, `UpgradeModal.jsx` returns null — all conditional on `hideSubscriptionLabels`.
 
 ## Key Decisions
 - Internal sidebar group keys (used for `hiddenGroups`, `openGroups`, `pageTitles`) remain the original English labels; only visible text uses `labelOf()` lookup

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useGlobalConfig } from '../context/GlobalConfigContext';
 import { subscriptionService } from '../services/subscription.service';
 import { PLANS, getRank, resolvePlan, PLAN_LABELS } from '../config/subscriptionPlans';
 
@@ -11,6 +12,7 @@ const PLAN_ID_MAP = {
 
 export default function UpgradeModal({ open, onClose, onUpgraded, feature, requiredPlan = 'BUSINESS' }) {
   const { tenant, refreshTenant, updateTenantPlan } = useAuth();
+  const { globalConfig } = useGlobalConfig();
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
   const [billing, setBilling] = useState('month');
@@ -24,6 +26,8 @@ export default function UpgradeModal({ open, onClose, onUpgraded, feature, requi
       subscriptionService.getPlans().then(setPlansData).catch(() => {});
     }
   }, [open]);
+
+  if (globalConfig.hideSubscriptionLabels) return null;
 
   const getTrialDays = (key) => {
     if (!plansData) return null;

@@ -123,6 +123,18 @@ app.get('/api/v1/public/country', async (req, res) => {
   }
 });
 
+// Global config endpoint (no auth required)
+app.get('/api/v1/public/global-config', async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT global_config FROM system_settings WHERE id = 1");
+    const gc = rows.length > 0 ? rows[0].global_config : {};
+    const config = typeof gc === 'string' ? JSON.parse(gc) : (gc || {});
+    res.json({ globalConfig: config });
+  } catch {
+    res.json({ globalConfig: {} });
+  }
+});
+
 // Contact form endpoint (no auth required)
 app.post('/api/v1/public/contact', async (req, res) => {
   const { name, email, message } = req.body;

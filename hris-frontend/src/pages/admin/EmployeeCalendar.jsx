@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { hrService } from '../../services/hr.service';
+import { useAuth } from '../../context/AuthContext';
 import SearchableSelect from '../../components/SearchableSelect';
 import Loading from '../../components/Loading';
 
@@ -37,6 +38,7 @@ const Tooltip = ({ day, rect }) => {
 };
 
 const EmployeeCalendar = () => {
+  const { tenant } = useAuth();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -55,27 +57,32 @@ const EmployeeCalendar = () => {
   const [tooltip, setTooltip] = useState(null);
   const cellRefs = useRef({});
   const [weekendDays, setWeekendDays] = useState([0]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    setSelectedEmployee('');
     hrService.getEmployees().then(setEmployees).catch(() => {});
-  }, []);
+  }, [tenant?.id]);
 
-  const fetchCalendar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = { month, year };
-      if (selectedEmployee) params.employeeId = selectedEmployee;
-      const data = await hrService.getEmployeeCalendar(params);
-      setCalendarData(data);
-      if (data.weekendDays) setWeekendDays(data.weekendDays);
-    } catch (err) {
-      console.error('Calendar fetch failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [month, year, selectedEmployee]);
-
-  useEffect(() => { fetchCalendar(); }, [fetchCalendar]);
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const params = { month, year };
+        if (selectedEmployee) params.employeeId = selectedEmployee;
+        const data = await hrService.getEmployeeCalendar(params);
+        if (ignore) return;
+        setCalendarData(data);
+        if (data.weekendDays) setWeekendDays(data.weekendDays);
+      } catch (err) {
+        if (!ignore) console.error('Calendar fetch failed:', err);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, [month, year, selectedEmployee, refreshKey]);
 
   const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -160,7 +167,7 @@ const EmployeeCalendar = () => {
       }
       await hrService.adminSetStatus(payload);
       setModalMsg('Saved successfully!');
-      fetchCalendar();
+      setRefreshKey(k => k + 1);
     } catch (err) {
       setModalMsg(err.response?.data?.error || 'Failed to save.');
     } finally {

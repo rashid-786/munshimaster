@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useGlobalConfig } from '../context/GlobalConfigContext';
 import UpgradeModal from './UpgradeModal';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../config/subscriptionPlans';
 
 export default function FeatureLocked({ featureName, requiredPlan }) {
   const { tenant } = useAuth();
+  const { globalConfig } = useGlobalConfig();
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   const rawPlan = tenant?.subscriptionPlan || 'free';
@@ -31,22 +33,24 @@ export default function FeatureLocked({ featureName, requiredPlan }) {
             )}
           </p>
 
-          <div className="bg-gray-50 rounded-xl p-5 mb-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Current plan</span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
-                {PLAN_LABELS[currentPlan] || currentPlan}
-              </span>
+          {!globalConfig.hideSubscriptionLabels && (
+            <div className="bg-gray-50 rounded-xl p-5 mb-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Current plan</span>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
+                  {PLAN_LABELS[currentPlan] || currentPlan}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Required plan</span>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${PLAN_COLORS[required] || 'bg-indigo-100 text-indigo-700'}`}>
+                  {PLAN_LABELS[required] || required}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Required plan</span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${PLAN_COLORS[required] || 'bg-indigo-100 text-indigo-700'}`}>
-                {PLAN_LABELS[required] || required}
-              </span>
-            </div>
-          </div>
+          )}
 
-          {canUpgrade && (
+          {canUpgrade && !globalConfig.hideSubscriptionLabels && (
             <button
               onClick={() => setShowUpgrade(true)}
               className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors"
