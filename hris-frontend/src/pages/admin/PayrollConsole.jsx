@@ -3,6 +3,7 @@ import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
+import ConfirmModal from '../../components/ConfirmModal';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const ALL_EMPLOYEES_KEY = '__ALL__';
@@ -21,6 +22,8 @@ const PayrollConsole = () => {
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState(new Set());
+  const [deleteModal, setDeleteModal] = useState(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -84,6 +87,44 @@ const PayrollConsole = () => {
     const q = search.toLowerCase();
     return history.filter(r => `${r.first_name} ${r.last_name}`.toLowerCase().includes(q));
   }, [history, search]);
+
+  const toggleHistoryAll = useCallback(() => {
+    if (selectedHistoryIds.size > 0) {
+      setSelectedHistoryIds(new Set());
+    } else {
+      setSelectedHistoryIds(new Set(filteredHistory.map(r => r.id)));
+    }
+  }, [filteredHistory, selectedHistoryIds]);
+
+  const toggleHistoryId = useCallback((id) => {
+    setSelectedHistoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteSelected = async () => {
+    const ids = [...selectedHistoryIds];
+    setDeleteModal({
+      title: 'Delete Payroll Records',
+      message: `Delete ${ids.length} payroll record(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await hrService.deletePayrollHistory(ids);
+          setMessage(`${ids.length} record(s) deleted.`);
+          setSelectedHistoryIds(new Set());
+          fetchHistory();
+        } catch (err) {
+          setMessage(err.response?.data?.error || 'Failed to delete records.');
+        }
+        setDeleteModal(null);
+      },
+    });
+  };
 
   const handleRunPayroll = async (e) => {
     e.preventDefault();
@@ -218,29 +259,87 @@ const PayrollConsole = () => {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Payroll History</h3>
-          <div className="relative max-w-xs w-full sm:w-auto">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input
-              type="text"
-              placeholder="Search staff..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input-field pl-9 text-sm w-full"
-            />
+          <div className="flex items-center gap-2">
+            {selectedHistoryIds.size > 0 && (
+              <button onClick={handleDeleteSelected} className="btn-danger !py-1.5 !px-3 text-xs">
+                Delete {selectedHistoryIds.size} selected
+              </button>
+            )}
+            <div className="relative max-w-xs w-full sm:w-auto">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                type="text"
+                placeholder="Search staff..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="input-field pl-9 text-sm w-full"
+              />
+            </div>
           </div>
         </div>
-        <ResponsiveTable
-          columns={historyColumns}
-          data={filteredHistory}
-          keyField="id"
-          searchKeys={['first_name', 'last_name']}
-          mobilePrimary="employee_name"
-          mobileSecondary="net_salary"
-          onRowClick={(r) => setSelectedHistory(r)}
-          emptyMessage="No payroll history"
-          loading={loading}
-        />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50/80">
+                <th className="px-3 py-2.5 text-left">
+                  <input type="checkbox" checked={selectedHistoryIds.size === filteredHistory.length && filteredHistory.length > 0}
+                    onChange={toggleHistoryAll} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                </th>
+                <th className="table-header">Employee</th>
+                <th className="table-header">Period</th>
+                <th className="table-header">Rate</th>
+                <th className="table-header">Hrs</th>
+                <th className="table-header">Gross</th>
+                <th className="table-header">Adv. Ded.</th>
+                <th className="table-header">Net</th>
+                <th className="table-header">Status</th>
+                <th className="table-header text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredHistory.map(r => (
+                <tr key={r.id} className="table-row-hover cursor-pointer" onClick={() => setSelectedHistory(r)}>
+                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedHistoryIds.has(r.id)}
+                      onChange={() => toggleHistoryId(r.id)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  </td>
+                  <td className="table-cell font-medium">{r.first_name} {r.last_name}</td>
+                  <td className="table-cell text-gray-500">{(r.pay_period_start || '').split('T')[0]} to {(r.pay_period_end || '').split('T')[0]}</td>
+                  <td className="table-cell">₹{(r.hourly_rate / 100).toFixed(2)}/hr</td>
+                  <td className="table-cell">{r.total_hours_worked}h / {r.standard_hours}h</td>
+                  <td className="table-cell">{formatINR(r.gross_salary)}</td>
+                  <td className="table-cell">{r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span>-</span>}</td>
+                  <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
+                  <td className="table-cell">{statusBadge(r.status)}</td>
+                  <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
+                    {isDue(r.status) ? (
+                      <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
+                        className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
+                        {saving === r.id ? '...' : 'Mark Paid'}
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+              {filteredHistory.length === 0 && (
+                <tr><td colSpan={10} className="text-center py-8 text-sm text-gray-400">No payroll history</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+      {deleteModal && (
+        <ConfirmModal
+          open={!!deleteModal}
+          onCancel={() => setDeleteModal(null)}
+          onConfirm={deleteModal.onConfirm}
+          title={deleteModal.title}
+          message={deleteModal.message}
+          confirmLabel={deleteModal.confirmLabel}
+          variant={deleteModal.variant}
+        />
+      )}
 
       {isMobile && (
         <BottomSheet

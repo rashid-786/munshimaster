@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -47,7 +48,8 @@ function KpiCard({ label, value, icon, color }) {
 export default function StaffReports() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
-  const [tab, setTab] = useState('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get('tab') || 'dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -96,7 +98,7 @@ export default function StaffReports() {
         setSummary(s);
         setCharts(c);
       } else if (tab === 'salary') {
-        const d = await hrService.getSalaryReport(params);
+        const d = await hrService.getSalaryReport({ ...params, status: params.payStatus, payStatus: undefined });
         setSalaryData(d);
       } else if (tab === 'hours') {
         const d = await hrService.getWorkingHoursReport(params);
@@ -149,12 +151,19 @@ export default function StaffReports() {
     ) },
   ], []);
 
+  const payStatusBadge = (status) => {
+    if (status === 'paid') return <span className="badge-success text-xs">Paid</span>;
+    if (status === 'due') return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Due</span>;
+    return <span className="bg-gray-100 text-gray-500 text-xs font-medium px-2 py-0.5 rounded-full">Unbilled</span>;
+  };
+
   const hoursColumns = useMemo(() => [
     { key: 'name', label: 'Employee', render: (_, r) => <span className="font-medium">{r.first_name} {r.last_name}</span> },
     { key: 'date', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
     { key: 'clockIn', label: 'Check-in', render: (_, r) => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : '—' },
     { key: 'clockOut', label: 'Check-out', render: (_, r) => r.clock_out ? new Date(r.clock_out).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : '—' },
     { key: 'totalHours', label: 'Hours', render: (_, r) => <span className="font-medium">{r.total_hours ? `${r.total_hours}h` : '—'}</span> },
+    { key: 'payStatus', label: 'Status', render: (_, r) => payStatusBadge(r.pay_status) },
   ], []);
 
   const leavesColumns = useMemo(() => [
@@ -187,7 +196,8 @@ export default function StaffReports() {
       { label: 'Total Employees',   value: summary.totalEmployees,      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, color: 'bg-indigo-50 text-indigo-600' },
       { label: 'Total Salary Paid',  value: formatINR(summary.totalSalaryPaid), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-emerald-50 text-emerald-600' },
       { label: 'Salary Pending',     value: formatINR(summary.totalSalaryPending), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-amber-50 text-amber-600' },
-      { label: 'Hours Logged',       value: `${summary.totalPaidHours}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-blue-50 text-blue-600' },
+      { label: 'Hours Logged',       value: `${summary.totalHoursLogged || 0}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-blue-50 text-blue-600' },
+      { label: 'Paid Hours',         value: `${summary.totalPaidHours || 0}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-emerald-50 text-emerald-600' },
       { label: 'Advances Issued',    value: formatINR(summary.totalAdvancesIssued), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, color: 'bg-teal-50 text-teal-600' },
       { label: 'Outstanding Advance', value: formatINR(summary.outstandingBalance), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-orange-50 text-orange-500' },
     ];
@@ -289,7 +299,7 @@ export default function StaffReports() {
       {/* Tab bar */}
       <div className="flex gap-2 overflow-x-auto pb-1 border-b border-gray-200">
         {TABS.map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setExtraFilter({}); }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setExtraFilter({}); setSearchParams({ tab: t.key }); }}
             className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
               tab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
@@ -300,7 +310,7 @@ export default function StaffReports() {
 
       {/* Filter bar */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Date:</span>
           <select value={datePreset === 'Custom' ? '' : datePreset} onChange={e => handlePresetClick(e.target.value)}
             className="input-field max-w-[200px] text-sm">
@@ -310,17 +320,33 @@ export default function StaffReports() {
             ))}
           </select>
           <button onClick={() => { setDatePreset('Custom'); setCustomStart(''); setCustomEnd(''); }}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-              datePreset === 'Custom' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap border ${
+              datePreset === 'Custom'
+                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50 border-gray-300'
             }`}>
-            Custom
+            <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Custom Range
           </button>
+          {datePreset !== 'Custom' && dateRange.startDate && dateRange.endDate && (
+            <span className="text-sm text-gray-500 ml-1">
+              {new Date(dateRange.startDate).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+              {' — '}
+              {new Date(dateRange.endDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+            </span>
+          )}
         </div>
         {datePreset === 'Custom' && (
-          <div className="flex items-center gap-2">
-            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="input-field max-w-[180px] text-sm" />
-            <span className="text-gray-400">to</span>
-            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="input-field max-w-[180px] text-sm" />
+          <div className="flex flex-wrap items-center gap-3 pl-1 pt-2 border-t border-gray-100">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">From</label>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="input-field text-sm" />
+            </div>
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">To</label>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="input-field text-sm" />
+            </div>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-3">
@@ -330,6 +356,14 @@ export default function StaffReports() {
             <input type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)}
               className="input-field pl-9 text-sm" />
           </div>
+          )}
+          {(tab === 'salary' || tab === 'hours') && (
+            <select value={extraFilter.payStatus || ''} onChange={e => setExtraFilter(f => ({ ...f, payStatus: e.target.value || undefined }))} className="input-field max-w-[160px] text-sm">
+              <option value="">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="due">Due</option>
+              {tab === 'hours' && <option value="unbilled">Unbilled</option>}
+            </select>
           )}
           {tab === 'leaves' && (
             <select value={extraFilter.leaveType || ''} onChange={e => setExtraFilter(f => ({ ...f, leaveType: e.target.value || undefined }))} className="input-field max-w-[160px] text-sm">
@@ -374,7 +408,27 @@ export default function StaffReports() {
 
       {!loading && tab === 'dashboard' && renderDashboard()}
       {!loading && tab === 'salary' && renderTable(salaryData, salaryColumns)}
-      {!loading && tab === 'hours' && renderTable(hoursData, hoursColumns)}
+      {!loading && tab === 'hours' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="card p-4">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Hours</p>
+              <p className="text-2xl font-bold text-indigo-600 mt-1">{hoursData.reduce((s, r) => s + parseFloat(r.total_hours || 0), 0).toFixed(1)}h</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Employees</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{new Set(hoursData.map(r => r.employee_id)).size}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Date Range</p>
+              <p className="text-sm font-semibold text-gray-700 mt-1">
+                {hoursData.length > 0 ? `${new Date(hoursData[hoursData.length-1].date).toLocaleDateString('en-IN')} — ${new Date(hoursData[0].date).toLocaleDateString('en-IN')}` : '—'}
+              </p>
+            </div>
+          </div>
+          {renderTable(hoursData, hoursColumns)}
+        </>
+      )}
       {!loading && tab === 'leaves' && renderTable(leavesData, leavesColumns)}
       {!loading && tab === 'advances' && renderTable(advancesData, advancesColumns)}
 

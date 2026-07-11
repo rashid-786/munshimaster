@@ -4,10 +4,13 @@ import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import PhoneField from '../../components/PhoneInput';
 
+const today = new Date().toISOString().split('T')[0];
+
 const Workspace = () => {
   const { user, login, logout } = useAuth();
   const [message, setMessage] = useState('');
   const [leaveForm, setLeaveForm] = useState({ leaveType: 'Annual', startDate: '', endDate: '' });
+  const [dateConflict, setDateConflict] = useState(null);
   const [profile, setProfile] = useState({ first_name: user?.firstName || '', last_name: user?.lastName || '', email: user?.email || '', phone: user?.phone || '' });
   const [profileMsg, setProfileMsg] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -15,6 +18,30 @@ const Workspace = () => {
   useEffect(() => {
     hrService.getPayrollHistory().then(data => setPayslips(data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!leaveForm.startDate || !leaveForm.endDate || !user?.id) {
+      setDateConflict(null);
+      return;
+    }
+    const start = new Date(leaveForm.startDate);
+    const end = new Date(leaveForm.endDate);
+    if (start > end) { setDateConflict(null); return; }
+    const month = start.getMonth() + 1;
+    const year = start.getFullYear();
+    hrService.getEmployeeCalendar({ employeeId: user.id, month, year }).then(data => {
+      if (!data?.employees?.length) { setDateConflict(null); return; }
+      const emp = data.employees[0];
+      const conflictDays = [];
+      for (const d of emp.days) {
+        const dDate = new Date(d.date);
+        if (dDate >= start && dDate <= end && d.hours > 0) {
+          conflictDays.push(`${d.date} (${d.hours}h)`);
+        }
+      }
+      setDateConflict(conflictDays.length > 0 ? conflictDays : null);
+    }).catch(() => setDateConflict(null));
+  }, [leaveForm.startDate, leaveForm.endDate, user?.id]);
 
   const handleLeaveSubmit = async (e) => {
     e.preventDefault();
@@ -89,10 +116,18 @@ const Workspace = () => {
               <option value="Unpaid">Unpaid Leave</option>
             </select>
             <div className="grid grid-cols-2 gap-4">
-              <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} required className="input-field" />
-              <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} required className="input-field" />
+              <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} min={today} max={leaveForm.endDate || undefined} required className="input-field" />
+              <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} min={leaveForm.startDate || today} required className="input-field" />
             </div>
-            <button type="submit" className="btn-primary w-full">Submit Request</button>
+            {dateConflict && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                <p className="text-sm font-medium text-red-800">Attendance conflict detected</p>
+                <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
+                  {dateConflict.map(d => <li key={d}>{d}</li>)}
+                </ul>
+              </div>
+            )}
+            <button type="submit" className="btn-primary w-full" disabled={!!dateConflict || (leaveForm.startDate && leaveForm.endDate && leaveForm.startDate > leaveForm.endDate)}>Submit Request</button>
           </form>
         </div>
 

@@ -9,6 +9,7 @@ import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const LEAVE_TYPES = ['Annual', 'Sick', 'Casual', 'Unpaid'];
+const today = new Date().toISOString().split('T')[0];
 
 
 
@@ -30,6 +31,7 @@ const LeaveApprovals = () => {
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [dateConflict, setDateConflict] = useState(null);
 
   const adhocEmployees = useMemo(() =>
     employees.filter(e => e.job_type === 'adhoc' && e.status !== 'deactivated')
@@ -53,6 +55,30 @@ const LeaveApprovals = () => {
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!leaveForm.employeeId || !leaveForm.startDate || !leaveForm.endDate || editingLeave) {
+      setDateConflict(null);
+      return;
+    }
+    const start = new Date(leaveForm.startDate);
+    const end = new Date(leaveForm.endDate);
+    if (start > end) { setDateConflict(null); return; }
+    const month = start.getMonth() + 1;
+    const year = start.getFullYear();
+    hrService.getEmployeeCalendar({ employeeId: leaveForm.employeeId, month, year }).then(data => {
+      if (!data?.employees?.length) { setDateConflict(null); return; }
+      const emp = data.employees[0];
+      const conflictDays = [];
+      for (const d of emp.days) {
+        const dDate = new Date(d.date);
+        if (dDate >= start && dDate <= end && d.hours > 0) {
+          conflictDays.push(`${d.date} (${d.hours}h)`);
+        }
+      }
+      setDateConflict(conflictDays.length > 0 ? conflictDays : null);
+    }).catch(() => setDateConflict(null));
+  }, [leaveForm.employeeId, leaveForm.startDate, leaveForm.endDate, editingLeave]);
 
   const handleCreateLeave = async (e) => {
     e.preventDefault();
@@ -300,13 +326,21 @@ const LeaveApprovals = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                  <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} required className="input-field" />
+                  <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} min={today} max={leaveForm.endDate || undefined} required className="input-field" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                  <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} required className="input-field" />
+                  <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} min={leaveForm.startDate || today} required className="input-field" />
                 </div>
               </div>
+              {dateConflict && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                  <p className="text-sm font-medium text-red-800">Attendance conflict detected</p>
+                  <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
+                    {dateConflict.map(d => <li key={d}>{d}</li>)}
+                  </ul>
+                </div>
+              )}
               {!editingLeave && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Adhoc Replacement (optional)</label>
@@ -321,7 +355,7 @@ const LeaveApprovals = () => {
               )}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => { setShowCreateLeave(false); setEditingLeave(null); }} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">{editingLeave ? 'Update Leave' : 'Create & Approve'}</button>
+                <button type="submit" className="btn-primary" disabled={!!dateConflict || (leaveForm.startDate && leaveForm.endDate && leaveForm.startDate > leaveForm.endDate)}>{editingLeave ? 'Update Leave' : 'Create & Approve'}</button>
               </div>
             </form>
           </div>
