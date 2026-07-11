@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const today = new Date().toISOString().split('T')[0];
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -340,12 +341,12 @@ export default function StaffReports() {
           <div className="flex flex-wrap items-center gap-3 pl-1 pt-2 border-t border-gray-100">
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 font-medium">From</label>
-              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="input-field text-sm" />
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={today} className="input-field text-sm" />
             </div>
             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 font-medium">To</label>
-              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="input-field text-sm" />
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} max={today} className="input-field text-sm" />
             </div>
           </div>
         )}

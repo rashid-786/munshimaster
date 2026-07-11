@@ -6,6 +6,8 @@ import BottomSheet from '../../components/BottomSheet';
 import ConfirmModal from '../../components/ConfirmModal';
 import useIsMobile from '../../hooks/useIsMobile';
 
+const today = new Date().toISOString().split('T')[0];
+
 const ALL_EMPLOYEES_KEY = '__ALL__';
 
 const PayrollConsole = () => {
@@ -105,6 +107,25 @@ const PayrollConsole = () => {
     });
   }, []);
 
+  const handleCancelPayroll = (record) => {
+    setDeleteModal({
+      title: 'Cancel Payroll',
+      message: `Cancel ${record.first_name} ${record.last_name}'s payroll (${record.total_hours_worked}h, ${formatINR(record.net_salary)})? This will delete the record so you can rework it.`,
+      confirmLabel: 'Cancel Payroll',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await hrService.deletePayrollHistory([record.id]);
+          setMessage('Payroll cancelled.');
+          fetchHistory();
+        } catch (err) {
+          setMessage(err.response?.data?.error || 'Failed to cancel payroll.');
+        }
+        setDeleteModal(null);
+      },
+    });
+  };
+
   const handleDeleteSelected = async () => {
     const ids = [...selectedHistoryIds];
     setDeleteModal({
@@ -130,6 +151,14 @@ const PayrollConsole = () => {
     e.preventDefault();
     if (selectedIds.size === 0 || (selectedIds.size === 1 && selectedIds.has(ALL_EMPLOYEES_KEY))) {
       setMessage('Please select at least one employee.');
+      return;
+    }
+    if (payPeriod.endDate > today) {
+      setMessage('Pay period end date cannot be in the future.');
+      return;
+    }
+    if (payPeriod.startDate > payPeriod.endDate) {
+      setMessage('Start date must be on or before end date.');
       return;
     }
     try {
@@ -221,7 +250,7 @@ const PayrollConsole = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Period End</label>
-              <input type="date" value={payPeriod.endDate} onChange={e => setPayPeriod({ ...payPeriod, endDate: e.target.value })} className="input-field" required />
+              <input type="date" value={payPeriod.endDate} onChange={e => setPayPeriod({ ...payPeriod, endDate: e.target.value })} max={today} className="input-field" required />
             </div>
           </div>
 
@@ -313,12 +342,19 @@ const PayrollConsole = () => {
                   <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
                   <td className="table-cell">{statusBadge(r.status)}</td>
                   <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
-                    {isDue(r.status) ? (
-                      <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
-                        className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
-                        {saving === r.id ? '...' : 'Mark Paid'}
-                      </button>
-                    ) : null}
+                    <div className="flex items-center justify-center gap-1.5">
+                      {isDue(r.status) ? (
+                        <>
+                          <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
+                            className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
+                            {saving === r.id ? '...' : 'Mark Paid'}
+                          </button>
+                          <button onClick={() => handleCancelPayroll(r)} className="btn-danger !py-1 !px-2.5 text-xs whitespace-nowrap">
+                            Cancel
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

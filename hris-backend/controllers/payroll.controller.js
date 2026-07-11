@@ -23,6 +23,14 @@ exports.calculatePayroll = async (req, res) => {
   }
 
   try {
+    const today = new Date().toISOString().split('T')[0];
+    if (endDate > today) {
+      return res.status(400).json({ error: 'Pay period end date cannot be in the future.' });
+    }
+    if (startDate > endDate) {
+      return res.status(400).json({ error: 'Start date must be on or before end date.' });
+    }
+
     const workingDays = manualDays || countWeekdays(startDate, endDate);
     const standardHours = workingDays * 8;
 

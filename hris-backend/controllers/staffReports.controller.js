@@ -265,27 +265,165 @@ exports.exportReport = async (req, res) => {
     const data = await getTabData(tenantId, tab, queryParams);
 
     if (format === 'pdf') {
-      const doc = new PDFDocument({ margin: 40 });
+      const doc = new PDFDocument({ margin: 40, size: 'A4', layout: tab === 'working-hours' ? 'landscape' : 'portrait' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=${tab}_report.pdf`);
       doc.pipe(res);
 
-      doc.fontSize(16).text(companyName.toUpperCase(), { align: 'center' });
-      doc.fontSize(12).text(`${tab.charAt(0).toUpperCase() + tab.slice(1)} Report`, { align: 'center' }).moveDown(2);
+      const MARGIN = 40;
+      const pageW = doc.page.width - MARGIN * 2;
+      let y;
+      let pageNum = 1;
 
-      if (data.length === 0) {
-        doc.fontSize(11).text('No data found for the selected period.', { align: 'center' });
-      } else {
-        const headers = Object.keys(data[0]).filter(k => !['tenant_id', 'id'].includes(k));
-        doc.fontSize(8);
-        data.slice(0, 100).forEach((row, i) => {
-          headers.forEach(h => {
-            doc.text(`${h}: ${row[h] ?? '—'}`, { continued: false });
-          });
-          doc.moveDown(0.3);
-          if (i % 20 === 19) doc.addPage();
-        });
+      const tabLabel = tab === 'working-hours' ? 'Working Hours' : tab.charAt(0).toUpperCase() + tab.slice(1);
+      const genDate = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const periodLabel = (queryParams.startDate || queryParams.endDate)
+        ? `Period: ${queryParams.startDate || '—'} to ${queryParams.endDate || '—'}` : null;
+
+      function writeHeader() {
+        y = doc.y + 6;
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text(companyName.toUpperCase(), MARGIN, y, { align: 'center', width: pageW, lineBreak: false, ellipsis: true });
+        y = doc.y + 4;
+        doc.fontSize(7).font('Helvetica').fillColor('#64748b').text(`Generated: ${genDate}`, MARGIN, y, { align: 'right', width: pageW, lineBreak: false });
+        y = doc.y + 2;
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#0f172a').text(`${tabLabel} Report`, MARGIN, y, { align: 'center', width: pageW, lineBreak: false });
+        y = doc.y + 2;
+        if (periodLabel) {
+          doc.fontSize(7).font('Helvetica').fillColor('#64748b').text(periodLabel, MARGIN, y, { align: 'center', width: pageW, lineBreak: false });
+          y = doc.y + 2;
+        }
+        doc.moveTo(MARGIN, y).lineTo(MARGIN + pageW, y).strokeColor('#e2e8f0').stroke();
+        y = doc.y + 6;
       }
+
+      function writeFooter() {
+        doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(`Page ${pageNum}`, MARGIN, doc.page.height - 52, { align: 'center', width: pageW, lineBreak: false });
+      }
+
+      writeHeader();
+
+      const tableStartX = MARGIN;
+      const tableW = pageW;
+      const rowH = 18;
+      const headH = 20;
+      const rowBottomLimit = doc.page.height - 64;
+
+      function drawTableHead(headers, cw, al) {
+        doc.roundedRect(tableStartX, y, tableW, headH, 3).fillColor('#1e293b').fill();
+        doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+        let cx = tableStartX;
+        headers.forEach((h, i) => {
+          doc.text(h, cx + 4, y + 6, { width: cw[i] - 8, align: al[i], lineBreak: false, ellipsis: true });
+          cx += cw[i];
+        });
+        y += headH;
+      }
+
+      function drawRow(cells, cw, al, alt) {
+        if (alt) doc.rect(tableStartX, y, tableW, rowH).fillColor('#f8fafc').fill();
+        doc.fillColor('#0f172a').fontSize(7).font('Helvetica');
+        let cx = tableStartX;
+        cells.forEach((val, i) => {
+          doc.text(String(val), cx + 4, y + 5, { width: cw[i] - 8, align: al[i], lineBreak: false, ellipsis: true });
+          cx += cw[i];
+        });
+        y += rowH;
+      }
+
+      function newPage(headers, cw, al) {
+        writeFooter();
+        doc.addPage();
+        pageNum++;
+        writeHeader();
+        drawTableHead(headers, cw, al);
+      }
+
+      function makeColumns(count) {
+        const ratioW = Math.floor((tableW - (count - 1)) / count);
+        const rem = tableW - ratioW * count;
+        return Array.from({ length: count }, (_, i) => i < rem ? ratioW + 1 : ratioW);
+      }
+
+      function tabConfig() {
+        const labels = tab === 'salary' ? ['Employee', 'Pay Rate', 'Worked', 'Gross', 'Adv. Ded.', 'Net', 'Status']
+          : tab === 'working-hours' ? ['Employee', 'Date', 'Check-in', 'Check-out', 'Hours', 'Status']
+          : tab === 'leaves' ? ['Employee', 'Type', 'Start', 'End', 'Days', 'Status']
+          : ['Employee', 'Amount', 'Recovered', 'Outstanding', 'Date', 'Status'];
+        const aligns = tab === 'salary' ? ['left', 'center', 'center', 'right', 'right', 'right', 'center']
+          : tab === 'working-hours' ? ['left', 'center', 'center', 'center', 'center', 'center']
+          : tab === 'leaves' ? ['left', 'center', 'center', 'center', 'center', 'center']
+          : ['left', 'right', 'right', 'right', 'center', 'center'];
+        const formatters = {
+          salary: [
+            r => `${r.first_name} ${r.last_name}`,
+            r => `₹${(r.hourly_rate / 100).toFixed(2)}/hr`,
+            r => `${r.total_hours_worked}h`,
+            r => `₹${(r.gross_salary / 100).toFixed(2)}`,
+            r => r.advance_deduction ? `₹${(r.advance_deduction / 100).toFixed(2)}` : '—',
+            r => `₹${(r.net_salary / 100).toFixed(2)}`,
+            r => r.status === 'paid' ? 'Paid' : 'Due',
+          ],
+          'working-hours': [
+            r => `${r.first_name} ${r.last_name}`,
+            r => r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—',
+            r => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
+            r => r.clock_out ? new Date(r.clock_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
+            r => r.total_hours ? `${r.total_hours}h` : '—',
+            r => r.pay_status === 'paid' ? 'Paid' : r.pay_status === 'due' ? 'Due' : 'Unbilled',
+          ],
+          leaves: [
+            r => `${r.first_name} ${r.last_name}`,
+            r => r.leave_type || '—',
+            r => r.start_date ? new Date(r.start_date).toLocaleDateString('en-IN') : '—',
+            r => r.end_date ? new Date(r.end_date).toLocaleDateString('en-IN') : '—',
+            r => r.start_date && r.end_date ? Math.floor((new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1 : '—',
+            r => r.status || '—',
+          ],
+          advances: [
+            r => `${r.first_name} ${r.last_name}`,
+            r => `₹${(r.amount / 100).toFixed(2)}`,
+            r => `₹${((r.amount || 0) - (r.remaining_balance || 0)) / 100}`,
+            r => `₹${(r.remaining_balance / 100).toFixed(2)}`,
+            r => r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN') : '—',
+            r => r.remaining_balance && r.remaining_balance > 0 ? 'Due' : 'Paid',
+          ],
+        };
+        return { labels, aligns, formatters: formatters[tab] || [] };
+      }
+
+      if (!data.length) {
+        doc.fontSize(11).font('Helvetica').fillColor('#64748b').text('No data found for the selected period.', MARGIN, y + 30, { align: 'center', width: pageW, lineBreak: false });
+      } else {
+        const { labels, aligns, formatters } = tabConfig();
+        const cols = makeColumns(labels.length);
+
+        drawTableHead(labels, cols, aligns);
+
+        data.forEach((row, ri) => {
+          if (y + rowH > rowBottomLimit) {
+            newPage(labels, cols, aligns);
+          }
+          const cells = formatters.map(f => f(row));
+          drawRow(cells, cols, aligns, ri % 2 === 0);
+        });
+
+        if (y + headH + 4 > rowBottomLimit) {
+          newPage(labels, cols, aligns);
+        }
+        y += 4;
+        doc.roundedRect(tableStartX, y, tableW, headH, 3).fillColor('#f1f5f9').fill();
+        doc.fillColor('#0f172a').fontSize(7).font('Helvetica-Bold');
+        let cx = tableStartX;
+        const lastRow = data[data.length - 1];
+        labels.forEach((_, i) => {
+          const val = i === 0 ? `Total (${data.length} records)` : (i === labels.length - 1 ? formatters[i](lastRow) : '');
+          doc.text(String(val), cx + 4, y + 6, { width: cols[i] - 8, align: aligns[i], lineBreak: false, ellipsis: true });
+          cx += cols[i];
+        });
+        y += headH + 8;
+      }
+
+      writeFooter();
       doc.end();
     } else if (format === 'xlsx') {
       const workbook = new ExcelJS.Workbook();
