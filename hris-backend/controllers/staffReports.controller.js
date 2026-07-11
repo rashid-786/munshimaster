@@ -222,7 +222,13 @@ async function getTabData(tenantId, tab, params) {
       return rows;
     }
     case 'working-hours': {
-      let q = `SELECT a.*, e.first_name, e.last_name FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.tenant_id = ?`;
+      let q = `SELECT a.*, e.first_name, e.last_name,
+                      CASE
+                        WHEN EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id = a.employee_id AND p.tenant_id = a.tenant_id AND p.status = 'paid' AND a.date BETWEEN p.pay_period_start AND p.pay_period_end) THEN 'paid'
+                        WHEN EXISTS (SELECT 1 FROM payroll p2 WHERE p2.employee_id = a.employee_id AND p2.tenant_id = a.tenant_id AND p2.status IN ('due','draft') AND a.date BETWEEN p2.pay_period_start AND p2.pay_period_end) THEN 'due'
+                        ELSE 'unbilled'
+                      END as pay_status
+               FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.tenant_id = ?`;
       const p = [tenantId];
       const df = buildDateFilter('a', params.startDate, params.endDate);
       q += df.clause; p.push(...df.params);
@@ -429,8 +435,12 @@ exports.exportReport = async (req, res) => {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet(tab);
       if (data.length > 0) {
-        const headers = Object.keys(data[0]).filter(k => !['tenant_id', 'id'].includes(k));
-        sheet.addRow(headers);
+        const rawKeys = Object.keys(data[0]).filter(k => !['tenant_id', 'id', 'employee_id', 'created_at', 'updated_at'].includes(k));
+        const headerOrder = {
+          'working-hours': ['first_name', 'last_name', 'total_hours', 'clock_in', 'clock_out', 'date', 'pay_status'],
+        };
+        const headers = headerOrder[tab] || rawKeys;
+        sheet.addRow(headers.map(h => h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())));
         data.forEach(row => sheet.addRow(headers.map(h => row[h] ?? '')));
       }
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
