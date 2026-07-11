@@ -114,6 +114,7 @@ const Workspace = () => {
               <option value="Sick">Sick Leave</option>
               <option value="Casual">Casual Leave</option>
               <option value="Unpaid">Unpaid Leave</option>
+              <option value="Absent">Absent</option>
             </select>
             <div className="grid grid-cols-2 gap-4">
               <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} min={today} max={leaveForm.endDate || undefined} required className="input-field" />

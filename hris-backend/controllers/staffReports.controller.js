@@ -60,9 +60,9 @@ exports.getSummary = async (req, res) => {
     const totalPaidHours = parseFloat(payrollHoursStats[0].paid_hours) || 0;
 
     let leaveQ = `SELECT COALESCE(SUM(
-      LEAST(end_date, ?::date) - GREATEST(start_date, ?::date) + 1
+      LEAST((end_date AT TIME ZONE 'UTC')::date, ?::date) - GREATEST((start_date AT TIME ZONE 'UTC')::date, ?::date) + 1
     ), 0) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'
-      AND start_date <= ? AND end_date >= ?`;
+      AND (start_date AT TIME ZONE 'UTC')::date <= ? AND (end_date AT TIME ZONE 'UTC')::date >= ?`;
     const leaveP = [tenantId];
     if (startDate && endDate) {
       leaveP.unshift(endDate, startDate);
@@ -169,7 +169,7 @@ exports.getLeaveReport = async (req, res) => {
                  JOIN employees e ON l.employee_id = e.id
                  WHERE l.tenant_id = ?`;
     const params = [tenantId];
-    if (startDate && endDate) { query += ' AND l.start_date <= ? AND l.end_date >= ?'; params.push(endDate, startDate); }
+    if (startDate && endDate) { query += ' AND (l.start_date AT TIME ZONE \'UTC\')::date <= ? AND (l.end_date AT TIME ZONE \'UTC\')::date >= ?'; params.push(endDate, startDate); }
     else if (startDate) { query += ' AND l.start_date >= ?'; params.push(startDate); }
     else if (endDate) { query += ' AND l.end_date <= ?'; params.push(endDate); }
     if (search) { query += ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ?)`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
@@ -239,7 +239,7 @@ async function getTabData(tenantId, tab, params) {
     case 'leaves': {
       let q = `SELECT l.*, e.first_name, e.last_name FROM leaves l JOIN employees e ON l.employee_id = e.id WHERE l.tenant_id = ?`;
       const p = [tenantId];
-      if (params.startDate && params.endDate) { q += ' AND l.start_date <= ? AND l.end_date >= ?'; p.push(params.endDate, params.startDate); }
+      if (params.startDate && params.endDate) { q += ' AND (l.start_date AT TIME ZONE \'UTC\')::date <= ? AND (l.end_date AT TIME ZONE \'UTC\')::date >= ?'; p.push(params.endDate, params.startDate); }
       else if (params.startDate) { q += ' AND l.start_date >= ?'; p.push(params.startDate); }
       else if (params.endDate) { q += ' AND l.end_date <= ?'; p.push(params.endDate); }
       q += ' ORDER BY l.created_at DESC';

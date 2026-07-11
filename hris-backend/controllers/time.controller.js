@@ -106,6 +106,12 @@ exports.adminSetStatus = async (req, res) => {
            ON CONFLICT (tenant_id, employee_id, date) DO UPDATE SET clock_in = NULL, clock_out = NULL, total_hours = 0`,
           [id, tenantId, employeeId, date, new Date(`${date}T00:00`), new Date(`${date}T00:00`)]
         );
+        const leaveId = uuidv4();
+        await db.execute(
+          `INSERT INTO leaves (id, tenant_id, employee_id, leave_type, start_date, end_date, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'approved')`,
+          [leaveId, tenantId, employeeId, 'Absent', date, date]
+        );
         break;
       }
       case 'sick':

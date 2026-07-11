@@ -189,3 +189,8 @@ Build full notification system, add "Load More" + search across tables, fix Post
 4. **Seed super admin** if not already present: `POST /api/v1/super/auth/seed`
 5. **Verify** dashboard, analytics, section visibility v2, trial extension endpoints
 6. **Rollback plan**: Revert `analytics.controller.js` to previous version; delete `tenant_section_visibility_history` table if causing issues (v1 visibility still works without it)
+
+## Completed (Jul 11)
+- **Leaves timezone fix**: DB session timezone `Asia/Kuwait` caused `start_date::date` to shift `2026-07-11T21:00:00Z` → Jul 12, breaking `<=` comparisons. Replaced all 3 occurrences in `staffReports.controller.js` with `(start_date AT TIME ZONE 'UTC')::date`. Also fixed `LEAST`/`GREATEST` in `getSummary` the same way.
+- **Current Month end date**: Changed from `end:n` (today) to `end:new Date(n.getFullYear(), n.getMonth()+1, 0)` (last day of month) in StaffReports.jsx presets.
+- **`toISOString()` timezone shift**: `fmt()` and `today` used `toISOString().split('T')[0]`, which shifts Kuwait midnight → previous-day UTC. Fixed `fmt()` and `today` in StaffReports.jsx, LeaveApprovals.jsx, and PayrollConsole.jsx to use local `getFullYear()`/`getMonth()`/`getDate()`.

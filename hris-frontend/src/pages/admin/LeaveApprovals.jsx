@@ -8,8 +8,8 @@ import ConfirmModal from '../../components/ConfirmModal';
 import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
 
-const LEAVE_TYPES = ['Annual', 'Sick', 'Casual', 'Unpaid'];
-const today = new Date().toISOString().split('T')[0];
+const LEAVE_TYPES = ['Annual', 'Sick', 'Casual', 'Unpaid', 'Absent'];
+const today = (() => { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); })();
 
 
 
@@ -243,6 +243,7 @@ const LeaveApprovals = () => {
               <option value="Sick">Sick</option>
               <option value="Casual">Casual</option>
               <option value="Unpaid">Unpaid</option>
+              <option value="Absent">Absent</option>
             </select>
             <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="input-field max-w-[140px] text-sm">
               <option value="">All Months</option>

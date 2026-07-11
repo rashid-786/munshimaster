@@ -6,7 +6,7 @@ import BottomSheet from '../../components/BottomSheet';
 import ConfirmModal from '../../components/ConfirmModal';
 import useIsMobile from '../../hooks/useIsMobile';
 
-const today = new Date().toISOString().split('T')[0];
+const today = (() => { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); })();
 
 const ALL_EMPLOYEES_KEY = '__ALL__';
 

@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-const today = new Date().toISOString().split('T')[0];
+const today = (() => { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); })();
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -25,14 +25,14 @@ const DATE_PRESETS = [
   { label: 'Yesterday',    fn: () => { const n=new Date(); n.setDate(n.getDate()-1); return {start:n,end:n}; } },
   { label: 'Current Week', fn: () => { const n=new Date(); const d=n.getDay(); return {start:new Date(n.getFullYear(),n.getMonth(),n.getDate()-d),end:n}; } },
   { label: 'Last Week',    fn: () => { const n=new Date(); const d=n.getDay(); const e=new Date(n.getFullYear(),n.getMonth(),n.getDate()-d-1); e.setDate(e.getDate()-6); return {start:e,end:new Date(n.getFullYear(),n.getMonth(),n.getDate()-d-1)}; } },
-  { label: 'Current Month',fn: () => { const n=new Date(); return {start:new Date(n.getFullYear(),n.getMonth(),1),end:n}; } },
+  { label: 'Current Month',fn: () => { const n=new Date(); return {start:new Date(n.getFullYear(),n.getMonth(),1),end:new Date(n.getFullYear(),n.getMonth()+1,0)}; } },
   { label: 'Last Month',   fn: () => { const n=new Date(); return {start:new Date(n.getFullYear(),n.getMonth()-1,1),end:new Date(n.getFullYear(),n.getMonth(),0)}; } },
   { label: 'Current Quarter', fn: () => { const n=new Date(); const q=Math.floor(n.getMonth()/3); return {start:new Date(n.getFullYear(),q*3,1),end:n}; } },
   { label: 'Last Quarter', fn: () => { const n=new Date(); const q=Math.floor(n.getMonth()/3)-1; const qs=q*3; return {start:new Date(n.getFullYear(),qs,1),end:new Date(n.getFullYear(),qs+3,0)}; } },
   { label: 'This Year',    fn: () => { const n=new Date(); return {start:new Date(n.getFullYear(),0,1),end:n}; } },
 ];
 
-function fmt(d) { return d.toISOString().split('T')[0]; }
+function fmt(d) { const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 
 function KpiCard({ label, value, icon, color }) {
   return (
@@ -371,6 +371,7 @@ export default function StaffReports() {
               <option value="">All Types</option>
               <option value="Annual">Annual</option>
               <option value="Sick">Sick</option>
+              <option value="Absent">Absent</option>
               <option value="Unpaid">Unpaid</option>
             </select>
           )}
