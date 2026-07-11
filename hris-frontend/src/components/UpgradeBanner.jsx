@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useGlobalConfig } from '../context/GlobalConfigContext';
 import { resolvePlan, getRank } from '../config/subscriptionPlans';
 import UpgradeModal from './UpgradeModal';
 
 export default function UpgradeBanner({ type = 'limit', feature, usage, limit, plan = 'BUSINESS' }) {
   const { tenant } = useAuth();
+  const { globalConfig } = useGlobalConfig();
   const rawPlan = tenant?.subscriptionPlan || 'FREE';
   const currentPlan = resolvePlan(rawPlan);
   const requiredPlan = resolvePlan(plan);
   const [showModal, setShowModal] = useState(false);
+
+  if (globalConfig?.hideSubscriptionLabels) return null;
 
   if (type === 'feature' && getRank(currentPlan) >= getRank(requiredPlan)) return null;
 
