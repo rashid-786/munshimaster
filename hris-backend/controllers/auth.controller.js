@@ -357,3 +357,75 @@ exports.updateProfile = async (req, res) => {
     res.status(500).json({ error: 'Failed to update profile.' });
   }
 };
+
+// 5. PROFILE STATUS — check if mandatory fields are filled
+exports.getProfileStatus = async (req, res) => {
+  const employeeId = req.user.id;
+  const tenantId = req.user.tenantId;
+
+  try {
+    const [empRows] = await db.execute(
+      'SELECT first_name, last_name FROM employees WHERE id = ? AND tenant_id = ?',
+      [employeeId, tenantId]
+    );
+    const [tenantRows] = await db.execute(
+      'SELECT company_name FROM tenants WHERE id = ?', [tenantId]
+    );
+
+    const emp = empRows[0] || {};
+    const tenant = tenantRows[0] || {};
+
+    const missing = [];
+    if (!emp.first_name) missing.push('first_name');
+    if (!emp.last_name) missing.push('last_name');
+    if (!tenant.company_name) missing.push('company_name');
+
+    res.json({ complete: missing.length === 0, missing });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to check profile status.' });
+  }
+};
+
+// 6. COMPLETE PROFILE — saves first_name, last_name, company_name & optional password
+exports.completeProfile = async (req, res) => {
+  const employeeId = req.user.id;
+  const tenantId = req.user.tenantId;
+  const { first_name, last_name, company_name, password } = req.body;
+
+  console.log('[completeProfile]', { employeeId, tenantId, first_name, last_name, company_name });
+
+  if (!first_name || !last_name || !company_name || !password) {
+    return res.status(400).json({ error: 'First name, last name, business name, and password are required.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const [empResult] = await db.execute(
+      'UPDATE employees SET first_name = ?, last_name = ? WHERE id = ? AND tenant_id = ?',
+      [first_name, last_name, employeeId, tenantId]
+    );
+    console.log('[completeProfile] employees update result:', JSON.stringify(empResult));
+
+    const [tenantResult] = await db.execute(
+      'UPDATE tenants SET company_name = ? WHERE id = ?',
+      [company_name, tenantId]
+    );
+    console.log('[completeProfile] tenants update result:', JSON.stringify(tenantResult));
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [pwdResult] = await db.execute(
+      'UPDATE employees SET password_hash = ? WHERE id = ? AND tenant_id = ?',
+      [hashedPassword, employeeId, tenantId]
+    );
+    console.log('[completeProfile] password update result:', JSON.stringify(pwdResult));
+
+    res.json({ message: 'Profile completed.', firstName: first_name, lastName: last_name, companyName: company_name });
+  } catch (error) {
+    console.error('[completeProfile] Error:', error);
+    res.status(500).json({ error: 'Failed to complete profile.' });
+  }
+};

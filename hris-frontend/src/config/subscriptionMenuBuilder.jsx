@@ -224,10 +224,11 @@ export function getAccessibleRoutes(plan) {
  * becomes inaccessible.
  *
  * @param {string} plan
+ * @param {Object} [hiddenGroups={}] — map of section label → true for user-hidden groups
  * @returns {string}
  */
-export function getFirstDashboardRoute(plan) {
-  const menu = buildMenu(plan);
+export function getFirstDashboardRoute(plan, hiddenGroups = {}) {
+  const menu = buildMenu(plan).filter(s => !hiddenGroups[s.label]);
   if (menu.length === 0) return '/admin/ledger';
 
   const dashboard = menu.find(m => m.type === 'group') || menu[0];

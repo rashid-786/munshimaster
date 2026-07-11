@@ -26,6 +26,7 @@ import LeaveApprovals from './pages/admin/LeaveApprovals';
 import PayrollConsole from './pages/admin/PayrollConsole';
 import AdvancePayments from './pages/admin/AdvancePayments';
 import Replacements from './pages/admin/Replacements';
+import StaffReports from './pages/admin/StaffReports';
 import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
 import Reports from './pages/admin/Reports';
@@ -77,14 +78,26 @@ import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
 
+function getHiddenGroups() {
+  try {
+    const stored = localStorage.getItem('hidden_groups');
+    if (stored) return JSON.parse(stored);
+    const tenantData = JSON.parse(localStorage.getItem('tenant_data') || '{}');
+    return tenantData?.settings?.hiddenGroups || {};
+  } catch {
+    return {};
+  }
+}
+
 function DefaultRedirect() {
   let { tenant } = useAuth();
   if (!tenant) {
     try { const saved = localStorage.getItem('tenant_data'); if (saved) tenant = JSON.parse(saved); } catch {}
   }
   const plan = resolvePlan(tenant?.subscriptionPlan || 'FREE');
+  const hiddenGroups = getHiddenGroups();
   if (plan === 'BUSINESS' || plan === 'BUSINESS_PRO') return <Navigate to="business" replace />;
-  const route = getFirstDashboardRoute(plan);
+  const route = getFirstDashboardRoute(plan, hiddenGroups);
   return <Navigate to={route.replace('/admin/', '')} replace />;
 }
 
@@ -138,6 +151,7 @@ function App() {
             <Route path="payroll" element={<PlanRoute minPlan="pro"><PayrollConsole /></PlanRoute>} />
             <Route path="advances" element={<PlanRoute minPlan="pro"><AdvancePayments /></PlanRoute>} />
             <Route path="replacements" element={<PlanRoute minPlan="pro"><Replacements /></PlanRoute>} />
+            <Route path="staff-reports" element={<PlanRoute minPlan="pro"><StaffReports /></PlanRoute>} />
             <Route path="audit-logs" element={<PlanRoute minPlan="pro"><AuditLogs /></PlanRoute>} />
             <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />
             <Route path="reports" element={<PlanRoute minPlan="business"><Reports /></PlanRoute>} />

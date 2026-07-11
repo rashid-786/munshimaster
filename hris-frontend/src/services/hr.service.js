@@ -99,6 +99,10 @@ export const hrService = {
     const response = await api.get('/core/payroll/history');
     return response.data;
   },
+  markPayrollPaid: async (payrollId) => {
+    const response = await api.patch(`/core/payroll/${payrollId}/pay`);
+    return response.data;
+  },
   downloadPayslipUrl: (payrollId) => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL;
     const tenantId = localStorage.getItem('tenant_id');
@@ -401,6 +405,14 @@ export const hrService = {
     const response = await api.patch(`/core/advances/${id}/reject`);
     return response.data;
   },
+  updateAdvance: async (id, data) => {
+    const response = await api.put(`/core/advances/${id}`, data);
+    return response.data;
+  },
+  deleteAdvance: async (id) => {
+    const response = await api.delete(`/core/advances/${id}`);
+    return response.data;
+  },
 
   // Kirana Store
   kirana: {
@@ -453,6 +465,40 @@ export const hrService = {
     const link = document.createElement('a');
     link.href = window.URL.createObjectURL(blob);
     link.download = `${type}_report.xlsx`;
+    link.click();
+  },
+
+  // Staff Reports
+  getStaffReportSummary: async (params) => {
+    const response = await api.get('/core/staff-reports/summary', { params });
+    return response.data;
+  },
+  getSalaryReport: async (params) => {
+    const response = await api.get('/core/staff-reports/salary', { params });
+    return response.data;
+  },
+  getWorkingHoursReport: async (params) => {
+    const response = await api.get('/core/staff-reports/working-hours', { params });
+    return response.data;
+  },
+  getLeaveReport: async (params) => {
+    const response = await api.get('/core/staff-reports/leaves', { params });
+    return response.data;
+  },
+  getAdvanceReport: async (params) => {
+    const response = await api.get('/core/staff-reports/advances', { params });
+    return response.data;
+  },
+  getStaffReportCharts: async (params) => {
+    const response = await api.get('/core/staff-reports/charts', { params });
+    return response.data;
+  },
+  downloadStaffReport: async (tab, format, params) => {
+    const response = await api.get(`/core/staff-reports/export/${tab}/${format}`, { params, responseType: 'blob' });
+    const blob = new Blob([response.data], { type: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${tab}_report.${format}`;
     link.click();
   },
 

@@ -17,7 +17,6 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('tenant_data', JSON.stringify(updated));
       if (data.settings?.currencySymbol) localStorage.setItem('currency_symbol', data.settings.currencySymbol);
       if (data.settings?.countryCode) localStorage.setItem('default_country_code', data.settings.countryCode);
-      if (data.settings?.hideTempPassword !== undefined) localStorage.setItem('hide_temp_password', data.settings.hideTempPassword ? 'true' : 'false');
     } catch {
       // silent — retry on next page visit
     }

@@ -315,33 +315,20 @@ exports.getOnboardingStatus = async (req, res) => {
     const [tenant] = await db.execute(
       'SELECT company_name, onboarding_dismissed FROM tenants WHERE id = ?', [req.tenantId]
     );
-    const [customerCount] = await db.execute(
-      'SELECT COUNT(*) as c FROM customers WHERE tenant_id = ?', [req.tenantId]
-    );
-    const [supplierCount] = await db.execute(
-      'SELECT COUNT(*) as c FROM suppliers WHERE tenant_id = ?', [req.tenantId]
-    );
-    const [staffCount] = await db.execute(
-      "SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND COALESCE(status,'active') != 'deactivated'",
-      [req.tenantId]
-    );
-    const [entryCount] = await db.execute(
-      "SELECT COUNT(*) as c FROM kirana_transactions WHERE tenant_id = ?", [req.tenantId]
+    const [empRows] = await db.execute(
+      'SELECT first_name, last_name FROM employees WHERE id = ? AND tenant_id = ?',
+      [req.user.id, req.tenantId]
     );
 
     const companyName = tenant[0]?.company_name || '';
+    const emp = empRows[0] || {};
     const onboardingDismissed = tenant[0]?.onboarding_dismissed ?? false;
     const hasCompanyName = !!companyName;
-    const hasCustomers = Number(customerCount[0]?.c || 0) > 0;
-    const hasSuppliers = Number(supplierCount[0]?.c || 0) > 0;
-    const hasStaff = Number(staffCount[0]?.c || 0) > 1; // more than just the admin
-    const hasEntries = Number(entryCount[0]?.c || 0) > 0;
+    const hasFirstName = !!emp.first_name;
+    const hasLastName = !!emp.last_name;
 
     const steps = [
-      { key: 'company_name', label: 'Set your business name', done: hasCompanyName },
-      { key: 'add_entry', label: 'Record your first ledger entry', done: hasEntries },
-      { key: 'add_customer', label: 'Add first buyer/seller', done: hasCustomers || hasSuppliers },
-      { key: 'invite_staff', label: 'Invite team members', done: hasStaff },
+      { key: 'profile', label: 'Complete your profile', done: hasFirstName && hasLastName && hasCompanyName },
     ];
 
     const completedCount = steps.filter(s => s.done).length;

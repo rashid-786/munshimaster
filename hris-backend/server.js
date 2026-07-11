@@ -203,6 +203,7 @@ app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/api/v1/core/subscription', apiLimiter, subscriptionRoutes);
 app.use('/api/v1/core/branding', brandingRoutes);
 app.use('/api/v1/core/notifications', notificationRoutes);
+app.use('/api/v1/core/staff-reports', planGate(1), require('./routes/staffReports.routes'));
 app.use('/api/v1/core/retention', retentionRoutes);
 app.use('/api/v1/core/dashboard', dashboardRoutes);
 app.use('/api/v1/core/email-logs', emailLogRoutes);

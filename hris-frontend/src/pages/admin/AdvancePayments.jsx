@@ -3,6 +3,7 @@ import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
+import Modal from '../../components/Modal';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const AdvancePayments = () => {
@@ -15,6 +16,9 @@ const AdvancePayments = () => {
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editForm, setEditForm] = useState({ status: 'pending', amount: '', reason: '' });
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const filteredAdvances = useMemo(() => {
     if (!search) return advances;
@@ -80,6 +84,36 @@ const AdvancePayments = () => {
     }
   };
 
+  const handleEdit = (r) => {
+    setEditForm({ status: r.status, amount: (r.amount / 100).toFixed(2), reason: r.reason || '' });
+    setEditingRecord(r);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setMessage('');
+    try {
+      await hrService.updateAdvance(editingRecord.id, editForm);
+      setMessage('Advance updated successfully.');
+      setEditingRecord(null);
+      fetch();
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to update advance.');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await hrService.deleteAdvance(id);
+      setMessage('Advance deleted successfully.');
+      setConfirmDelete(null);
+      fetch();
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to delete advance.');
+      setConfirmDelete(null);
+    }
+  };
+
   const statusBadgeClass = (status) => {
     if (status === 'approved') return 'badge-success';
     if (status === 'pending') return 'badge-warning';
@@ -97,18 +131,18 @@ const AdvancePayments = () => {
     )},
     { key: 'created_at', label: 'Date', render: (v) => <span className="text-gray-500">{(v || '').split('T')[0]}</span> },
     { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-1.5">
+        <button onClick={(e) => { e.stopPropagation(); handleEdit(r); }} className="btn-secondary !py-1.5 !px-2.5 text-xs" title="Edit">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        </button>
         {r.status === 'pending' && (
-          <div className="flex gap-1.5">
+          <>
+            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(r); }} className="btn-danger !py-1.5 !px-2.5 text-xs" title="Delete">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
             <button onClick={(e) => { e.stopPropagation(); handleApprove(r.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Approve</button>
             <button onClick={(e) => { e.stopPropagation(); handleReject(r.id); }} className="btn-danger !py-1.5 !px-2.5 text-xs">Reject</button>
-          </div>
-        )}
-        {r.status === 'approved' && (
-          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        )}
-        {r.status === 'rejected' && (
-          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </>
         )}
       </div>
     )},
@@ -215,6 +249,55 @@ const AdvancePayments = () => {
           )}
         </BottomSheet>
       )}
+
+      <Modal open={!!editingRecord} onClose={() => setEditingRecord(null)} title="Edit Advance">
+        {editingRecord && (
+          <form onSubmit={handleUpdate} className="space-y-4 p-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select value={editForm.status}
+                onChange={e => setEditForm({ ...editForm, status: e.target.value })}
+                className="input-field">
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+              <input type="number" min="1" step="0.01" value={editForm.amount}
+                onChange={e => setEditForm({ ...editForm, amount: e.target.value })}
+                className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <input type="text" value={editForm.reason}
+                onChange={e => setEditForm({ ...editForm, reason: e.target.value })}
+                className="input-field" placeholder="Optional" />
+            </div>
+            <p className="text-xs text-gray-400">Changes to amount will adjust the remaining balance accordingly.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setEditingRecord(null)} className="btn-secondary text-sm">Cancel</button>
+              <button type="submit" className="btn-primary text-sm">Save Changes</button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Delete Advance">
+        {confirmDelete && (
+          <div className="space-y-4 p-2">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete this advance for <strong>{confirmDelete.first_name} {confirmDelete.last_name}</strong>?
+            </p>
+            <p className="text-sm text-gray-500">Amount: {formatINR(confirmDelete.amount)}</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setConfirmDelete(null)} className="btn-secondary text-sm">Cancel</button>
+              <button type="button" onClick={() => handleDelete(confirmDelete.id)} className="btn-danger text-sm">Delete</button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

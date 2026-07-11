@@ -10,7 +10,7 @@ export default function Entities() {
   const planRank = PLAN_RANK[tenantData.subscriptionPlan] ?? 0;
   const isLowPlan = planRank <= 1;
   const entityLabel = groupLabels['Entities'] || (isLowPlan ? 'My Stores' : 'Entities');
-  const entitySingular = isLowPlan ? 'Store' : 'Entity';
+  const entitySingular = groupLabels['EntityName'] || (isLowPlan ? 'Store' : 'Entity');
   const [entities, setEntities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

@@ -1,13 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 
+const ALL_EMPLOYEES_KEY = '__ALL__';
+
 const PayrollConsole = () => {
   const isMobile = useIsMobile();
   const [payPeriod, setPayPeriod] = useState({ startDate: '', endDate: '' });
+
+  const [employees, setEmployees] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [history, setHistory] = useState([]);
   const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
@@ -15,6 +20,64 @@ const PayrollConsole = () => {
   const [selectedPayrun, setSelectedPayrun] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(null);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const data = await hrService.getPayrollHistory();
+      setHistory(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [hist, emps] = await Promise.all([
+          hrService.getPayrollHistory(),
+          hrService.getEmployees(),
+        ]);
+        setHistory(hist);
+        setEmployees(emps);
+      } catch {} finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    if (selectedIds.has(ALL_EMPLOYEES_KEY)) {
+      setSelectedIds(new Set());
+    } else {
+      const all = new Set([ALL_EMPLOYEES_KEY]);
+      employees.forEach(e => all.add(e.id));
+      setSelectedIds(all);
+    }
+  }, [employees, selectedIds]);
+
+  const toggleEmployee = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(ALL_EMPLOYEES_KEY);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleMarkPaid = async (e, rec) => {
+    e.stopPropagation();
+    setSaving(rec.id);
+    try {
+      await hrService.markPayrollPaid(rec.id);
+      fetchHistory();
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to mark as paid.');
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const filteredHistory = useMemo(() => {
     if (!search) return history;
@@ -22,23 +85,19 @@ const PayrollConsole = () => {
     return history.filter(r => `${r.first_name} ${r.last_name}`.toLowerCase().includes(q));
   }, [history, search]);
 
-  useEffect(() => {
-    const loadHistory = async () => {
-      setLoading(true);
-      try {
-        const data = await hrService.getPayrollHistory();
-        setHistory(data);
-      } catch {} finally {
-        setLoading(false);
-      }
-    };
-    loadHistory();
-  }, []);
-
   const handleRunPayroll = async (e) => {
     e.preventDefault();
+    if (selectedIds.size === 0 || (selectedIds.size === 1 && selectedIds.has(ALL_EMPLOYEES_KEY))) {
+      setMessage('Please select at least one employee.');
+      return;
+    }
     try {
-      const res = await hrService.runPayroll(payPeriod);
+      const payload = {
+        startDate: payPeriod.startDate,
+        endDate: payPeriod.endDate,
+        employeeIds: [...selectedIds].filter(id => id !== ALL_EMPLOYEES_KEY),
+      };
+      const res = await hrService.runPayroll(payload);
       setMessage(res.message);
       setPayrun(res);
       hrService.getPayrollHistory().then(setHistory).catch(() => {});
@@ -53,10 +112,16 @@ const PayrollConsole = () => {
     { key: 'hoursWorked', label: 'Worked', render: (v) => <>{v}h</> },
     { key: 'standardHours', label: 'Std Hrs', render: (v) => <>{v}h</> },
     { key: 'gross', label: 'Gross', render: (v) => formatINR(Math.round(parseFloat(v) * 100)) },
-    { key: 'deductions', label: 'Deductions', render: (v) => <span className="text-red-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> },
     { key: 'advanceDeduction', label: 'Adv. Ded.', render: (v) => v && parseFloat(v) > 0 ? <span className="text-orange-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> : <span>-</span> },
     { key: 'net', label: 'Net', render: (v) => <span className="font-bold text-emerald-600">{formatINR(Math.round(parseFloat(v) * 100))}</span> },
   ];
+
+  const statusBadge = (status) => {
+    if (status === 'paid') return <span className="badge-success">Paid</span>;
+    return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Due</span>;
+  };
+
+  const isDue = (status) => status === 'due' || status === 'draft';
 
   const historyColumns = [
     { key: 'employee_name', label: 'Employee', render: (_, r) => <span className="font-medium">{r.first_name} {r.last_name}</span> },
@@ -64,10 +129,15 @@ const PayrollConsole = () => {
     { key: 'hourly_rate', label: 'Rate', render: (v) => <>₹{(v / 100).toFixed(2)}/hr</> },
     { key: 'hours', label: 'Hrs', render: (_, r) => <>{r.total_hours_worked}h / {r.standard_hours}h</> },
     { key: 'gross_salary', label: 'Gross', render: (v) => formatINR(v) },
-    { key: 'deductions', label: 'Deductions', render: (v) => <span className="text-red-600">{formatINR(v)}</span> },
     { key: 'advance_deduction', label: 'Adv. Ded.', render: (v) => v ? <span className="text-orange-600">{formatINR(v)}</span> : <span>-</span> },
     { key: 'net_salary', label: 'Net', render: (v) => <span className="font-bold text-emerald-600">{formatINR(v)}</span> },
-    { key: 'status', label: 'Status', render: () => <span className="badge-success">Paid</span> },
+    { key: 'status', label: 'Status', render: (_, r) => statusBadge(r.status) },
+    { key: 'actions', label: '', className: 'text-right', render: (_, r) => isDue(r.status) ? (
+      <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
+        className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
+        {saving === r.id ? '...' : 'Mark Paid'}
+      </button>
+    ) : null },
   ];
 
   const payrunData = payrun?.runs?.map((r, i) => ({ ...r, _key: String(i) })) || [];
@@ -98,11 +168,11 @@ const PayrollConsole = () => {
         </div>
       )}
 
-      <div className="card max-w-xl">
+      <div className="card">
         <div className="card-header">
           <h3 className="text-lg font-semibold text-gray-900">Run Payroll</h3>
         </div>
-        <form onSubmit={handleRunPayroll} className="p-6 space-y-4">
+        <form onSubmit={handleRunPayroll} className="p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Period Start</label>
@@ -113,8 +183,35 @@ const PayrollConsole = () => {
               <input type="date" value={payPeriod.endDate} onChange={e => setPayPeriod({ ...payPeriod, endDate: e.target.value })} className="input-field" required />
             </div>
           </div>
-          <p className="text-xs text-gray-500">Working days (Mon-Fri) are auto-calculated. Hours tracked via attendance determine pay.</p>
-          <button type="submit" className="btn-primary">Calculate & Process Payroll</button>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Employees</label>
+            <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              <label className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 cursor-pointer hover:bg-gray-100 sticky top-0">
+                <input type="checkbox" checked={selectedIds.has(ALL_EMPLOYEES_KEY)}
+                  onChange={toggleAll} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                <span className="text-sm font-medium text-gray-700">All Employees ({employees.length})</span>
+              </label>
+              {employees.map(emp => (
+                <label key={emp.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50">
+                  <input type="checkbox" checked={selectedIds.has(emp.id)}
+                    onChange={() => toggleEmployee(emp.id)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-gray-700">{emp.first_name} {emp.last_name}</span>
+                  <span className="text-xs text-gray-400 ml-auto">{emp.pay_per_hour ? `₹${(emp.pay_per_hour / 100).toFixed(2)}/hr` : `₹${((emp.base_salary || 0) / 100).toFixed(2)}/mo`}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              {selectedIds.has(ALL_EMPLOYEES_KEY)
+                ? `All ${employees.length} employees selected`
+                : `${selectedIds.size} employee${selectedIds.size !== 1 ? 's' : ''} selected`}
+            </p>
+          </div>
+
+          <button type="submit" disabled={selectedIds.size === 0} className="btn-primary">
+            Calculate & Process Payroll
+          </button>
         </form>
       </div>
 
@@ -159,9 +256,6 @@ const PayrollConsole = () => {
               <DetailRow label="Hours Worked" value={`${selectedPayrun.hoursWorked}h`} />
               <DetailRow label="Standard Hours" value={`${selectedPayrun.standardHours}h`} />
               <DetailRow label="Gross" value={formatINR(Math.round(parseFloat(selectedPayrun.gross) * 100))} />
-              <DetailRow label="Deductions">
-                <span className="text-red-600">{formatINR(Math.round(parseFloat(selectedPayrun.deductions) * 100))}</span>
-              </DetailRow>
               <DetailRow label="Adv. Deduction">
                 {selectedPayrun.advanceDeduction && parseFloat(selectedPayrun.advanceDeduction) > 0 ? (
                   <span className="text-orange-600">{formatINR(Math.round(parseFloat(selectedPayrun.advanceDeduction) * 100))}</span>
@@ -189,9 +283,6 @@ const PayrollConsole = () => {
               <DetailRow label="Rate" value={`₹${(selectedHistory.hourly_rate / 100).toFixed(2)}/hr`} />
               <DetailRow label="Hours" value={`${selectedHistory.total_hours_worked}h / ${selectedHistory.standard_hours}h`} />
               <DetailRow label="Gross" value={formatINR(selectedHistory.gross_salary)} />
-              <DetailRow label="Deductions">
-                <span className="text-red-600">{formatINR(selectedHistory.deductions)}</span>
-              </DetailRow>
               <DetailRow label="Adv. Deduction">
                 {selectedHistory.advance_deduction ? <span className="text-orange-600">{formatINR(selectedHistory.advance_deduction)}</span> : '—'}
               </DetailRow>
@@ -199,8 +290,15 @@ const PayrollConsole = () => {
                 <span className="font-bold text-emerald-600">{formatINR(selectedHistory.net_salary)}</span>
               </DetailRow>
               <DetailRow label="Status">
-                <span className="badge-success">Paid</span>
+                {statusBadge(selectedHistory.status)}
               </DetailRow>
+              {isDue(selectedHistory.status) && (
+                <button onClick={(e) => handleMarkPaid(e, selectedHistory)}
+                  disabled={saving === selectedHistory.id}
+                  className="w-full btn-success text-sm justify-center mt-2">
+                  {saving === selectedHistory.id ? 'Processing...' : 'Mark as Paid'}
+                </button>
+              )}
             </div>
           )}
         </BottomSheet>

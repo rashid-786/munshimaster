@@ -83,7 +83,7 @@ const Login = () => {
         if (plan === 'BUSINESS' || plan === 'BUSINESS_PRO') {
           navigate('/admin/business', { replace: true });
         } else {
-          navigate(getFirstDashboardRoute(plan), { replace: true });
+          navigate(getFirstDashboardRoute(plan, data.tenant?.settings?.hiddenGroups || {}), { replace: true });
         }
       } else {
         navigate('/employee/profile', { replace: true });

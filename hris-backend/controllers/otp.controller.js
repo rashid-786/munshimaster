@@ -29,6 +29,12 @@ async function sendOtpSms(phone, otp) {
   const fromPhone = process.env.TWILIO_PHONE_NUMBER;
   const isDev = process.env.NODE_ENV !== 'production';
 
+  if (isDev) {
+    console.log(`\n========================================`);
+    console.log(`📱 [DEV] OTP for ${phone}: ${otp}`);
+    console.log(`========================================\n`);
+  }
+
   if (accountSid && authToken && fromPhone) {
     try {
       const client = require('twilio')(accountSid, authToken);
@@ -40,16 +46,9 @@ async function sendOtpSms(phone, otp) {
       console.log(`📱 Twilio SMS sent: ${message.sid}`);
     } catch (err) {
       console.error(`❌ Twilio SMS failed for ${phone}:`, err.message);
-      if (isDev) {
-        console.log(`\n========================================`);
-        console.log(`📱 [DEV FALLBACK] OTP for ${phone}: ${otp}`);
-        console.log(`========================================\n`);
-      }
     }
   } else {
-    console.log(`\n========================================`);
-    console.log(`📱 [FALLBACK] OTP for ${phone}: ${otp}`);
-    console.log(`========================================\n`);
+    console.log(`📱 [FALLBACK] SMS not configured — OTP would be sent via SMS in production.`);
   }
 }
 

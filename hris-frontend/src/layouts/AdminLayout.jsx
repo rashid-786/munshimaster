@@ -8,6 +8,7 @@ import SearchBar from '../components/SearchBar';
 import UpgradeModal from '../components/UpgradeModal';
 import DowngradeModal from '../components/DowngradeModal';
 import OnboardingWizard from '../components/OnboardingWizard';
+
 import { buildMenu, getFirstDashboardRoute, getRouteAccessInfo } from '../config/subscriptionMenuBuilder.jsx';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../config/subscriptionPlans';
 
@@ -19,13 +20,15 @@ const Icons = {
 };
 
 export default function AdminLayout() {
-  const { user, tenant, logout, refreshTenant } = useAuth();
+  const { user, tenant, logout, refreshTenant, updateUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileCompletion, setProfileCompletion] = useState(null);
   const [hiddenGroups, setHiddenGroups] = useState({});
+  const [hiddenItems, setHiddenItems] = useState({});
+  const [sectionsHiddenByAdmin, setSectionsHiddenByAdmin] = useState({});
   const [groupLabels, setGroupLabels] = useState({});
   const [disabledFeatures, setDisabledFeatures] = useState(null);
   const [readOnlySections, setReadOnlySections] = useState({});
@@ -58,7 +61,7 @@ export default function AdminLayout() {
     }, []);
   }, [currentPlan, disabledFeatures]);
 
-  const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'My Stores', MANAGE: 'My Stores' } };
+  const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'Store', MANAGE: 'Store', BUSINESS: 'Store', BUSINESS_PRO: 'Store' } };
   const labelOf = (key) => {
     const custom = groupLabels[key];
     if (custom) return custom;
@@ -82,8 +85,8 @@ export default function AdminLayout() {
   }, [menuItems, groupLabels, currentPlan]);
 
   const firstVisibleDashboard = useMemo(() => {
-    return getFirstDashboardRoute(currentPlan);
-  }, [currentPlan]);
+    return getFirstDashboardRoute(currentPlan, hiddenGroups);
+  }, [currentPlan, hiddenGroups]);
 
   const defaultOpen = useMemo(() => {
     const obj = {};
@@ -113,6 +116,7 @@ export default function AdminLayout() {
   useEffect(() => {
     const handler = (e) => {
       if (e.detail.hiddenGroups) setHiddenGroups(e.detail.hiddenGroups);
+      if (e.detail.hiddenItems) setHiddenItems(e.detail.hiddenItems);
       if (e.detail.groupLabels) setGroupLabels(e.detail.groupLabels);
     };
     window.addEventListener('settings-saved', handler);
@@ -166,12 +170,16 @@ export default function AdminLayout() {
   useEffect(() => {
     hrService.getTenantSettings().then(res => {
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
+      if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
       if (res.settings?.groupLabels) setGroupLabels(res.settings.groupLabels);
       localStorage.setItem('hidden_groups', JSON.stringify(res.settings?.hiddenGroups || {}));
+      localStorage.setItem('hidden_items', JSON.stringify(res.settings?.hiddenItems || {}));
       localStorage.setItem('group_labels', JSON.stringify(res.settings?.groupLabels || {}));
     }).catch(() => {
       const cached = localStorage.getItem('hidden_groups');
       if (cached) setHiddenGroups(JSON.parse(cached));
+      const cachedItems = localStorage.getItem('hidden_items');
+      if (cachedItems) setHiddenItems(JSON.parse(cachedItems));
       const cachedLabels = localStorage.getItem('group_labels');
       if (cachedLabels) setGroupLabels(JSON.parse(cachedLabels));
     });
@@ -190,15 +198,31 @@ export default function AdminLayout() {
     }).catch(() => {});
   }, [tenant?.id]);
 
+  // Section key → menu label mapping for super admin hidden sections
+  const SECTION_KEY_TO_LABEL = {
+    my_bahi_book: 'My Bahi Book',
+    my_business: 'My Business',
+    my_staff: 'My Staff',
+  };
+
   // Fetch read-only sections from section visibility
   useEffect(() => {
     if (!tenant?.id) return;
     hrService.getTenantSections().then(res => {
       const ro = {};
+      const adminHidden = {};
       for (const [key, val] of Object.entries(res.sections || {})) {
         if (val.readOnly) ro[key] = true;
+        if (val.visible === false) {
+          const label = SECTION_KEY_TO_LABEL[key];
+          if (label) adminHidden[label] = true;
+        }
       }
       setReadOnlySections(ro);
+      setSectionsHiddenByAdmin(adminHidden);
+      if (Object.keys(adminHidden).length > 0) {
+        setHiddenGroups(prev => ({ ...prev, ...adminHidden }));
+      }
     }).catch(() => {});
   }, [tenant?.id]);
 
@@ -321,10 +345,14 @@ export default function AdminLayout() {
       }
       return path === section.route;
     });
-    if (inHiddenGroup) {
+    const inHiddenItem = menuItems.some(section => {
+      if (section.type !== 'group') return false;
+      return section.items?.some(item => hiddenItems[item.label] && path === item.route) || false;
+    });
+    if (inHiddenGroup || inHiddenItem) {
       navigate(firstVisibleDashboard, { replace: true });
     }
-  }, [hiddenGroups, location.pathname, firstVisibleDashboard, navigate, menuItems, disabledFeatures, isReadOnlySection]);
+  }, [hiddenGroups, hiddenItems, location.pathname, firstVisibleDashboard, navigate, menuItems, disabledFeatures, isReadOnlySection]);
 
   const sidebar = (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
@@ -389,7 +417,7 @@ export default function AdminLayout() {
                 <div className={`grid transition-all duration-300 ease-in-out ${openGroups[section.label] ? 'grid-rows-[1fr] opacity-100 mt-0.5' : 'grid-rows-[0fr] opacity-0'}`}>
                   <div className="overflow-hidden min-h-0">
                     <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-0.5">
-                      {section.items.map((item) => {
+                      {section.items.filter(item => !hiddenItems[item.label]).map((item) => {
                         const isItemActive = location.pathname === item.route;
                         const ro = isRouteReadOnly(item.route);
                         return ro ? (
@@ -597,9 +625,17 @@ export default function AdminLayout() {
       />
       <OnboardingWizard
         open={showOnboarding}
-        onComplete={() => {
+        onComplete={(data) => {
           setShowOnboarding(false);
           localStorage.setItem('bahi_onboarding_dismissed', 'true');
+          if (data) {
+            updateUser({
+              firstName: data.firstName,
+              lastName: data.lastName,
+              name: `${data.firstName} ${data.lastName}`,
+            });
+            refreshTenant();
+          }
         }}
       />
       <SearchBar open={showSearch} onClose={() => setShowSearch(false)} />

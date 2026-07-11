@@ -12,7 +12,7 @@ async function processRecurringInvoices() {
 
     for (const template of templates) {
       try {
-        await generateInvoice(template);
+        const generated = await generateInvoice(template);
         const nextDate = calcNextDate(template);
         await db.query(
           `UPDATE recurring_invoice_templates
@@ -20,7 +20,9 @@ async function processRecurringInvoices() {
            WHERE id = ?`,
           [nextDate, template.id]
         );
-        console.log(`Recurring invoice generated for template ${template.id}, next: ${nextDate}`);
+        if (generated) {
+          console.log(`Recurring invoice generated for template ${template.id}, next: ${nextDate}`);
+        }
       } catch (err) {
         console.error(`Failed to generate for template ${template.id}:`, err.message);
       }
@@ -38,14 +40,20 @@ async function generateInvoice(template) {
   const settings = typeof template.settings === 'string' ? JSON.parse(template.settings) : (template.settings || {});
   const taxRate = (settings.taxRate || 18) / 100;
 
+  const [customer] = await db.query('SELECT id FROM customers WHERE id = ? AND tenant_id = ?', [template.customer_id, template.tenant_id]);
+  if (customer.length === 0) {
+    console.warn(`Skipping template ${template.id}: customer ${template.customer_id} not found (may have been deleted).`);
+    return false;
+  }
+
   const [items] = await db.query(
     'SELECT * FROM recurring_invoice_items WHERE template_id = ? ORDER BY sort_order',
     [template.id]
   );
-  if (items.length === 0) return;
+  if (items.length === 0) return false;
 
   const [[{ next }]] = await db.query(
-    `SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_number, 5) AS INTEGER)), 0) + 1 as next
+    `SELECT COALESCE(MAX(CAST(NULLIF(REGEXP_REPLACE(invoice_number, '[^0-9]', '', 'g'), '') AS INTEGER)), 0) + 1 as next
      FROM invoices WHERE tenant_id = ?`, [template.tenant_id]
   );
   const invNumber = `INV-${String(next).padStart(4, '0')}`;
@@ -107,6 +115,7 @@ async function generateInvoice(template) {
        item.hsn_code, item.cgst_rate, item.sgst_rate, item.igst_rate]
     );
   }
+  return true;
 }
 
 function calcNextDate(template) {

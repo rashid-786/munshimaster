@@ -29,19 +29,20 @@ const Icons = {
   userX: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>,
   save: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>,
   x: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+  edit: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
+  trash: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
 };
 
 const Employees = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const isAdmin = user?.role === 'tenant_admin';
-  const hideTempPassword = localStorage.getItem('hide_temp_password') === 'true';
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
   const [search, setSearch] = useState('');
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' });
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
@@ -55,6 +56,10 @@ const Employees = () => {
   const [importLoading, setImportLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
+
+  const savedFormFields = JSON.parse(localStorage.getItem('employee_form_fields') || 'null');
+  const employeeFormFields = savedFormFields || { email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true };
+  const fieldVisible = (key) => employeeFormFields[key] !== false;
 
   const fetchRoster = async () => {
     setLoading(true);
@@ -81,21 +86,24 @@ const Employees = () => {
       const payload = {
         firstName: form.firstName,
         lastName: form.lastName,
-        email: form.email,
         phone: form.phone,
-        role: form.role,
-        jobType: form.jobType,
-        baseSalary: form.baseSalary,
-        profession: form.profession === 'Other' ? form.otherProfession : form.profession,
-        otherProfession: form.profession === 'Other' ? form.otherProfession : null,
       };
+      if (fieldVisible('email')) payload.email = form.email;
+      if (fieldVisible('role')) payload.role = form.role;
+      if (fieldVisible('jobType')) payload.jobType = form.jobType;
+      if (fieldVisible('baseSalary')) payload.baseSalary = form.baseSalary;
+      if (fieldVisible('payPerHour')) payload.payPerHour = form.payPerHour;
+      if (fieldVisible('profession')) {
+        payload.profession = form.profession === 'Other' ? form.otherProfession : form.profession;
+        payload.otherProfession = form.profession === 'Other' ? form.otherProfession : null;
+      }
       if (editingEmployee) {
         await hrService.updateEmployee(editingEmployee.id, payload);
       } else {
         payload.password = form.password || 'Welcome@123';
         await hrService.onboardEmployee(payload);
       }
-      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' });
+      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' });
       setShowOnboard(false);
       setEditingEmployee(null);
       fetchRoster();
@@ -180,6 +188,7 @@ const Employees = () => {
       role: emp.role,
       jobType: emp.job_type || 'permanent',
       baseSalary: (emp.base_salary / 100).toFixed(2),
+      payPerHour: emp.pay_per_hour ? (emp.pay_per_hour / 100).toFixed(2) : '',
       profession: profession,
       otherProfession: profession === 'Other' ? (emp.profession || '') : '',
     });
@@ -215,13 +224,14 @@ const Employees = () => {
       </div>
     )},
     { key: 'phone', label: 'Phone', render: (v) => <span className="text-gray-500">{formatPhone(v) || '—'}</span> },
-    { key: 'role', label: 'Role', render: (v) => {
+    ...(fieldVisible('role') ? [{ key: 'role', label: 'Role', render: (v) => {
       const b = v === 'tenant_admin' ? 'badge-info' : 'badge-success';
       return <span className={b}>{v === 'tenant_admin' ? 'Admin' : 'Employee'}</span>;
-    }},
-    { key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> },
+    }}] : []),
+    ...(fieldVisible('baseSalary') ? [{ key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> }] : []),
+    ...(fieldVisible('payPerHour') ? [{ key: 'payPerHour', label: 'Pay/Hr', render: (_, r) => <span className="text-gray-500">{r.pay_per_hour ? formatINR(r.pay_per_hour) : '—'}</span> }] : []),
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
-    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, emp) => (
+    { key: 'actions', label: 'Actions', className: 'text-center', render: (_, emp) => (
       <div className="flex gap-1.5 justify-end">
         <ActionEdit onClick={(e) => { e.stopPropagation(); mobileEdit(emp); }} />
         {isAdmin && emp.status === 'active' && (
@@ -294,7 +304,7 @@ const Employees = () => {
             </div>
             {isAdmin && (
               <div className="flex items-center gap-2">
-                <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', profession: '', otherProfession: '' }); setShowOnboard(true); }} className="btn-primary">
+                <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' }); setShowOnboard(true); }} className="btn-primary">
                   {Icons.userAdd}
                   <span className="hidden sm:inline">Onboard Staff</span>
                 </button>
@@ -355,10 +365,11 @@ const Employees = () => {
                   <tr className="bg-gray-50/80 border-b border-gray-200">
                     <th className="table-header">Staff</th>
                     <th className="table-header">Phone</th>
-                    <th className="table-header">Role</th>
-                    <th className="table-header">Monthly Salary</th>
+                    {fieldVisible('role') && <th className="table-header">Role</th>}
+                    {fieldVisible('baseSalary') && <th className="table-header">Monthly Salary</th>}
+                    {fieldVisible('payPerHour') && <th className="table-header">Pay/Hr</th>}
                     <th className="table-header">Status</th>
-                    <th className="table-header text-right">Actions</th>
+                    <th className="table-header text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -375,12 +386,19 @@ const Employees = () => {
                         </div>
                       </td>
                       <td className="table-cell text-gray-500">{formatPhone(emp.phone) || '—'}</td>
-                      <td className="table-cell">
-                        <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
-                          {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
-                        </span>
-                      </td>
-                      <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
+                      {fieldVisible('role') && (
+                        <td className="table-cell">
+                          <span className={`badge ${emp.role === 'tenant_admin' ? 'badge-info' : 'badge-success'}`}>
+                            {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
+                          </span>
+                        </td>
+                      )}
+                      {fieldVisible('baseSalary') && (
+                        <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
+                      )}
+                      {fieldVisible('payPerHour') && (
+                        <td className="table-cell text-gray-500">{emp.pay_per_hour ? formatINR(emp.pay_per_hour) : '—'}</td>
+                      )}
                       <td className="table-cell">
                         <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
                           {emp.status === 'deactivated' ? 'Deactivated' : 'Active'}
@@ -436,10 +454,12 @@ const Employees = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                   <input type="text" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} required className="input-field" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Work Email</label>
-                  <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field" />
-                </div>
+                {fieldVisible('email') && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Work Email</label>
+                    <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field" />
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                   <PhoneField
@@ -448,49 +468,63 @@ const Employees = () => {
                     error={phoneErr}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                  <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="input-field">
-                    <option value="employee">Employee</option>
-                    <option value="tenant_admin">Admin</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
-                  <select value={form.jobType} onChange={e => setForm({ ...form, jobType: e.target.value })} className="input-field">
-                    <option value="permanent">Permanent</option>
-                    <option value="adhoc">Adhoc (Temporary)</option>
-                  </select>
-                </div>
-                {!editingEmployee && !hideTempPassword && (
+                {fieldVisible('role') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="input-field">
+                      <option value="employee">Employee</option>
+                      <option value="tenant_admin">Admin</option>
+                    </select>
+                  </div>
+                )}
+                {fieldVisible('jobType') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
+                    <select value={form.jobType} onChange={e => setForm({ ...form, jobType: e.target.value })} className="input-field">
+                      <option value="permanent">Permanent</option>
+                      <option value="adhoc">Adhoc (Temporary)</option>
+                    </select>
+                  </div>
+                )}
+                {!editingEmployee && fieldVisible('password') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Temp Password</label>
                     <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required className="input-field" />
                   </div>
                 )}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary (Rs.)</label>
-                  <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Profession</label>
-                  <SearchableSelect
-                    options={[...PROFESSIONS, { value: 'Other', label: 'Other (specify)' }]}
-                    value={form.profession}
-                    onChange={(val) => setForm({ ...form, profession: val, otherProfession: val === 'Other' ? form.otherProfession : '' })}
-                    placeholder="Select profession..."
-                  />
-                  {form.profession === 'Other' && (
-                    <input
-                      type="text"
-                      value={form.otherProfession}
-                      onChange={e => setForm({ ...form, otherProfession: e.target.value })}
-                      placeholder="Enter profession"
-                      className="input-field mt-2"
-                      required
+                {fieldVisible('baseSalary') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary (Rs.)</label>
+                    <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
+                  </div>
+                )}
+                {fieldVisible('payPerHour') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour (Rs.)</label>
+                    <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => setForm({ ...form, payPerHour: e.target.value })} className="input-field" placeholder="Optional" />
+                  </div>
+                )}
+                {fieldVisible('profession') && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Profession</label>
+                    <SearchableSelect
+                      options={[...PROFESSIONS, { value: 'Other', label: 'Other (specify)' }]}
+                      value={form.profession}
+                      onChange={(val) => setForm({ ...form, profession: val, otherProfession: val === 'Other' ? form.otherProfession : '' })}
+                      placeholder="Select profession..."
                     />
-                  )}
-                </div>
+                    {form.profession === 'Other' && (
+                      <input
+                        type="text"
+                        value={form.otherProfession}
+                        onChange={e => setForm({ ...form, otherProfession: e.target.value })}
+                        placeholder="Enter profession"
+                        className="input-field mt-2"
+                        required
+                      />
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => { setShowOnboard(false); setEditingEmployee(null); }} className="btn-secondary">Cancel</button>
@@ -536,9 +570,10 @@ const Employees = () => {
             <div className="space-y-3">
               <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
               <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />
-              <DetailRow label="Profession" value={selectedRecord.profession || '—'} />
-              <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>
+              {fieldVisible('role') && <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />}
+              {fieldVisible('profession') && <DetailRow label="Profession" value={selectedRecord.profession || '—'} />}
+              {fieldVisible('baseSalary') && <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>}
+              {fieldVisible('payPerHour') && <DetailRow label="Pay/Hr">{selectedRecord.pay_per_hour ? formatINR(selectedRecord.pay_per_hour) : '—'}</DetailRow>}
               <DetailRow label="Status">
                 <span className={statusBadge(selectedRecord.status)}>
                   {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}
@@ -561,9 +596,10 @@ const Employees = () => {
             <div className="p-6 space-y-4">
               <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
               <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />
-              <DetailRow label="Profession" value={selectedRecord.profession || '—'} />
-              <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>
+              {fieldVisible('role') && <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />}
+              {fieldVisible('profession') && <DetailRow label="Profession" value={selectedRecord.profession || '—'} />}
+              {fieldVisible('baseSalary') && <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>}
+              {fieldVisible('payPerHour') && <DetailRow label="Pay/Hr">{selectedRecord.pay_per_hour ? formatINR(selectedRecord.pay_per_hour) : '—'}</DetailRow>}
               <DetailRow label="Status">
                 <span className={statusBadge(selectedRecord.status)}>
                   {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}

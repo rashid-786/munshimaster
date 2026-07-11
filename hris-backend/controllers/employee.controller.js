@@ -5,7 +5,7 @@ const { log } = require('../utils/audit');
 const { incrementUsage } = require('../services/usage.service');
 
 exports.createEmployee = async (req, res) => {
-  const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType } = req.body;
+  const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour } = req.body;
   const tenantId = req.tenantId;
 
   try {
@@ -30,11 +30,12 @@ exports.createEmployee = async (req, res) => {
     const employeeId = uuidv4();
     const hashedPassword = await bcrypt.hash(password, 10);
     const salaryInCents = Math.round(parseFloat(baseSalary) * 100);
+    const payPerHourCents = payPerHour !== undefined && payPerHour !== '' ? Math.round(parseFloat(payPerHour) * 100) : null;
 
     await db.execute(
-      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, status, profession, other_profession, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
-      [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, profession || null, otherProfession || null]
+      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
+      [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null]
     );
 
     incrementUsage(tenantId, 'staff_count').catch(() => {});
@@ -51,7 +52,7 @@ exports.createEmployee = async (req, res) => {
 exports.updateEmployee = async (req, res) => {
   const { id } = req.params;
   const tenantId = req.tenantId;
-  const { firstName, lastName, email, role, baseSalary, phone, profession, otherProfession, jobType } = req.body;
+  const { firstName, lastName, email, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour } = req.body;
 
   if (req.user.role !== 'tenant_admin') {
     return res.status(403).json({ error: 'Administrative clearance required.' });
@@ -90,6 +91,10 @@ exports.updateEmployee = async (req, res) => {
     if (profession !== undefined) { updates.push('profession = ?'); params.push(profession || null); }
     if (otherProfession !== undefined) { updates.push('other_profession = ?'); params.push(otherProfession || null); }
     if (jobType !== undefined) { updates.push('job_type = ?'); params.push(jobType); }
+    if (payPerHour !== undefined) {
+      updates.push('pay_per_hour = ?');
+      params.push(payPerHour !== '' ? Math.round(parseFloat(payPerHour) * 100) : null);
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update.' });
@@ -126,7 +131,7 @@ exports.getEmployees = async (req, res) => {
   const { includeDeactivated } = req.query;
 
   try {
-    let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, profession, other_profession, status, created_at FROM employees WHERE tenant_id = ?';
+    let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, pay_per_hour, profession, other_profession, status, created_at FROM employees WHERE tenant_id = ?';
     const params = [tenantId];
 
     if (includeDeactivated !== 'true') {

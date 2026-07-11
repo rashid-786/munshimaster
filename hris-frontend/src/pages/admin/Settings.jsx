@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { applyTheme } from '../../utils/currency';
@@ -8,13 +8,24 @@ import { getRank } from '../../config/subscriptionPlans';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const TABS = [
+const EMPLOYEE_FIELDS = [
+  { key: 'email', label: 'Work Email' },
+  { key: 'role', label: 'Role' },
+  { key: 'jobType', label: 'Job Type' },
+  { key: 'baseSalary', label: 'Monthly Salary' },
+  { key: 'payPerHour', label: 'Pay Per Hour' },
+  { key: 'profession', label: 'Profession' },
+  { key: 'password', label: 'Temp Password (onboarding)' },
+];
+
+const ALL_TABS = [
   { key: 'general',    label: 'General' },
   { key: 'business',   label: 'Business' },
   { key: 'sidebar',    label: 'Sidebar' },
   { key: 'einvoice',   label: 'E-Invoicing' },
   { key: 'whatsapp',   label: 'WhatsApp' },
   { key: 'password',   label: 'Password' },
+  { key: 'staff',      label: 'My Staff' },
 ];
 
 const Settings = () => {
@@ -23,6 +34,10 @@ const Settings = () => {
   const activeTab = tab || 'general';
   const { user, tenant, updateUser } = useAuth();
   const planRank = getRank(tenant?.subscriptionPlan);
+  const visibleTabs = useMemo(() => {
+    if (planRank < 2) return ALL_TABS.filter(t => t.key !== 'einvoice' && t.key !== 'whatsapp');
+    return ALL_TABS;
+  }, [planRank]);
 
   const [companyName, setCompanyName] = useState('');
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -33,15 +48,19 @@ const Settings = () => {
   const [taxRate, setTaxRate] = useState(18);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [hiddenGroups, setHiddenGroups] = useState({});
+  const [hiddenItems, setHiddenItems] = useState({});
   const [groupLabels, setGroupLabels] = useState({
     'Entities': 'Entities',
     'My Bahi Book': 'My Bahi Book',
     'My Business': 'My Business',
     'My Staff': 'My Staff',
+    'EntityName': '',
   });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
-  const [hideTempPassword, setHideTempPassword] = useState(false);
+  const [employeeFormFields, setEmployeeFormFields] = useState({
+    email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
+  });
   const [seller, setSeller] = useState({
     sellerGstin: '', sellerLegalName: '', sellerAddress: '', sellerCity: '',
     sellerState: '', sellerPincode: '', sellerEmail: '',
@@ -50,6 +69,12 @@ const Settings = () => {
   const [whatsapp, setWhatsapp] = useState({ whatsappEnabled: false, whatsappPhone: '', autoSendInvoice: false, autoSendPO: false });
   const [whatsappLoaded, setWhatsappLoaded] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  useEffect(() => {
+    if (planRank < 2 && (activeTab === 'einvoice' || activeTab === 'whatsapp')) {
+      navigate('/admin/settings/general', { replace: true });
+    }
+  }, [planRank, activeTab, navigate]);
+
   const [message, setMessage] = useState('');
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -63,6 +88,7 @@ const Settings = () => {
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
       if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
+      if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
       if (res.settings?.groupLabels) setGroupLabels(prev => ({ ...prev, ...res.settings.groupLabels }));
       if (res.settings?.currencySymbol) {
         setCurrencySymbol(res.settings.currencySymbol);
@@ -72,9 +98,10 @@ const Settings = () => {
         setCountryCode(res.settings.countryCode);
         localStorage.setItem('default_country_code', res.settings.countryCode);
       }
-      if (res.settings?.hideTempPassword !== undefined) {
-        setHideTempPassword(res.settings.hideTempPassword);
-        localStorage.setItem('hide_temp_password', res.settings.hideTempPassword ? 'true' : 'false');
+      if (res.settings?.employeeFormFields) {
+        setEmployeeFormFields(res.settings.employeeFormFields);
+      } else if (res.settings?.hideTempPassword) {
+        setEmployeeFormFields(prev => ({ ...prev, password: false }));
       }
       if (res.settings?.sellerGstin) setSeller(s => ({ ...s, sellerGstin: res.settings.sellerGstin }));
       if (res.settings?.sellerLegalName) setSeller(s => ({ ...s, sellerLegalName: res.settings.sellerLegalName }));
@@ -106,14 +133,15 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, groupLabels, currencySymbol, countryCode, hideTempPassword, ...seller, ...whatsapp }
+        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
+      localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
       localStorage.setItem('group_labels', JSON.stringify(groupLabels));
       localStorage.setItem('currency_symbol', currencySymbol);
       localStorage.setItem('default_country_code', countryCode);
-      localStorage.setItem('hide_temp_password', hideTempPassword ? 'true' : 'false');
-      window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups, groupLabels } }));
+      localStorage.setItem('employee_form_fields', JSON.stringify(employeeFormFields));
+      window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups, hiddenItems, groupLabels } }));
       if (firstName || lastName) {
         const profileRes = await hrService.updateProfile({ first_name: firstName, last_name: lastName, email, phone: user?.phone || '' });
         if (profileRes?.user) updateUser(profileRes.user);
@@ -160,7 +188,7 @@ const Settings = () => {
   return (
     <div className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map(t => <TabButton key={t.key} tabKey={t.key} label={t.label} />)}
+        {visibleTabs.map(t => <TabButton key={t.key} tabKey={t.key} label={t.label} />)}
       </div>
 
       {activeTab === 'general' && (
@@ -177,21 +205,7 @@ const Settings = () => {
                 <code className="text-sm text-gray-500">{primaryColor}</code>
               </div>
             </div>
-            {planRank >= 3 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Weekend Days</label>
-                <div className="flex flex-wrap gap-2">
-                  {DAY_NAMES.map((name, idx) => (
-                    <label key={idx} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
-                      weekendDays.includes(idx) ? 'bg-red-100 border-red-300 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                    }`}>
-                      <input type="checkbox" checked={weekendDays.includes(idx)} onChange={() => toggleWeekendDay(idx)} className="sr-only" />
-                      {name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+
             <div className="border-b border-gray-200 pb-4">
               <h4 className="text-sm font-semibold text-gray-900 mb-3">Personal Info</h4>
               <div className="space-y-4">
@@ -233,13 +247,6 @@ const Settings = () => {
                 <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
               </div>
             )}
-            {planRank >= 3 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
-                <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
-                <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
-              </div>
-            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency Symbol</label>
               <input type="text" value={currencySymbol} onChange={e => setCurrencySymbol(e.target.value)} className="input-field max-w-[100px]" placeholder="₹" />
@@ -251,13 +258,6 @@ const Settings = () => {
                 <input type="text" value={countryCode} onChange={e => setCountryCode(e.target.value)} className="input-field max-w-[120px]" placeholder="+965" />
                 <p className="text-xs text-gray-400 mt-1">Pre-filled in phone number fields.</p>
               </div>
-            )}
-            {planRank >= 3 && (
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input type="checkbox" checked={hideTempPassword} onChange={e => setHideTempPassword(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                <span className="text-sm text-gray-700">Hide Temp Password field on onboarding</span>
-              </label>
             )}
             <button type="submit" className="btn-primary">Save Changes</button>
           </form>
@@ -276,17 +276,20 @@ const Settings = () => {
               <p className="text-xs text-gray-400 mb-3">Customize the names of sidebar sections.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">{planRank <= 1 ? 'My Stores' : 'Entities'}</label>
+                  <label className="block text-xs text-gray-500 mb-1">Store</label>
                   <input type="text" value={groupLabels['Entities']} onChange={e => setGroupLabels({ ...groupLabels, 'Entities': e.target.value })}
                     className="input-field max-w-[240px]" />
                 </div>
-                {planRank < 1 && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Bahi Book Section</label>
-                    <input type="text" value={groupLabels['My Bahi Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Bahi Book': e.target.value })}
-                      className="input-field max-w-[240px]" />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Entity Name (singular)</label>
+                  <input type="text" value={groupLabels['EntityName']} onChange={e => setGroupLabels({ ...groupLabels, 'EntityName': e.target.value })}
+                    className="input-field max-w-[240px]" placeholder="Store / Entity" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Bahi Book Section</label>
+                  <input type="text" value={groupLabels['My Bahi Book']} onChange={e => setGroupLabels({ ...groupLabels, 'My Bahi Book': e.target.value })}
+                    className="input-field max-w-[240px]" />
+                </div>
                 {planRank >= 2 && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Business Section</label>
@@ -294,13 +297,11 @@ const Settings = () => {
                       className="input-field max-w-[240px]" />
                   </div>
                 )}
-                {planRank >= 3 && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Staff Section</label>
-                    <input type="text" value={groupLabels['My Staff']} onChange={e => setGroupLabels({ ...groupLabels, 'My Staff': e.target.value })}
-                      className="input-field max-w-[240px]" />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Staff Section</label>
+                  <input type="text" value={groupLabels['My Staff']} onChange={e => setGroupLabels({ ...groupLabels, 'My Staff': e.target.value })}
+                    className="input-field max-w-[240px]" />
+                </div>
               </div>
             </div>
             {planRank < 2 && (
@@ -320,6 +321,11 @@ const Settings = () => {
                       <span className="text-sm text-gray-700">Hide {groupLabels['My Business']}</span>
                     </label>
                   )}
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!hiddenItems['Replacements']} onChange={e => setHiddenItems({ ...hiddenItems, 'Replacements': e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+                    <span className="text-sm text-gray-700">Hide Replacements</span>
+                  </label>
                 </div>
               </div>
             )}
@@ -485,6 +491,49 @@ const Settings = () => {
               <input type="password" value={pw.confirm} onChange={e => setPw({ ...pw, confirm: e.target.value })} className="input-field" required />
             </div>
             <button type="submit" disabled={pwSaving} className="btn-primary">{pwSaving ? 'Updating...' : 'Update Password'}</button>
+          </form>
+        </div>
+      )}
+
+      {activeTab === 'staff' && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-gray-900">Staff Configuration</h3>
+          </div>
+          {message && <div className="mx-6 mt-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{message}</div>}
+          <form onSubmit={handleSave} className="p-6 space-y-6">
+            <p className="text-xs text-gray-400">Choose which employee fields to show. Employee Name and Phone are always visible.</p>
+            <div className="space-y-3">
+              {EMPLOYEE_FIELDS.map(field => (
+                <label key={field.key} className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={employeeFormFields[field.key]} onChange={e => setEmployeeFormFields({ ...employeeFormFields, [field.key]: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+                  <span className="text-sm text-gray-700">{field.label}</span>
+                </label>
+              ))}
+            </div>
+            <hr className="border-gray-200" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
+              <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+              <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
+            </div>
+            <hr className="border-gray-200" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Weekend Days</label>
+              <p className="text-xs text-gray-400 mb-2">Days marked as weekend in the attendance calendar.</p>
+              <div className="flex flex-wrap gap-2">
+                {DAY_NAMES.map((name, idx) => (
+                  <label key={idx} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
+                    weekendDays.includes(idx) ? 'bg-red-100 border-red-300 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}>
+                    <input type="checkbox" checked={weekendDays.includes(idx)} onChange={() => toggleWeekendDay(idx)} className="sr-only" />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button type="submit" className="btn-primary">Save Changes</button>
           </form>
         </div>
       )}

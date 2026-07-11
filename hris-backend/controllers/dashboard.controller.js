@@ -113,6 +113,15 @@ exports.getBusinessDashboard = async (req, res) => {
       [recentTransactions],
       [cashFlowIn],
       [cashFlowOut],
+      // Kirana party counts (buyer/seller)
+      [kiranaBuyerCount],
+      [kiranaSellerCount],
+      // Kirana cashbook IN/OUT (cash flow)
+      [kiranaCashIn],
+      [kiranaCashOut],
+      // Kirana outstanding (receivables = given, payables = received)
+      [kiranaReceivables],
+      [kiranaPayables],
       [subscriptionRes],
     ] = await Promise.all([
       // Current period revenue (paid invoices)
@@ -268,6 +277,36 @@ exports.getBusinessDashboard = async (req, res) => {
          AND entry_date BETWEEN ? AND ?`,
         [tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
+      // Kirana buyer count
+      db.query(
+        `SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'buyer'`,
+        [tenantId]
+      ),
+      // Kirana seller count
+      db.query(
+        `SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'seller'`,
+        [tenantId]
+      ),
+      // Kirana cashbook IN sum (current period)
+      db.query(
+        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = 'IN' AND entry_date BETWEEN ? AND ?`,
+        [tenantId, fromDate, toDate + 'T23:59:59Z']
+      ),
+      // Kirana cashbook OUT sum (current period)
+      db.query(
+        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = 'OUT' AND entry_date BETWEEN ? AND ?`,
+        [tenantId, fromDate, toDate + 'T23:59:59Z']
+      ),
+      // Kirana outstanding receivables (given = money given to buyers)
+      db.query(
+        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_transactions WHERE tenant_id = ? AND type = 'given'`,
+        [tenantId]
+      ),
+      // Kirana outstanding payables (received = money received from sellers)
+      db.query(
+        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_transactions WHERE tenant_id = ? AND type = 'received'`,
+        [tenantId]
+      ),
       // Subscription info
       db.query(
         `SELECT subscription_plan as plan, status FROM hris_saas.tenants WHERE id = ?`,
@@ -276,9 +315,9 @@ exports.getBusinessDashboard = async (req, res) => {
     ]);
 
     // Compute derived metrics
-    const totalRevenue = Number(revenueRes[0]?.t || 0);
+    const totalRevenue = Number(revenueRes[0]?.t || 0) + Number(kiranaCashIn[0]?.t || 0);
     const prevRevenue = Number(prevRevenueRes[0]?.t || 0);
-    const totalExpenses = Number(expenseRes[0]?.t || 0);
+    const totalExpenses = Number(expenseRes[0]?.t || 0) + Number(kiranaCashOut[0]?.t || 0);
     const prevExpenses = Number(prevExpenseRes[0]?.t || 0);
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100) : 0;
@@ -294,14 +333,14 @@ exports.getBusinessDashboard = async (req, res) => {
     const totalInvoiceValue = paidTotal + pendingTotal + overdueTotal;
     const collectionEfficiency = totalInvoiceValue > 0 ? ((paidTotal / totalInvoiceValue) * 100) : 0;
 
-    const cashIn = Number(cashFlowIn[0]?.t || 0);
-    const cashOut = Number(cashFlowOut[0]?.t || 0);
+    const cashIn = Number(cashFlowIn[0]?.t || 0) + Number(kiranaCashIn[0]?.t || 0);
+    const cashOut = Number(cashFlowOut[0]?.t || 0) + Number(kiranaCashOut[0]?.t || 0);
 
-    const outstandingReceivables = Number(receivablesRes[0]?.t || 0);
-    const outstandingPayables = Number(payablesRes[0]?.t || 0);
-    const activeCustomers = Number(customerCount[0]?.c || 0);
+    const outstandingReceivables = Number(receivablesRes[0]?.t || 0) + Number(kiranaReceivables[0]?.t || 0);
+    const outstandingPayables = Number(payablesRes[0]?.t || 0) + Number(kiranaPayables[0]?.t || 0);
+    const activeCustomers = Number(customerCount[0]?.c || 0) + Number(kiranaBuyerCount[0]?.c || 0);
     const newCustomers = Number(prevCustomerCount[0]?.c || 0);
-    const activeSuppliers = Number(supplierCount[0]?.c || 0);
+    const activeSuppliers = Number(supplierCount[0]?.c || 0) + Number(kiranaSellerCount[0]?.c || 0);
     const acquisitionRate = (activeCustomers - newCustomers) > 0
       ? ((newCustomers / (activeCustomers - newCustomers)) * 100) : 0;
 
