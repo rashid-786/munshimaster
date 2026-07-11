@@ -39,15 +39,25 @@ exports.getSummary = async (req, res) => {
     const [dueStats] = await db.execute(dueQ, dueP);
     const totalSalaryPending = dueStats[0].total;
 
-    let attQ = `SELECT COALESCE(SUM(total_hours), 0) as total_hours,
-                       COALESCE(SUM(CASE WHEN total_hours > 0 THEN total_hours ELSE 0 END), 0) as paid_hours
-                FROM attendance WHERE tenant_id = ?`;
+    let attQ = `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
+                FROM attendance a
+                JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
+                WHERE a.tenant_id = ?`;
     const attP = [tenantId];
     if (startDate) { attQ += ' AND date >= ?'; attP.push(startDate); }
     if (endDate) { attQ += ' AND date <= ?'; attP.push(endDate); }
     const [attendanceStats] = await db.execute(attQ, attP);
-    const totalPaidHours = parseFloat(attendanceStats[0].paid_hours) || 0;
-    const totalUnpaidHours = (parseFloat(attendanceStats[0].total_hours) || 0) - totalPaidHours;
+    const totalHoursLogged = parseFloat(attendanceStats[0].total_hours) || 0;
+
+    let payrollHoursQ = `SELECT COALESCE(SUM(p.total_hours_worked), 0) as paid_hours
+                FROM payroll p
+                JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+                WHERE p.tenant_id = ? AND p.status = 'paid'`;
+    const payrollHoursP = [tenantId];
+    if (startDate) { payrollHoursQ += ' AND pay_period_end >= ?'; payrollHoursP.push(startDate); }
+    if (endDate) { payrollHoursQ += ' AND pay_period_end <= ?'; payrollHoursP.push(endDate); }
+    const [payrollHoursStats] = await db.execute(payrollHoursQ, payrollHoursP);
+    const totalPaidHours = parseFloat(payrollHoursStats[0].paid_hours) || 0;
 
     let leaveQ = `SELECT COALESCE(SUM(
       LEAST(end_date, ?::date) - GREATEST(start_date, ?::date) + 1
@@ -72,12 +82,15 @@ exports.getSummary = async (req, res) => {
     const totalAdvancesIssued = advanceStats[0].total_issued;
     const outstandingBalance = advanceStats[0].outstanding;
 
+    const totalUnpaidHours = totalHoursLogged - totalPaidHours;
+
     res.json({
       totalEmployees,
       totalSalaryPaid,
       totalSalaryPending,
-      totalHoursWorked,
+      totalHoursWorked: totalHoursLogged,
       totalPaidHours,
+      totalHoursLogged,
       totalUnpaidHours,
       totalOvertimeHours: 0,
       totalLeaveDays,
@@ -115,9 +128,14 @@ exports.getSalaryReport = async (req, res) => {
 
 exports.getWorkingHoursReport = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, search, status } = req.query;
+  const { startDate, endDate, search, payStatus } = req.query;
   try {
-    let query = `SELECT a.*, e.first_name, e.last_name, e.email
+    let query = `SELECT a.*, e.first_name, e.last_name, e.email,
+                        CASE
+                          WHEN EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id = a.employee_id AND p.tenant_id = a.tenant_id AND p.status = 'paid' AND a.date BETWEEN p.pay_period_start AND p.pay_period_end) THEN 'paid'
+                          WHEN EXISTS (SELECT 1 FROM payroll p2 WHERE p2.employee_id = a.employee_id AND p2.tenant_id = a.tenant_id AND p2.status IN ('due','draft') AND a.date BETWEEN p2.pay_period_start AND p2.pay_period_end) THEN 'due'
+                          ELSE 'unbilled'
+                        END as pay_status
                  FROM attendance a
                  JOIN employees e ON a.employee_id = e.id
                  WHERE a.tenant_id = ?`;
@@ -125,7 +143,13 @@ exports.getWorkingHoursReport = async (req, res) => {
     const df = buildDateFilter('a', startDate, endDate);
     query += df.clause; params.push(...df.params);
     if (search) { query += ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ?)`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-    if (status) { query += ' AND a.status = ?'; params.push(status); }
+    if (payStatus === 'paid') {
+      query += " AND EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id = a.employee_id AND p.tenant_id = a.tenant_id AND p.status = 'paid' AND a.date BETWEEN p.pay_period_start AND p.pay_period_end)";
+    } else if (payStatus === 'due') {
+      query += " AND EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id = a.employee_id AND p.tenant_id = a.tenant_id AND p.status IN ('due','draft') AND a.date BETWEEN p.pay_period_start AND p.pay_period_end)";
+    } else if (payStatus === 'unbilled') {
+      query += " AND NOT EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id = a.employee_id AND p.tenant_id = a.tenant_id AND a.date BETWEEN p.pay_period_start AND p.pay_period_end)";
+    }
     query += ' ORDER BY a.date DESC, e.first_name';
 
     const [rows] = await db.execute(query, params);

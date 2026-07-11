@@ -216,6 +216,24 @@ exports.adminCreateLeave = async (req, res) => {
       return res.status(404).json({ error: 'Employee not found in this tenant.' });
     }
 
+    const today = new Date().toISOString().split('T')[0];
+    if (startDate < today || endDate < today) {
+      return res.status(400).json({ error: 'Cannot create leave in the past.' });
+    }
+    if (startDate > endDate) {
+      return res.status(400).json({ error: 'Start date must be on or before end date.' });
+    }
+
+    const [att] = await db.execute(
+      `SELECT a.date, a.total_hours FROM attendance a
+       WHERE a.employee_id = ? AND a.tenant_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0`,
+      [employeeId, tenantId, startDate, endDate]
+    );
+    if (att.length > 0) {
+      const days = att.map(a => `${a.date} (${a.total_hours}h)`).join(', ');
+      return res.status(409).json({ error: `Employee has logged hours on: ${days}. Remove attendance first.` });
+    }
+
     const leaveId = uuidv4();
     await db.execute(
       `INSERT INTO leaves (id, tenant_id, employee_id, leave_type, start_date, end_date, status)
@@ -262,6 +280,23 @@ exports.applyLeave = async (req, res) => {
   const employeeId = req.user.id;
 
   try {
+    const today = new Date().toISOString().split('T')[0];
+    if (startDate < today || endDate < today) {
+      return res.status(400).json({ error: 'Cannot request leave in the past.' });
+    }
+    if (startDate > endDate) {
+      return res.status(400).json({ error: 'Start date must be on or before end date.' });
+    }
+    const [att] = await db.execute(
+      `SELECT a.date, a.total_hours FROM attendance a
+       WHERE a.employee_id = ? AND a.tenant_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0`,
+      [employeeId, tenantId, startDate, endDate]
+    );
+    if (att.length > 0) {
+      const days = att.map(a => `${a.date} (${a.total_hours}h)`).join(', ');
+      return res.status(409).json({ error: `You have logged hours on: ${days}. Remove attendance first.` });
+    }
+
     const id = uuidv4();
     await db.execute(
       `INSERT INTO leaves (id, tenant_id, employee_id, leave_type, start_date, end_date)
@@ -522,21 +557,21 @@ exports.getEmployeeCalendar = async (req, res) => {
         if (isWeekend) {
           type = 'weekend';
           label = `Weekend (${DAY_NAMES[dayOfWeek]})`;
-        } else if (leave) {
-          type = leave.toLowerCase();
-          label = `${leave} Leave`;
         } else if (att) {
           hours = att.totalHours != null ? parseFloat(att.totalHours) : null;
           if (hours === 0) {
             type = 'absent';
-            label = 'Absent';
+            label = leave ? `${leave} Leave` : 'Absent';
           } else if (hours && hours > 0) {
             type = 'present';
-            label = `Present (${hours}h)`;
+            label = leave ? `Present (${hours}h, ${leave} leave)` : `Present (${hours}h)`;
           } else if (att.clockIn) {
             type = 'present';
-            label = 'Present (no clock-out)';
+            label = leave ? `Present (no clock-out, ${leave} leave)` : 'Present (no clock-out)';
           }
+        } else if (leave) {
+          type = leave.toLowerCase();
+          label = `${leave} Leave`;
         }
 
         days.push({ date: dateStr, day: d, type, label, hours, isWeekend, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });

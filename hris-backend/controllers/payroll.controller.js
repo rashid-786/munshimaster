@@ -390,3 +390,22 @@ exports.markPayrollPaid = async (req, res) => {
     res.status(500).json({ error: 'Failed to update payroll status.' });
   }
 };
+
+exports.deletePayrollHistory = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No payroll IDs provided.' });
+  }
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    const [result] = await db.execute(
+      `DELETE FROM payroll WHERE tenant_id = ? AND id IN (${placeholders})`,
+      [tenantId, ...ids]
+    );
+    res.json({ message: `${result.rowCount} payroll record(s) deleted.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete payroll records.' });
+  }
+};
