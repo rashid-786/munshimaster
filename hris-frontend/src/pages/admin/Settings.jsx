@@ -58,6 +58,7 @@ const Settings = () => {
   });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
+  const [workHoursInDay, setWorkHoursInDay] = useState(8);
   const [employeeFormFields, setEmployeeFormFields] = useState({
     email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
   });
@@ -98,6 +99,7 @@ const Settings = () => {
         setCountryCode(res.settings.countryCode);
         localStorage.setItem('default_country_code', res.settings.countryCode);
       }
+      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
       if (res.settings?.employeeFormFields) {
         setEmployeeFormFields(res.settings.employeeFormFields);
       } else if (res.settings?.hideTempPassword) {
@@ -133,7 +135,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, weekendDays, taxRate, workHoursInDay, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -511,6 +513,12 @@ const Settings = () => {
                   <span className="text-sm text-gray-700">{field.label}</span>
                 </label>
               ))}
+            </div>
+            <hr className="border-gray-200" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Work Hours in a Day</label>
+              <input type="number" min="1" max="24" step="0.5" value={workHoursInDay} onChange={e => setWorkHoursInDay(parseFloat(e.target.value) || 8)} className="input-field max-w-[120px]" />
+              <p className="text-xs text-gray-400 mt-1">Used to calculate Pay Per Hour = Monthly Salary / (30 × Work Hours in a Day).</p>
             </div>
             <hr className="border-gray-200" />
             <div>

@@ -57,10 +57,33 @@ const Employees = () => {
   const [importLoading, setImportLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [formFields, setFormFields] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem('employee_form_fields') || 'null');
+    return saved || { email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true };
+  });
+  const fieldVisible = (key) => formFields[key] !== false;
+  const [workHoursInDay, setWorkHoursInDay] = useState(8);
 
-  const savedFormFields = JSON.parse(localStorage.getItem('employee_form_fields') || 'null');
-  const employeeFormFields = savedFormFields || { email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true };
-  const fieldVisible = (key) => employeeFormFields[key] !== false;
+  useEffect(() => {
+    hrService.getTenantSettings().then(res => {
+      if (res.settings?.employeeFormFields) {
+        setFormFields(res.settings.employeeFormFields);
+        localStorage.setItem('employee_form_fields', JSON.stringify(res.settings.employeeFormFields));
+      }
+      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (editingEmployee) return;
+    const salary = parseFloat(form.baseSalary);
+    if (salary && salary > 0 && workHoursInDay > 0) {
+      const calculated = salary / (30 * workHoursInDay);
+      setForm(prev => ({ ...prev, payPerHour: calculated.toFixed(2) }));
+    } else if (!form.baseSalary) {
+      setForm(prev => ({ ...prev, payPerHour: '' }));
+    }
+  }, [form.baseSalary, workHoursInDay, editingEmployee]);
 
   const fetchRoster = async () => {
     setLoading(true);
@@ -79,12 +102,12 @@ const Employees = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setPhoneErr('');
-    if (form.phone && !isValidPhoneNumber(form.phone)) {
-      setPhoneErr('Please enter a valid phone number.');
+    if (!form.phone) {
+      setPhoneErr('Phone number is required.');
       return;
     }
-    if (!fieldVisible('baseSalary') && fieldVisible('payPerHour') && !form.payPerHour) {
-      setError('Pay Per Hour is required when Monthly Salary is not used.');
+    if (!isValidPhoneNumber(form.phone)) {
+      setPhoneErr('Please enter a valid phone number.');
       return;
     }
     try {
@@ -256,13 +279,6 @@ const Employees = () => {
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* Error banner */}
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center justify-between animate-slide-up">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-4 shrink-0">&times;</button>
-        </div>
-      )}
       <UpgradeBanner type="feature" feature="Staff Management" plan="pro" />
 
       {/* Welcome hero */}
@@ -441,7 +457,7 @@ const Employees = () => {
 
       {/* Onboard modal (also used for editing on mobile) */}
       {showOnboard && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => { setShowOnboard(false); setEditingEmployee(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
               <div>
@@ -463,7 +479,7 @@ const Employees = () => {
                 {fieldVisible('email') && (
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Work Email</label>
-                    <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="input-field" />
+                    <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" />
                   </div>
                 )}
                 <div className="col-span-2">
@@ -472,6 +488,7 @@ const Employees = () => {
                     value={form.phone}
                     onChange={v => { setForm({ ...form, phone: v }); setPhoneErr(''); }}
                     error={phoneErr}
+                    required
                   />
                 </div>
                 {fieldVisible('role') && (
@@ -495,7 +512,7 @@ const Employees = () => {
                 {!editingEmployee && fieldVisible('password') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Temp Password</label>
-                    <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required className="input-field" />
+                    <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="input-field" placeholder="Optional — defaults to Welcome@123" />
                   </div>
                 )}
                 {fieldVisible('baseSalary') && (
@@ -507,7 +524,8 @@ const Employees = () => {
                 {fieldVisible('payPerHour') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
-                    <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => setForm({ ...form, payPerHour: e.target.value })} className="input-field" placeholder={!fieldVisible('baseSalary') ? 'Required' : 'Optional'} required={!fieldVisible('baseSalary')} />
+                    <input type="number" min="0" step="0.01" value={form.payPerHour} disabled className="input-field bg-gray-100 cursor-not-allowed" />
+                    <p className="text-xs text-gray-400 mt-1">Auto-calculated from Monthly Salary / (30 × Work Hours in a Day). Set in Staff Settings.</p>
                   </div>
                 )}
                 {fieldVisible('profession') && (
@@ -532,6 +550,12 @@ const Employees = () => {
                   </div>
                 )}
               </div>
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
+                  <span>{error}</span>
+                  <button type="button" onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-2 shrink-0">&times;</button>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => { setShowOnboard(false); setEditingEmployee(null); }} className="btn-secondary">Cancel</button>
                 <button type="submit" className="btn-primary">{Icons.userAdd} {editingEmployee ? 'Update' : 'Onboard Staff'}</button>

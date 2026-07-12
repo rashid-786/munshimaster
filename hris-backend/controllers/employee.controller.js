@@ -9,33 +9,41 @@ exports.createEmployee = async (req, res) => {
   const tenantId = req.tenantId;
 
   try {
-    const [existing] = await db.execute(
-      'SELECT id FROM employees WHERE email = ? AND tenant_id = ?',
-      [email, tenantId]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ error: 'An employee with this email already exists in your company.' });
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: 'First and last name are required.' });
+    }
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required.' });
     }
 
-    if (phone) {
-      const [phoneExists] = await db.execute(
-        'SELECT id FROM employees WHERE phone = ? AND tenant_id = ?',
-        [phone, tenantId]
+    if (email) {
+      const [existing] = await db.execute(
+        'SELECT id FROM employees WHERE email = ? AND tenant_id = ?',
+        [email, tenantId]
       );
-      if (phoneExists.length > 0) {
-        return res.status(400).json({ error: 'An employee with this phone number already exists.' });
+      if (existing.length > 0) {
+        return res.status(400).json({ error: 'An employee with this email already exists in your company.' });
       }
+    }
+
+    const [phoneExists] = await db.execute(
+      'SELECT id FROM employees WHERE phone = ? AND tenant_id = ?',
+      [phone, tenantId]
+    );
+    if (phoneExists.length > 0) {
+      return res.status(400).json({ error: 'An employee with this phone number already exists.' });
     }
 
     const employeeId = uuidv4();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const salaryInCents = Math.round(parseFloat(baseSalary) * 100);
+    const salaryInCents = baseSalary !== undefined && baseSalary !== '' ? Math.round(parseFloat(baseSalary) * 100) : 0;
     const payPerHourCents = payPerHour !== undefined && payPerHour !== '' ? Math.round(parseFloat(payPerHour) * 100) : null;
+    const emailVal = email || `emp-${employeeId.slice(0,8)}@local`;
 
     await db.execute(
       `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
-      [employeeId, tenantId, firstName, lastName, email, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null]
+      [employeeId, tenantId, firstName, lastName, emailVal, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null]
     );
 
     incrementUsage(tenantId, 'staff_count').catch(() => {});
@@ -59,6 +67,13 @@ exports.updateEmployee = async (req, res) => {
   }
 
   try {
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: 'First and last name are required.' });
+    }
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required.' });
+    }
+
     const [existing] = await db.execute(
       'SELECT id FROM employees WHERE id = ? AND tenant_id = ?', [id, tenantId]
     );
@@ -66,14 +81,12 @@ exports.updateEmployee = async (req, res) => {
       return res.status(404).json({ error: 'Employee not found in this tenant.' });
     }
 
-    if (phone) {
-      const [phoneExists] = await db.execute(
-        'SELECT id FROM employees WHERE phone = ? AND tenant_id = ? AND id != ?',
-        [phone, tenantId, id]
-      );
-      if (phoneExists.length > 0) {
-        return res.status(400).json({ error: 'Phone number already in use by another employee.' });
-      }
+    const [phoneExists] = await db.execute(
+      'SELECT id FROM employees WHERE phone = ? AND tenant_id = ? AND id != ?',
+      [phone, tenantId, id]
+    );
+    if (phoneExists.length > 0) {
+      return res.status(400).json({ error: 'Phone number already in use by another employee.' });
     }
 
     const updates = [];
@@ -83,7 +96,7 @@ exports.updateEmployee = async (req, res) => {
     if (lastName !== undefined) { updates.push('last_name = ?'); params.push(lastName); }
     if (email !== undefined) { updates.push('email = ?'); params.push(email); }
     if (role !== undefined) { updates.push('role = ?'); params.push(role); }
-    if (baseSalary !== undefined) {
+    if (baseSalary !== undefined && baseSalary !== '') {
       updates.push('base_salary = ?');
       params.push(Math.round(parseFloat(baseSalary) * 100));
     }

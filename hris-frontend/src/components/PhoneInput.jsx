@@ -25,7 +25,7 @@ const CUSTOM_PHONE_INPUT = React.forwardRef(({ ...rest }, ref) => (
   <input ref={ref} {...rest} className="input-field pl-14 text-base" />
 ));
 
-export default function PhoneField({ value, onChange, error, defaultCountry, placeholder = '+xxx xxxxxxxx', autoFocus, id }) {
+export default function PhoneField({ value, onChange, error, defaultCountry, placeholder = '+xxx xxxxxxxx', autoFocus, id, required }) {
   const [country, setCountry] = useState(defaultCountry);
   const info = COUNTRY_INFO[country];
   const maxLength = info ? info.cc.length + info.national + 5 : DEFAULT_MAX;
@@ -45,6 +45,7 @@ export default function PhoneField({ value, onChange, error, defaultCountry, pla
         maxLength={maxLength}
         className="relative"
         smartCaret
+        required={required}
       />
       <style>{`
         .PhoneInput { position: relative; }
