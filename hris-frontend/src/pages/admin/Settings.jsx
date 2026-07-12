@@ -59,6 +59,7 @@ const Settings = () => {
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
   const [workHoursInDay, setWorkHoursInDay] = useState(8);
+  const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [employeeFormFields, setEmployeeFormFields] = useState({
     email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
   });
@@ -100,6 +101,7 @@ const Settings = () => {
         localStorage.setItem('default_country_code', res.settings.countryCode);
       }
       if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+      if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
       if (res.settings?.employeeFormFields) {
         setEmployeeFormFields(res.settings.employeeFormFields);
       } else if (res.settings?.hideTempPassword) {
@@ -135,7 +137,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, workHoursInDay, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, weekendDays, taxRate, workHoursInDay, hourBasedAttendance, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -520,6 +522,13 @@ const Settings = () => {
               <input type="number" min="1" max="24" step="0.5" value={workHoursInDay} onChange={e => setWorkHoursInDay(parseFloat(e.target.value) || 8)} className="input-field max-w-[120px]" />
               <p className="text-xs text-gray-400 mt-1">Used to calculate Pay Per Hour = Monthly Salary / (30 × Work Hours in a Day).</p>
             </div>
+            <div className="flex items-center gap-2.5 pt-1">
+              <input type="checkbox" id="hourBasedAttendance" checked={hourBasedAttendance}
+                onChange={e => setHourBasedAttendance(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+              <label htmlFor="hourBasedAttendance" className="text-sm text-gray-700 cursor-pointer">Enable Hour-Based Attendance</label>
+            </div>
+            <p className="text-xs text-gray-400 ml-8 -mt-2">When enabled, attendance is tracked by hours worked instead of clock-in/out. Status is derived from entered hours.</p>
             <hr className="border-gray-200" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>

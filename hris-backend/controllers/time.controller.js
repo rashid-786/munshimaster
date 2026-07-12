@@ -77,14 +77,26 @@ exports.adminSetStatus = async (req, res) => {
   try {
     switch (status) {
       case 'present': {
-        const ci = clockIn || '09:00';
-        const co = clockOut || '18:00';
-        const clockInTime = new Date(`${date}T${ci}`);
-        const clockOutTime = new Date(`${date}T${co}`);
-        if (clockOutTime <= clockInTime) {
-          return res.status(400).json({ error: 'Clock-out must be after clock-in.' });
+        let clockInTime, clockOutTime, totalHours;
+        if (req.body.totalHours != null) {
+          totalHours = parseFloat(req.body.totalHours).toFixed(2);
+          const ci = '09:00';
+          const coMinutes = 9 * 60 + parseFloat(totalHours) * 60;
+          const coH = Math.floor(coMinutes / 60) % 24;
+          const coM = Math.round(coMinutes % 60);
+          const co = `${String(coH).padStart(2, '0')}:${String(coM).padStart(2, '0')}`;
+          clockInTime = new Date(`${date}T${ci}`);
+          clockOutTime = new Date(`${date}T${co}`);
+        } else {
+          const ci = clockIn || '09:00';
+          const co = clockOut || '18:00';
+          clockInTime = new Date(`${date}T${ci}`);
+          clockOutTime = new Date(`${date}T${co}`);
+          if (clockOutTime <= clockInTime) {
+            return res.status(400).json({ error: 'Clock-out must be after clock-in.' });
+          }
+          totalHours = ((clockOutTime - clockInTime) / (1000 * 60 * 60)).toFixed(2);
         }
-        const totalHours = ((clockOutTime - clockInTime) / (1000 * 60 * 60)).toFixed(2);
         const id = uuidv4();
         await db.execute(
           `INSERT INTO attendance (id, tenant_id, employee_id, date, clock_in, clock_out, total_hours)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { hrService } from '../../services/hr.service';
 import { useAuth } from '../../context/AuthContext';
 import SearchableSelect from '../../components/SearchableSelect';
@@ -57,11 +57,17 @@ const EmployeeCalendar = () => {
   const [tooltip, setTooltip] = useState(null);
   const cellRefs = useRef({});
   const [weekendDays, setWeekendDays] = useState([0]);
+  const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
+  const [workHoursInDay, setWorkHoursInDay] = useState(8);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setSelectedEmployee('');
     hrService.getEmployees().then(setEmployees).catch(() => {});
+    hrService.getTenantSettings().then(res => {
+      if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
+      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+    }).catch(() => {});
   }, [tenant?.id]);
 
   useEffect(() => {
@@ -121,7 +127,7 @@ const EmployeeCalendar = () => {
     const co = day.clockOut ? fmtClock(day.clockOut) : '18:00';
     setClockInVal(ci);
     setClockOutVal(co);
-    setTotalHoursVal(day.hours && day.hours > 0 ? day.hours : 9);
+    setTotalHoursVal(day.hours && day.hours > 0 ? day.hours : (hourBasedAttendance ? workHoursInDay : 9));
     setModalMsg('');
   };
 
@@ -152,18 +158,29 @@ const EmployeeCalendar = () => {
   };
 
   const handleSave = async () => {
-    if (!selectedDay || selectedDay.day.isWeekend || !selectedStatus) return;
+    if (!selectedDay || selectedDay.day.isWeekend) return;
+    if (!hourBasedAttendance && !selectedStatus) return;
     setSaving(true);
     setModalMsg('');
     try {
       const payload = {
         employeeId: selectedDay.employee.id,
         date: selectedDay.day.date,
-        status: selectedStatus,
       };
-      if (selectedStatus === 'present') {
-        payload.clockIn = clockInVal;
-        payload.clockOut = clockOutVal;
+      if (hourBasedAttendance) {
+        const hrs = parseFloat(totalHoursVal) || 0;
+        if (hrs > 0) {
+          payload.status = 'present';
+          payload.totalHours = hrs;
+        } else {
+          payload.status = 'absent';
+        }
+      } else {
+        payload.status = selectedStatus;
+        if (selectedStatus === 'present') {
+          payload.clockIn = clockInVal;
+          payload.clockOut = clockOutVal;
+        }
       }
       await hrService.adminSetStatus(payload);
       setModalMsg('Saved successfully!');
@@ -187,6 +204,24 @@ const EmployeeCalendar = () => {
   };
 
   const handleMouseLeave = () => setTooltip(null);
+
+  const totalHoursLogged = useMemo(() => {
+    if (!calendarData) return null;
+    if (selectedEmployee) {
+      const emp = calendarData.employees.find(e => e.employee.id === selectedEmployee);
+      if (!emp) return null;
+      return emp.days.reduce((sum, day) => sum + (day.hours || 0), 0);
+    }
+    return calendarData.employees.reduce((total, emp) =>
+      total + emp.days.reduce((sum, day) => sum + (day.hours || 0), 0), 0
+    );
+  }, [calendarData, selectedEmployee]);
+
+  const totalEmployees = useMemo(() => {
+    if (!calendarData) return 0;
+    if (selectedEmployee) return 1;
+    return calendarData.employees.length;
+  }, [calendarData, selectedEmployee]);
 
   return (
     <div className="space-y-5">
@@ -213,7 +248,7 @@ const EmployeeCalendar = () => {
         </div>
       </div>
 
-      <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap">
+      <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap items-center">
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Present</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Absent</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>Sick</div>
@@ -221,6 +256,13 @@ const EmployeeCalendar = () => {
         {weekendDays.map(d => (
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>Weekend ({DAY_SHORT[d]})</div>
         ))}
+        {totalHoursLogged != null && (
+          <div className="flex items-center gap-1.5 ml-auto text-gray-600">
+            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Total Hours Logged: <span className="font-semibold text-gray-900">{totalHoursLogged.toFixed(1)}</span> Hours
+            <span className="text-gray-400">({totalEmployees} employee{totalEmployees !== 1 ? 's' : ''})</span>
+          </div>
+        )}
       </div>
 
       <div className="relative">
@@ -338,67 +380,82 @@ const EmployeeCalendar = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-                  <select
-                    value={selectedStatus}
-                    onChange={e => setSelectedStatus(e.target.value)}
-                    className="input-field text-sm"
-                  >
-                    <option value="">Select status...</option>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="sick">Sick Leave</option>
-                    <option value="annual">Annual Leave</option>
-                  </select>
-                </div>
-
-                {selectedStatus === 'present' && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock In</label>
-                        <input type="time" value={clockInVal}
-                          onFocus={() => setLastEdited('clockIn')}
-                          onChange={e => {
-                            setClockInVal(e.target.value);
-                            recalcClockOut(e.target.value, totalHoursVal);
-                          }}
-                          className="input-field text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock Out</label>
-                        <input type="time" value={clockOutVal}
-                          onFocus={() => setLastEdited('clockOut')}
-                          onChange={e => {
-                            setClockOutVal(e.target.value);
-                            if (clockInVal && e.target.value) {
-                              const [ih, im] = clockInVal.split(':').map(Number);
-                              const [oh, om] = e.target.value.split(':').map(Number);
-                              const diff = ((oh * 60 + om) - (ih * 60 + im)) / 60;
-                              if (diff > 0) setTotalHoursVal(parseFloat(diff.toFixed(1)));
-                            }
-                          }}
-                          className="input-field text-sm" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Total Hours</label>
-                      <input type="number" step="0.5" min="0.5" max="24"
-                        value={totalHoursVal}
-                        onFocus={() => setLastEdited('totalHours')}
-                        onChange={e => {
-                          const v = parseFloat(e.target.value) || 0;
-                          setTotalHoursVal(v);
-                          if (lastEdited === 'clockOut') {
-                            recalcClockIn(clockOutVal, v);
-                          } else {
-                            recalcClockOut(clockInVal, v);
-                          }
-                        }}
-                        className="input-field text-sm" />
-                    </div>
+                {hourBasedAttendance ? (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours Worked</label>
+                    <input type="number" step="0.5" min="0" max="24"
+                      value={totalHoursVal}
+                      onChange={e => setTotalHoursVal(parseFloat(e.target.value) || 0)}
+                      className="input-field text-sm text-center text-lg font-semibold py-3" />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {parseFloat(totalHoursVal) > 0 ? 'Marked as Present' : 'Marked as Absent/Leave'}
+                    </p>
                   </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+                      <select
+                        value={selectedStatus}
+                        onChange={e => setSelectedStatus(e.target.value)}
+                        className="input-field text-sm"
+                      >
+                        <option value="">Select status...</option>
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="sick">Sick Leave</option>
+                        <option value="annual">Annual Leave</option>
+                      </select>
+                    </div>
+
+                    {selectedStatus === 'present' && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock In</label>
+                            <input type="time" value={clockInVal}
+                              onFocus={() => setLastEdited('clockIn')}
+                              onChange={e => {
+                                setClockInVal(e.target.value);
+                                recalcClockOut(e.target.value, totalHoursVal);
+                              }}
+                              className="input-field text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Clock Out</label>
+                            <input type="time" value={clockOutVal}
+                              onFocus={() => setLastEdited('clockOut')}
+                              onChange={e => {
+                                setClockOutVal(e.target.value);
+                                if (clockInVal && e.target.value) {
+                                  const [ih, im] = clockInVal.split(':').map(Number);
+                                  const [oh, om] = e.target.value.split(':').map(Number);
+                                  const diff = ((oh * 60 + om) - (ih * 60 + im)) / 60;
+                                  if (diff > 0) setTotalHoursVal(parseFloat(diff.toFixed(1)));
+                                }
+                              }}
+                              className="input-field text-sm" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1.5">Total Hours</label>
+                          <input type="number" step="0.5" min="0.5" max="24"
+                            value={totalHoursVal}
+                            onFocus={() => setLastEdited('totalHours')}
+                            onChange={e => {
+                              const v = parseFloat(e.target.value) || 0;
+                              setTotalHoursVal(v);
+                              if (lastEdited === 'clockOut') {
+                                recalcClockIn(clockOutVal, v);
+                              } else {
+                                recalcClockOut(clockInVal, v);
+                              }
+                            }}
+                            className="input-field text-sm" />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {modalMsg && (
@@ -412,7 +469,7 @@ const EmployeeCalendar = () => {
                 )}
 
                 <div className="flex gap-2 pt-1">
-                  <button onClick={handleSave} disabled={saving || !selectedStatus} className="btn-primary flex-1 text-sm">
+                  <button onClick={handleSave} disabled={saving || (!hourBasedAttendance && !selectedStatus)} className="btn-primary flex-1 text-sm">
                     {saving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
