@@ -107,6 +107,10 @@ export const hrService = {
     const response = await api.post('/core/payroll/batch-delete', { ids });
     return response.data;
   },
+  updateManualAdvanceDeduction: async (payrollId, advanceDeduction) => {
+    const response = await api.patch(`/core/payroll/${payrollId}/manual-advance-deduction`, { advanceDeduction });
+    return response.data;
+  },
   downloadPayslipUrl: (payrollId) => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL;
     const tenantId = localStorage.getItem('tenant_id');

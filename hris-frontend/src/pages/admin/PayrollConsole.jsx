@@ -26,6 +26,10 @@ const PayrollConsole = () => {
   const [saving, setSaving] = useState(null);
   const [selectedHistoryIds, setSelectedHistoryIds] = useState(new Set());
   const [deleteModal, setDeleteModal] = useState(null);
+  const [advanceDeductionPct, setAdvanceDeductionPct] = useState(null);
+  const [manualAdvDeductions, setManualAdvDeductions] = useState({});
+  const [savingManualAdv, setSavingManualAdv] = useState(null);
+  const [advDedError, setAdvDedError] = useState('');
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -38,12 +42,16 @@ const PayrollConsole = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [hist, emps] = await Promise.all([
+        const [hist, emps, settings] = await Promise.all([
           hrService.getPayrollHistory(),
           hrService.getEmployees(),
+          hrService.getTenantSettings().catch(() => null),
         ]);
         setHistory(hist);
         setEmployees(emps);
+        if (settings?.settings?.advanceDeductionPct !== undefined) {
+          setAdvanceDeductionPct(settings.settings.advanceDeductionPct);
+        }
       } catch {} finally {
         setLoading(false);
       }
@@ -147,6 +155,35 @@ const PayrollConsole = () => {
     });
   };
 
+  const handleManualAdvInputChange = (payrollId, value) => {
+    const num = parseFloat(value) || 0;
+    setManualAdvDeductions(prev => ({ ...prev, [payrollId]: Math.round(num * 100) }));
+    setAdvDedError('');
+  };
+
+  const handleSaveManualAdvDeduction = async (record) => {
+    const deduction = manualAdvDeductions[record.id];
+    if (deduction === undefined || deduction === null) return;
+    const outstanding = Number(record.outstanding_advance) || 0;
+    if (deduction > outstanding) {
+      setAdvDedError(
+        `Advance deduction cannot exceed the employee's outstanding advance balance (₹${(outstanding / 100).toFixed(2)}).`
+      );
+      return;
+    }
+    setSavingManualAdv(record.id);
+    setAdvDedError('');
+    try {
+      await hrService.updateManualAdvanceDeduction(record.id, deduction);
+      const updated = await hrService.getPayrollHistory();
+      setHistory(updated);
+    } catch (err) {
+      setAdvDedError(err.response?.data?.error || 'Failed to update advance deduction.');
+    } finally {
+      setSavingManualAdv(null);
+    }
+  };
+
   const handleRunPayroll = async (e) => {
     e.preventDefault();
     if (selectedIds.size === 0 || (selectedIds.size === 1 && selectedIds.has(ALL_EMPLOYEES_KEY))) {
@@ -199,15 +236,36 @@ const PayrollConsole = () => {
     { key: 'hourly_rate', label: 'Rate', render: (v) => <>₹{(v / 100).toFixed(2)}/hr</> },
     { key: 'hours', label: 'Hrs', render: (_, r) => <>{r.total_hours_worked}h / {r.standard_hours}h</> },
     { key: 'gross_salary', label: 'Gross', render: (v) => formatINR(v) },
-    { key: 'advance_deduction', label: 'Adv. Ded.', render: (v) => v ? <span className="text-orange-600">{formatINR(v)}</span> : <span>-</span> },
+    { key: 'advance_deduction', label: 'Adv. Ded.', render: (v, r) => advanceDeductionPct === 0 && isDue(r.status) && Number(r.outstanding_advance) > 0 ? (
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1">
+          <input type="number" min="0" step="1"
+            value={(manualAdvDeductions[r.id] ?? v) / 100}
+            onChange={e => handleManualAdvInputChange(r.id, e.target.value)}
+            className="w-16 text-xs border border-gray-300 rounded px-1 py-0.5 text-right" />
+          <button onClick={() => handleSaveManualAdvDeduction(r)} disabled={savingManualAdv === r.id}
+            className="btn-primary !py-0.5 !px-1.5 text-xs whitespace-nowrap inline-flex items-center gap-0.5">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            {savingManualAdv === r.id ? '...' : 'Set'}
+          </button>
+        </div>
+        {Number(r.outstanding_advance) > 0 && (
+          <span className="text-[10px] text-gray-400">Bal: {formatINR(r.outstanding_advance)}</span>
+        )}
+      </div>
+    ) : v ? <span className="text-orange-600">{formatINR(v)}</span> : <span>-</span> },
     { key: 'net_salary', label: 'Net', render: (v) => <span className="font-bold text-emerald-600">{formatINR(v)}</span> },
     { key: 'status', label: 'Status', render: (_, r) => statusBadge(r.status) },
     { key: 'actions', label: '', className: 'text-right', render: (_, r) => isDue(r.status) ? (
       <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
-        className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
-        {saving === r.id ? '...' : 'Mark Paid'}
+        className="btn-success !py-1 !px-1.5 text-xs" title="Mark Paid">
+        {saving === r.id ? (
+          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+        )}
       </button>
-    ) : null },
+    ) : <span className="text-xs text-gray-400 font-medium">Done</span> },
   ];
 
   const payrunData = payrun?.runs?.map((r, i) => ({ ...r, _key: String(i) })) || [];
@@ -285,12 +343,17 @@ const PayrollConsole = () => {
         </form>
       </div>
 
+      {advDedError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{advDedError}</div>
+      )}
+
       <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Payroll History</h3>
           <div className="flex items-center gap-2">
             {selectedHistoryIds.size > 0 && (
-              <button onClick={handleDeleteSelected} className="btn-danger !py-1.5 !px-3 text-xs">
+              <button onClick={handleDeleteSelected} className="btn-danger !py-1.5 !px-3 text-xs inline-flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 Delete {selectedHistoryIds.size} selected
               </button>
             )}
@@ -307,7 +370,7 @@ const PayrollConsole = () => {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1050px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
                 <th className="px-3 py-2.5 text-left">
@@ -338,7 +401,24 @@ const PayrollConsole = () => {
                   <td className="table-cell">₹{(r.hourly_rate / 100).toFixed(2)}/hr</td>
                   <td className="table-cell">{r.total_hours_worked}h / {r.standard_hours}h</td>
                   <td className="table-cell">{formatINR(r.gross_salary)}</td>
-                  <td className="table-cell">{r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span>-</span>}</td>
+                  <td className="table-cell">{advanceDeductionPct === 0 && isDue(r.status) && Number(r.outstanding_advance) > 0 ? (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <input type="number" min="0" step="1"
+                          value={(manualAdvDeductions[r.id] ?? r.advance_deduction) / 100}
+                          onChange={e => handleManualAdvInputChange(r.id, e.target.value)}
+                          className="w-20 text-xs border border-gray-300 rounded px-1 py-0.5 text-right" />
+                        <button onClick={() => handleSaveManualAdvDeduction(r)} disabled={savingManualAdv === r.id}
+                          className="btn-primary !py-0.5 !px-1.5 text-xs whitespace-nowrap inline-flex items-center gap-0.5">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          {savingManualAdv === r.id ? '...' : 'Apply'}
+                        </button>
+                      </div>
+                      {Number(r.outstanding_advance) > 0 && (
+                        <span className="text-[10px] text-gray-400">Bal: {formatINR(r.outstanding_advance)}</span>
+                      )}
+                    </div>
+                  ) : r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span>-</span>}</td>
                   <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
                   <td className="table-cell">{statusBadge(r.status)}</td>
                   <td className="table-cell text-center" onClick={e => e.stopPropagation()}>
@@ -346,14 +426,18 @@ const PayrollConsole = () => {
                       {isDue(r.status) ? (
                         <>
                           <button onClick={(e) => handleMarkPaid(e, r)} disabled={saving === r.id}
-                            className="btn-success !py-1 !px-2.5 text-xs whitespace-nowrap">
-                            {saving === r.id ? '...' : 'Mark Paid'}
+                            className="btn-success !py-1 !px-1.5 text-xs" title="Mark Paid">
+                            {saving === r.id ? (
+                              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            )}
                           </button>
-                          <button onClick={() => handleCancelPayroll(r)} className="btn-danger !py-1 !px-2.5 text-xs whitespace-nowrap">
-                            Cancel
+                          <button onClick={() => handleCancelPayroll(r)} className="btn-danger !py-1 !px-1.5 text-xs" title="Cancel">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
                         </>
-                      ) : null}
+                      ) : <span className="text-xs text-gray-400 font-medium">Done</span>}
                     </div>
                   </td>
                 </tr>
@@ -419,7 +503,24 @@ const PayrollConsole = () => {
               <DetailRow label="Hours" value={`${selectedHistory.total_hours_worked}h / ${selectedHistory.standard_hours}h`} />
               <DetailRow label="Gross" value={formatINR(selectedHistory.gross_salary)} />
               <DetailRow label="Adv. Deduction">
-                {selectedHistory.advance_deduction ? <span className="text-orange-600">{formatINR(selectedHistory.advance_deduction)}</span> : '—'}
+                {advanceDeductionPct === 0 && isDue(selectedHistory.status) && Number(selectedHistory.outstanding_advance) > 0 ? (
+                  <div className="flex flex-col gap-1 w-full">
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="0" step="1"
+                        value={(manualAdvDeductions[selectedHistory.id] ?? selectedHistory.advance_deduction) / 100}
+                        onChange={e => handleManualAdvInputChange(selectedHistory.id, e.target.value)}
+                        className="w-24 text-xs border border-gray-300 rounded px-1.5 py-1 text-right" />
+                      <button onClick={() => handleSaveManualAdvDeduction(selectedHistory)} disabled={savingManualAdv === selectedHistory.id}
+                        className="btn-primary !py-1 !px-2 text-xs whitespace-nowrap inline-flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        {savingManualAdv === selectedHistory.id ? '...' : 'Apply'}
+                      </button>
+                    </div>
+                    {Number(selectedHistory.outstanding_advance) > 0 && (
+                      <span className="text-[10px] text-gray-400">Bal: {formatINR(selectedHistory.outstanding_advance)}</span>
+                    )}
+                  </div>
+                ) : selectedHistory.advance_deduction ? <span className="text-orange-600">{formatINR(selectedHistory.advance_deduction)}</span> : '—'}
               </DetailRow>
               <DetailRow label="Net">
                 <span className="font-bold text-emerald-600">{formatINR(selectedHistory.net_salary)}</span>
@@ -430,7 +531,8 @@ const PayrollConsole = () => {
               {isDue(selectedHistory.status) && (
                 <button onClick={(e) => handleMarkPaid(e, selectedHistory)}
                   disabled={saving === selectedHistory.id}
-                  className="w-full btn-success text-sm justify-center mt-2">
+                  className="w-full btn-success text-sm justify-center mt-2 inline-flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   {saving === selectedHistory.id ? 'Processing...' : 'Mark as Paid'}
                 </button>
               )}

@@ -196,9 +196,25 @@ exports.calculatePayroll = async (req, res) => {
 
 exports.getPayrollHistory = async (req, res) => {
   const tenantId = req.tenantId;
+  const COLS = `p.id, p.tenant_id, p.employee_id,
+    to_char(p.pay_period_start, 'YYYY-MM-DD') as pay_period_start,
+    to_char(p.pay_period_end, 'YYYY-MM-DD') as pay_period_end,
+    p.hourly_rate, p.total_hours_worked, p.standard_hours,
+    p.gross_salary, p.deductions, p.advance_deduction, p.net_salary,
+    p.status, p.created_at`;
   const queryTarget = req.user.role === 'tenant_admin'
-    ? 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ? ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC'
-    : 'SELECT p.*, e.first_name, e.last_name, e.email FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ? AND p.employee_id = ? ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC';
+    ? `SELECT ${COLS}, e.first_name, e.last_name, e.email,
+       (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
+        WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
+        AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
+       FROM payroll p JOIN employees e ON p.employee_id = e.id
+       WHERE p.tenant_id = ? ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC`
+    : `SELECT ${COLS}, e.first_name, e.last_name, e.email,
+       (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
+        WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
+        AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
+       FROM payroll p JOIN employees e ON p.employee_id = e.id
+       WHERE p.tenant_id = ? AND p.employee_id = ? ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC`;
 
   const params = req.user.role === 'tenant_admin' ? [tenantId] : [tenantId, req.user.id];
 
@@ -415,5 +431,119 @@ exports.deletePayrollHistory = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete payroll records.' });
+  }
+};
+
+exports.updateManualAdvanceDeduction = async (req, res) => {
+  const { payrollId } = req.params;
+  const { advanceDeduction } = req.body;
+  const tenantId = req.tenantId;
+
+  if (req.user.role !== 'tenant_admin') {
+    return res.status(403).json({ error: 'Administrative clearance required.' });
+  }
+
+  try {
+    const deductionAmount = Math.round(Number(advanceDeduction));
+    if (isNaN(deductionAmount) || deductionAmount < 0) {
+      return res.status(400).json({ error: 'Advance deduction must be a non-negative number.' });
+    }
+
+    const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
+    const tenantSettings = tenantRows[0]?.settings
+      ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
+      : {};
+    const advanceDeductionPct = tenantSettings.advanceDeductionPct ?? 10;
+
+    if (advanceDeductionPct > 0) {
+      return res.status(400).json({
+        error: 'Manual advance deduction is only available when Advance Deduction % is set to 0 in Settings.'
+      });
+    }
+
+    const [payrollRows] = await db.execute(
+      'SELECT * FROM payroll WHERE id = ? AND tenant_id = ?',
+      [payrollId, tenantId]
+    );
+    if (payrollRows.length === 0) {
+      return res.status(404).json({ error: 'Payroll record not found.' });
+    }
+    const payroll = payrollRows[0];
+
+    if (payroll.status !== 'due') {
+      return res.status(400).json({ error: 'Advance deduction can only be modified for payroll records with Due status.' });
+    }
+
+    const [advances] = await db.execute(
+      `SELECT COALESCE(SUM(remaining_balance), 0) as total_outstanding
+       FROM employee_advances
+       WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND remaining_balance > 0`,
+      [tenantId, payroll.employee_id]
+    );
+    const outstandingBalance = Number(advances[0].total_outstanding) || 0;
+
+    if (deductionAmount > 0 && deductionAmount > outstandingBalance) {
+      return res.status(400).json({
+        error: `Advance deduction cannot exceed the employee's outstanding advance balance (₹${(outstandingBalance / 100).toFixed(2)}).`
+      });
+    }
+
+    // Reverse any previous advance deduction on this payroll record
+    const prevAdvanceDeduction = Number(payroll.advance_deduction) || 0;
+    if (prevAdvanceDeduction > 0) {
+      await db.execute(
+        `UPDATE employee_advances SET remaining_balance = remaining_balance + ?
+         WHERE tenant_id = ? AND employee_id = ? AND status IN ('approved', 'fully_paid')`,
+        [prevAdvanceDeduction, tenantId, payroll.employee_id]
+      );
+      await db.execute(
+        `UPDATE employee_advances SET status = 'approved'
+         WHERE tenant_id = ? AND employee_id = ? AND status = 'fully_paid' AND remaining_balance > 0`,
+        [tenantId, payroll.employee_id]
+      );
+    }
+
+    // Apply the new deduction across advances (FIFO)
+    if (deductionAmount > 0) {
+      const [advanceRows] = await db.execute(
+        `SELECT id, remaining_balance FROM employee_advances
+         WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND remaining_balance > 0
+         ORDER BY created_at ASC`,
+        [tenantId, payroll.employee_id]
+      );
+
+      let toDeduct = deductionAmount;
+      for (const adv of advanceRows) {
+        if (toDeduct <= 0) break;
+        const deductFromThis = Math.min(adv.remaining_balance, toDeduct);
+        await db.execute(
+          'UPDATE employee_advances SET remaining_balance = remaining_balance - ? WHERE id = ?',
+          [deductFromThis, adv.id]
+        );
+        toDeduct -= deductFromThis;
+        await db.execute(
+          `UPDATE employee_advances SET status = 'fully_paid'
+           WHERE id = ? AND remaining_balance <= 0`,
+          [adv.id]
+        );
+      }
+    }
+
+    const newNetSalary = Math.max(0, payroll.net_salary + prevAdvanceDeduction - deductionAmount);
+    await db.execute(
+      'UPDATE payroll SET advance_deduction = ?, net_salary = ? WHERE id = ? AND tenant_id = ?',
+      [deductionAmount, newNetSalary, payrollId, tenantId]
+    );
+
+    res.json({
+      message: deductionAmount > 0
+        ? `Advance deduction of ₹${(deductionAmount / 100).toFixed(2)} applied.`
+        : 'Advance deduction cleared.',
+      advanceDeduction: (deductionAmount / 100).toFixed(2),
+      netSalary: (newNetSalary / 100).toFixed(2),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update advance deduction.' });
   }
 };

@@ -88,7 +88,7 @@ const Settings = () => {
       if (res.settings?.primaryColor) setPrimaryColor(res.settings.primaryColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
       if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
-      if (res.settings?.advanceDeductionPct) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
+      if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
       if (res.settings?.groupLabels) setGroupLabels(prev => ({ ...prev, ...res.settings.groupLabels }));
