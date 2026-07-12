@@ -195,7 +195,6 @@ exports.deleteAdvance = async (req, res) => {
       [id, tenantId]
     );
     if (!advance) return res.status(404).json({ error: 'Advance not found.' });
-    if (advance.status !== 'pending') return res.status(400).json({ error: 'Only pending advances can be deleted.' });
 
     await db.execute('DELETE FROM employee_advances WHERE id = ? AND tenant_id = ?', [id, tenantId]);
 
