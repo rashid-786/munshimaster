@@ -356,7 +356,7 @@ const EmployeeCalendar = () => {
       {tooltip && <Tooltip day={tooltip.day} rect={tooltip.rect} />}
 
       {selectedDay && (
-        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50" onClick={() => setSelectedDay(null)}>
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h4 className="text-base font-semibold text-gray-900">Manage Attendance</h4>

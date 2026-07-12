@@ -40,7 +40,6 @@ export default function BottomSheet({ open, onClose, title, children, actions })
       dragging.current = false;
       el.style.transition = '';
       el.style.transform = '';
-      if (currentY.current > 100) onClose();
       currentY.current = 0;
     };
 
@@ -53,16 +52,13 @@ export default function BottomSheet({ open, onClose, title, children, actions })
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 md:hidden">
-      <div
-        className="fixed inset-0 bg-black/40 transition-opacity duration-300"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/40 transition-opacity duration-300" />
       <div
         ref={sheetRef}
         className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[90dvh] flex flex-col"

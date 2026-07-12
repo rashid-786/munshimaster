@@ -81,7 +81,7 @@ const ExtendTrialModal = ({ tenant, onClose, onSuccess }) => {
   const isTrialing = tenant.sub_status === 'trialing' || tenant.subscription_status === 'trialing';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30 animate-fade-in">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">

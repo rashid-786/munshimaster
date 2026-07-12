@@ -352,11 +352,11 @@ exports.exportReport = async (req, res) => {
 
       function tabConfig() {
         const labels = tab === 'salary' ? ['Employee', 'Pay Rate', 'Worked', 'Gross', 'Adv. Ded.', 'Net', 'Status']
-          : tab === 'working-hours' ? ['Employee', 'Date', 'Check-in', 'Check-out', 'Hours', 'Status']
+          : tab === 'working-hours' ? ['Employee', 'Date', 'Hours', 'Status']
           : tab === 'leaves' ? ['Employee', 'Type', 'Start', 'End', 'Days', 'Status']
           : ['Employee', 'Amount', 'Recovered', 'Outstanding', 'Date', 'Status'];
         const aligns = tab === 'salary' ? ['left', 'center', 'center', 'right', 'right', 'right', 'center']
-          : tab === 'working-hours' ? ['left', 'center', 'center', 'center', 'center', 'center']
+          : tab === 'working-hours' ? ['left', 'center', 'center', 'center']
           : tab === 'leaves' ? ['left', 'center', 'center', 'center', 'center', 'center']
           : ['left', 'right', 'right', 'right', 'center', 'center'];
         const formatters = {
@@ -372,8 +372,6 @@ exports.exportReport = async (req, res) => {
           'working-hours': [
             r => `${r.first_name} ${r.last_name}`,
             r => r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—',
-            r => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-            r => r.clock_out ? new Date(r.clock_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
             r => r.total_hours ? `${r.total_hours}h` : '—',
             r => r.pay_status === 'paid' ? 'Paid' : r.pay_status === 'due' ? 'Due' : 'Unbilled',
           ],
@@ -437,7 +435,7 @@ exports.exportReport = async (req, res) => {
       if (data.length > 0) {
         const rawKeys = Object.keys(data[0]).filter(k => !['tenant_id', 'id', 'employee_id', 'created_at', 'updated_at'].includes(k));
         const headerOrder = {
-          'working-hours': ['first_name', 'last_name', 'total_hours', 'clock_in', 'clock_out', 'date', 'pay_status'],
+          'working-hours': ['first_name', 'last_name', 'total_hours', 'date', 'pay_status'],
         };
         const headers = headerOrder[tab] || rawKeys;
         sheet.addRow(headers.map(h => h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())));

@@ -141,7 +141,7 @@ const PlanFormModal = ({ plan, onClose, onSave }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30 animate-fade-in" >
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">{isEdit ? 'Edit Plan' : 'Create New Plan'}</h3>
@@ -284,7 +284,7 @@ const FeaturesModal = ({ plan, onClose, onSave }) => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30" onClick={onClose}>
+      <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 pb-8 bg-black/30" >
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 p-12" onClick={e => e.stopPropagation()}>
           <div className="flex justify-center"><div className="animate-spin h-6 w-6 border-4 border-indigo-500 border-t-transparent rounded-full" /></div>
         </div>
@@ -302,7 +302,7 @@ const FeaturesModal = ({ plan, onClose, onSave }) => {
   const typeLabels = { boolean: 'Toggle Features', limit: 'Numeric Limits', config: 'Configuration', section: 'Section Access' };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-8 bg-black/30 animate-fade-in overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-8 bg-black/30 animate-fade-in overflow-y-auto" >
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 my-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white rounded-t-xl z-10">
           <div>

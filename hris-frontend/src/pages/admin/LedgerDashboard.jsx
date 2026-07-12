@@ -164,7 +164,7 @@ const LedgerDashboard = () => {
 
       {/* Add Buyer / Add Seller Modal */}
       {showPartyForm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setShowPartyForm(false)}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Add {partyType === 'buyer' ? 'Buyer' : 'Seller'}</h3>
@@ -215,7 +215,7 @@ const LedgerDashboard = () => {
 
       {/* Add Cash Entry Modal */}
       {showCashForm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setShowCashForm(false)}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200"><h3 className="text-lg font-semibold">Add Cash Entry</h3></div>
             <form onSubmit={handleAddCash} className="p-6 space-y-4">

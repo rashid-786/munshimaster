@@ -179,7 +179,7 @@ export default function UpgradeModal({ open, onClose, onUpgraded, feature, requi
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full animate-scale-in" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-gray-100">
           <div className="flex items-center justify-between">

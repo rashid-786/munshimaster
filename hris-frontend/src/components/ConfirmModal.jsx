@@ -40,7 +40,7 @@ export default function ConfirmModal({ open, title, message, confirmLabel = 'Con
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
       <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95">
         <div className="p-6">
           <div className="flex items-start gap-4">

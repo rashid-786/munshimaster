@@ -7,6 +7,7 @@ import BottomSheet from '../../components/BottomSheet';
 import Loading from '../../components/Loading';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useAuth } from '../../context/AuthContext';
+import SearchableSelect from '../../components/SearchableSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -53,12 +54,19 @@ export default function StaffReports() {
   const [tab, setTab] = useState(searchParams.get('tab') || 'dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
+  const [employees, setEmployees] = useState([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [datePreset, setDatePreset] = useState('Current Month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [extraFilter, setExtraFilter] = useState({});
   const [selectedRecord, setSelectedRecord] = useState(null);
+
+  const search = useMemo(() => {
+    if (!selectedEmployeeId) return '';
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    return emp ? `${emp.first_name} ${emp.last_name}` : '';
+  }, [selectedEmployeeId, employees]);
 
   const [summary, setSummary] = useState(null);
   const [salaryData, setSalaryData] = useState([]);
@@ -120,6 +128,10 @@ export default function StaffReports() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    hrService.getEmployees().then(setEmployees).catch(() => {});
+  }, []);
+
   const handleExport = (format) => {
     const params = { ...dateRange, search, ...extraFilter };
     hrService.downloadStaffReport(tab === 'hours' ? 'working-hours' : tab, format, params);
@@ -161,8 +173,6 @@ export default function StaffReports() {
   const hoursColumns = useMemo(() => [
     { key: 'name', label: 'Employee', render: (_, r) => <span className="font-medium">{r.first_name} {r.last_name}</span> },
     { key: 'date', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-    { key: 'clockIn', label: 'Check-in', render: (_, r) => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : '—' },
-    { key: 'clockOut', label: 'Check-out', render: (_, r) => r.clock_out ? new Date(r.clock_out).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : '—' },
     { key: 'totalHours', label: 'Hours', render: (_, r) => <span className="font-medium">{r.total_hours ? `${r.total_hours}h` : '—'}</span> },
     { key: 'payStatus', label: 'Status', render: (_, r) => payStatusBadge(r.pay_status) },
   ], []);
@@ -300,7 +310,7 @@ export default function StaffReports() {
       {/* Tab bar */}
       <div className="flex gap-2 overflow-x-auto pb-1 border-b border-gray-200">
         {TABS.map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSearch(''); setExtraFilter({}); setSearchParams({ tab: t.key }); }}
+          <button key={t.key} onClick={() => { setTab(t.key); setSelectedEmployeeId(''); setExtraFilter({}); setSearchParams({ tab: t.key }); }}
             className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
               tab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
@@ -310,56 +320,52 @@ export default function StaffReports() {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Date:</span>
+      <div className="bg-white rounded-xl border border-gray-200 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500 font-medium uppercase tracking-wider shrink-0">Date:</span>
           <select value={datePreset === 'Custom' ? '' : datePreset} onChange={e => handlePresetClick(e.target.value)}
-            className="input-field max-w-[200px] text-sm">
+            className="input-field max-w-[150px] text-sm">
             <option value="" disabled>Select preset</option>
             {DATE_PRESETS.map(p => (
               <option key={p.label} value={p.label}>{p.label}</option>
             ))}
           </select>
           <button onClick={() => { setDatePreset('Custom'); setCustomStart(''); setCustomEnd(''); }}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap border ${
+            className={`text-xs font-medium rounded-lg transition-colors whitespace-nowrap border px-2.5 py-1.5 shrink-0 ${
               datePreset === 'Custom'
                 ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
                 : 'text-gray-600 hover:bg-gray-50 border-gray-300'
             }`}>
-            <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            Custom Range
+            <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Custom
           </button>
+          {datePreset === 'Custom' && (
+            <>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={today} className="input-field text-sm max-w-[140px]" />
+              <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} max={today} className="input-field text-sm max-w-[140px]" />
+            </>
+          )}
           {datePreset !== 'Custom' && dateRange.startDate && dateRange.endDate && (
-            <span className="text-sm text-gray-500 ml-1">
+            <span className="text-xs text-gray-500 shrink-0">
               {new Date(dateRange.startDate).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
               {' — '}
               {new Date(dateRange.endDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
             </span>
           )}
-        </div>
-        {datePreset === 'Custom' && (
-          <div className="flex flex-wrap items-center gap-3 pl-1 pt-2 border-t border-gray-100">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 font-medium">From</label>
-              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={today} className="input-field text-sm" />
-            </div>
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 font-medium">To</label>
-              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} max={today} className="input-field text-sm" />
-            </div>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
+          <span className="w-px h-5 bg-gray-200 shrink-0" />
           {tab !== 'dashboard' && (
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)}
-              className="input-field pl-9 text-sm" />
+          <div className="min-w-[160px] max-w-[200px]">
+            <SearchableSelect
+              options={employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` }))}
+              value={selectedEmployeeId}
+              onChange={(val) => setSelectedEmployeeId(val)}
+              placeholder="Select employee..."
+            />
           </div>
           )}
           {(tab === 'salary' || tab === 'hours') && (
-            <select value={extraFilter.payStatus || ''} onChange={e => setExtraFilter(f => ({ ...f, payStatus: e.target.value || undefined }))} className="input-field max-w-[160px] text-sm">
+            <select value={extraFilter.payStatus || ''} onChange={e => setExtraFilter(f => ({ ...f, payStatus: e.target.value || undefined }))} className="input-field max-w-[130px] text-sm">
               <option value="">All Status</option>
               <option value="paid">Paid</option>
               <option value="due">Due</option>
@@ -367,7 +373,7 @@ export default function StaffReports() {
             </select>
           )}
           {tab === 'leaves' && (
-            <select value={extraFilter.leaveType || ''} onChange={e => setExtraFilter(f => ({ ...f, leaveType: e.target.value || undefined }))} className="input-field max-w-[160px] text-sm">
+            <select value={extraFilter.leaveType || ''} onChange={e => setExtraFilter(f => ({ ...f, leaveType: e.target.value || undefined }))} className="input-field max-w-[130px] text-sm">
               <option value="">All Types</option>
               <option value="Annual">Annual</option>
               <option value="Sick">Sick</option>
@@ -376,7 +382,7 @@ export default function StaffReports() {
             </select>
           )}
           {tab === 'leaves' && (
-            <select value={extraFilter.status || ''} onChange={e => setExtraFilter(f => ({ ...f, status: e.target.value || undefined }))} className="input-field max-w-[140px] text-sm">
+            <select value={extraFilter.status || ''} onChange={e => setExtraFilter(f => ({ ...f, status: e.target.value || undefined }))} className="input-field max-w-[130px] text-sm">
               <option value="">All Status</option>
               <option value="approved">Approved</option>
               <option value="pending">Pending</option>
@@ -384,7 +390,7 @@ export default function StaffReports() {
             </select>
           )}
           {tab === 'advances' && (
-            <select value={extraFilter.status || ''} onChange={e => setExtraFilter(f => ({ ...f, status: e.target.value || undefined }))} className="input-field max-w-[160px] text-sm">
+            <select value={extraFilter.status || ''} onChange={e => setExtraFilter(f => ({ ...f, status: e.target.value || undefined }))} className="input-field max-w-[130px] text-sm">
               <option value="">All Status</option>
               <option value="approved">Approved</option>
               <option value="pending">Pending</option>
@@ -392,14 +398,12 @@ export default function StaffReports() {
               <option value="fully_paid">Fully Paid</option>
             </select>
           )}
-          <div className="flex gap-1.5 ml-auto">
-            <button onClick={() => handleExport('pdf')} className="btn-secondary !py-1.5 !px-3 text-xs" title="Export PDF">
+          <div className="flex gap-1 ml-auto shrink-0">
+            <button onClick={() => handleExport('pdf')} className="btn-secondary !py-1.5 !px-2 text-xs" title="Export PDF">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-              <span className="hidden sm:inline ml-1">PDF</span>
             </button>
-            <button onClick={() => handleExport('xlsx')} className="btn-secondary !py-1.5 !px-3 text-xs" title="Export Excel">
+            <button onClick={() => handleExport('xlsx')} className="btn-secondary !py-1.5 !px-2 text-xs" title="Export Excel">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              <span className="hidden sm:inline ml-1">Excel</span>
             </button>
           </div>
         </div>

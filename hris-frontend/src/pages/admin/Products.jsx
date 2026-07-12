@@ -324,7 +324,7 @@ const Products = () => {
       {/* Create/Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" onClick={() => setShowForm(false)} />
+          <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">{editing ? 'Edit Product' : 'New Product'}</h3>
@@ -398,7 +398,7 @@ const Products = () => {
       {/* Stock Adjust Modal */}
       {showAdjustForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" onClick={() => setShowAdjustForm(null)} />
+          <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">Adjust Stock — {showAdjustForm.name}</h3>
@@ -440,7 +440,7 @@ const Products = () => {
       {/* Stock Movement History Modal */}
       {showMovement && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" onClick={() => setShowMovement(null)} />
+          <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">Stock History — {showMovement.name}</h3>

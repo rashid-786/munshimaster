@@ -505,7 +505,7 @@ const Invoices = () => {
       />
 
       {detail && !isMobile && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setDetail(null)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -915,7 +915,7 @@ const Invoices = () => {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" onClick={() => { setShowForm(false); setEditing(null); }} />
+          <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleSave}>
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -1082,7 +1082,7 @@ const Invoices = () => {
       {/* Payment Form Modal */}
       {showPaymentForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" onClick={() => setShowPaymentForm(false)} />
+          <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">Record Payment</h3>

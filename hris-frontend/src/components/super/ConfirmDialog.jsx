@@ -20,7 +20,7 @@ export default function ConfirmDialog({ open, onClose, onConfirm, title, message
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in-95 duration-200">
         <div className="p-6 text-center">
           <div className={`w-12 h-12 rounded-full ${v.icon} flex items-center justify-center mx-auto mb-4`}>

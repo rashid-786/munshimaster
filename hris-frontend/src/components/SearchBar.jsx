@@ -64,7 +64,7 @@ export default function SearchBar({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]">
-      <div className="fixed inset-0 bg-black/30" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/30" />
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-200 overflow-hidden animate-scale-in origin-top">
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
           <svg className="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

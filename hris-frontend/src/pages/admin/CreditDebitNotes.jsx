@@ -191,7 +191,7 @@ const CreditDebitNotes = () => {
       {error && <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 bg-black/30 overflow-auto" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 bg-black/30 overflow-auto">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">New {tab === 'credit' ? 'Credit' : 'Debit'} Note</h3>
@@ -279,7 +279,6 @@ const CreditDebitNotes = () => {
 
       {detail && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
-             onClick={() => setDetail(null)}
         >
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 animate-scale-in"
                onClick={e => e.stopPropagation()}
