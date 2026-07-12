@@ -194,3 +194,9 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Leaves timezone fix**: DB session timezone `Asia/Kuwait` caused `start_date::date` to shift `2026-07-11T21:00:00Z` → Jul 12, breaking `<=` comparisons. Replaced all 3 occurrences in `staffReports.controller.js` with `(start_date AT TIME ZONE 'UTC')::date`. Also fixed `LEAST`/`GREATEST` in `getSummary` the same way.
 - **Current Month end date**: Changed from `end:n` (today) to `end:new Date(n.getFullYear(), n.getMonth()+1, 0)` (last day of month) in StaffReports.jsx presets.
 - **`toISOString()` timezone shift**: `fmt()` and `today` used `toISOString().split('T')[0]`, which shifts Kuwait midnight → previous-day UTC. Fixed `fmt()` and `today` in StaffReports.jsx, LeaveApprovals.jsx, and PayrollConsole.jsx to use local `getFullYear()`/`getMonth()`/`getDate()`.
+
+## Completed (Jul 12)
+- **Staff Reports search → SearchableSelect**: Replaced plain text search input with `SearchableSelect` employee dropdown autocomplete. Derived `search` string from `selectedEmployeeId` for backward-compatible API calls. Employees loaded unconditionally on mount.
+- **Leave Approvals search → SearchableSelect**: Same conversion. Employees now loaded for all users (not just admin). Added "Clear" link to reset employee filter.
+- **Advance Payments search → SearchableSelect**: Same conversion with import + state + JSX changes. Added "Clear" link to reset employee filter.
+- **Staff Reports filter bar consolidation**: Date controls, employee search, status dropdowns, and PDF/Excel export buttons all in a single `flex flex-wrap` row. Custom date fields appear inline. Export buttons are icon-only with `shrink-0 ml-auto`.

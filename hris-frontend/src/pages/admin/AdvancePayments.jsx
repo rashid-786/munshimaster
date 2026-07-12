@@ -4,6 +4,7 @@ import { formatINR } from '../../utils/currency';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import Modal from '../../components/Modal';
+import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const AdvancePayments = () => {
@@ -13,7 +14,12 @@ const AdvancePayments = () => {
   const [loading, setLoading] = useState(true);
   const [showGrant, setShowGrant] = useState(false);
   const [form, setForm] = useState({ employeeId: '', amount: '', reason: '' });
-  const [search, setSearch] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const search = useMemo(() => {
+    if (!selectedEmployeeId) return '';
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    return emp ? `${emp.first_name} ${emp.last_name}` : '';
+  }, [selectedEmployeeId, employees]);
   const [message, setMessage] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
@@ -189,15 +195,18 @@ const AdvancePayments = () => {
         </form>
       )}
 
-      <div className="relative max-w-xs">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-        <input
-          type="text"
-          placeholder="Search by staff name..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input-field pl-9 text-sm mb-4"
-        />
+      <div className="max-w-xs mb-4 flex items-center gap-2">
+        <div className="flex-1">
+          <SearchableSelect
+            options={employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` }))}
+            value={selectedEmployeeId}
+            onChange={(val) => setSelectedEmployeeId(val)}
+            placeholder="Search employee..."
+          />
+        </div>
+        {selectedEmployeeId && (
+          <button onClick={() => setSelectedEmployeeId('')} className="text-xs text-indigo-600 hover:text-indigo-800 shrink-0">Clear</button>
+        )}
       </div>
       <ResponsiveTable
         columns={columns}

@@ -20,7 +20,12 @@ const LeaveApprovals = () => {
   const [leaves, setLeaves] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [message, setMessage] = useState('');
-  const [search, setSearch] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const search = useMemo(() => {
+    if (!selectedEmployeeId) return '';
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    return emp ? `${emp.first_name} ${emp.last_name}` : '';
+  }, [selectedEmployeeId, employees]);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
@@ -45,10 +50,8 @@ const LeaveApprovals = () => {
       try {
         const leaves = await hrService.getLeaves();
         setLeaves(leaves);
-        if (isAdmin) {
-          const emps = await hrService.getEmployees();
-          setEmployees(emps);
-        }
+        const emps = await hrService.getEmployees();
+        setEmployees(emps);
       } catch {} finally {
         setLoading(false);
       }
@@ -221,16 +224,17 @@ const LeaveApprovals = () => {
         emptyMessage="No leave applications"
         header={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[140px] max-w-[200px]">
-              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              <input
-                type="text"
-                placeholder="Search staff..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="input-field pl-8 text-sm"
+            <div className="min-w-[160px] max-w-[200px]">
+              <SearchableSelect
+                options={employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` }))}
+                value={selectedEmployeeId}
+                onChange={(val) => setSelectedEmployeeId(val)}
+                placeholder="Search employee..."
               />
             </div>
+            {selectedEmployeeId && (
+              <button onClick={() => setSelectedEmployeeId('')} className="text-xs text-indigo-600 hover:text-indigo-800 shrink-0">Clear</button>
+            )}
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field max-w-[120px] text-sm">
               <option value="">All Status</option>
               <option value="pending">Pending</option>
