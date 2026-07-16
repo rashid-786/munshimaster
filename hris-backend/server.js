@@ -110,16 +110,21 @@ const COUNTRY_MAP = {
 };
 app.get('/api/v1/public/country', async (req, res) => {
   try {
-    const [rows] = await db.execute('SELECT default_country_code FROM system_settings WHERE id = 1');
-    const systemCode = rows.length > 0 ? rows[0].default_country_code : '+965';
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
-    let country = 'KW';
-    for (const [c, info] of Object.entries(COUNTRY_MAP)) {
-      if (info.code === systemCode) { country = c; break; }
+    const [rows] = await db.execute('SELECT default_country_code, global_config FROM system_settings WHERE id = 1');
+    if (rows.length > 0) {
+      const gc = typeof rows[0].global_config === 'string' ? JSON.parse(rows[0].global_config) : (rows[0].global_config || {});
+      const defaultCountry = gc.defaultCountry;
+      if (defaultCountry && COUNTRY_MAP[defaultCountry]) {
+        return res.json({ country: defaultCountry, countryCode: COUNTRY_MAP[defaultCountry].code });
+      }
+      const systemCode = rows[0].default_country_code || '+965';
+      for (const [c, info] of Object.entries(COUNTRY_MAP)) {
+        if (info.code === systemCode) { return res.json({ country: c, countryCode: info.code }); }
+      }
     }
-    res.json({ country, countryCode: COUNTRY_MAP[country]?.code || '+965' });
+    res.json({ country: 'IN', countryCode: '+91' });
   } catch {
-    res.json({ country: 'KW', countryCode: '+965' });
+    res.json({ country: 'IN', countryCode: '+91' });
   }
 });
 

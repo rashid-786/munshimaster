@@ -11,9 +11,9 @@ exports.list = async (req, res) => {
   const params = [tenantId];
 
   if (search) {
-    where += ' AND (s.name LIKE ? OR s.contact_person LIKE ? OR s.email LIKE ? OR s.phone LIKE ?)';
+    where += ' AND (s.name LIKE ? OR s.contact_person LIKE ? OR s.email LIKE ? OR s.phone LIKE ? OR s.gstin LIKE ? OR s.pan LIKE ?)';
     const q = `%${search}%`;
-    params.push(q, q, q, q);
+    params.push(q, q, q, q, q, q);
   }
   if (status) {
     where += ' AND s.status = ?';
@@ -45,17 +45,21 @@ exports.get = async (req, res) => {
 
 exports.create = async (req, res) => {
   const tenantId = req.tenantId;
-  const { name, contact_person, email, phone, address, city, state, pincode, gstin, payment_terms, notes } = req.body;
+  const { name, contact_person, email, phone, address, city, state, pincode, gstin, pan, payment_terms, notes, opening_balance, opening_balance_type, credit_period, credit_limit, billing_address, shipping_address, billing_address_line2, billing_city, billing_state, billing_country, billing_postal_code, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_postal_code } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Supplier name is required.' });
 
   try {
     const id = uuidv4();
     await db.execute(
-      `INSERT INTO suppliers (id, tenant_id, name, contact_person, email, phone, address, city, state, pincode, gstin, payment_terms, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO suppliers (id, tenant_id, name, contact_person, email, phone, address, city, state, pincode, gstin, pan, payment_terms, notes, opening_balance, opening_balance_type, credit_period, credit_limit, billing_address, shipping_address, billing_address_line2, billing_city, billing_state, billing_country, billing_postal_code, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_postal_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, tenantId, name, contact_person || null, email || null, phone || null, address || null,
-       city || null, state || null, pincode || null, gstin || null, payment_terms || null, notes || null]
+       city || null, state || null, pincode || null, gstin || null, pan || null, payment_terms || null, notes || null,
+       Math.round(opening_balance || 0), opening_balance_type || 'payable', parseInt(credit_period || 0),
+       Math.round(credit_limit || 0), billing_address || null, shipping_address || null,
+       billing_address_line2 || null, billing_city || null, billing_state || null, billing_country || null, billing_postal_code || null,
+       shipping_address_line2 || null, shipping_city || null, shipping_state || null, shipping_country || null, shipping_postal_code || null]
     );
     res.status(201).json({ message: 'Supplier created.', id });
     log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'supplier.created', entityType: 'supplier', entityId: id, req });
@@ -68,22 +72,26 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   const tenantId = req.tenantId;
   const { id } = req.params;
-  const { name, contact_person, email, phone, address, city, state, pincode, gstin, payment_terms, status, notes } = req.body;
+  const { name, contact_person, email, phone, address, city, state, pincode, gstin, pan, payment_terms, status, notes, opening_balance, opening_balance_type, credit_period, credit_limit, billing_address, shipping_address, billing_address_line2, billing_city, billing_state, billing_country, billing_postal_code, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_postal_code } = req.body;
 
   try {
     const [existing] = await db.execute('SELECT * FROM suppliers WHERE id = ? AND tenant_id = ?', [id, tenantId]);
     if (existing.length === 0) return res.status(404).json({ error: 'Supplier not found.' });
 
     await db.execute(
-      `UPDATE suppliers SET name=?, contact_person=?, email=?, phone=?, address=?, city=?, state=?, pincode=?, gstin=?, payment_terms=?, status=?, notes=?
+      `UPDATE suppliers SET name=?, contact_person=?, email=?, phone=?, address=?, city=?, state=?, pincode=?, gstin=?, pan=?, payment_terms=?, status=?, notes=?, opening_balance=?, opening_balance_type=?, credit_period=?, credit_limit=?, billing_address=?, shipping_address=?, billing_address_line2=?, billing_city=?, billing_state=?, billing_country=?, billing_postal_code=?, shipping_address_line2=?, shipping_city=?, shipping_state=?, shipping_country=?, shipping_postal_code=?
        WHERE id=? AND tenant_id=?`,
       [name, contact_person || null, email || null, phone || null, address || null,
-       city || null, state || null, pincode || null, gstin || null, payment_terms || null,
-       status || 'active', notes || null, id, tenantId]
+       city || null, state || null, pincode || null, gstin || null, pan || null, payment_terms || null,
+       status || 'active', notes || null, Math.round(opening_balance || 0), opening_balance_type || 'payable',
+       parseInt(credit_period || 0), Math.round(credit_limit || 0), billing_address || null, shipping_address || null,
+       billing_address_line2 || null, billing_city || null, billing_state || null, billing_country || null, billing_postal_code || null,
+       shipping_address_line2 || null, shipping_city || null, shipping_state || null, shipping_country || null, shipping_postal_code || null,
+       id, tenantId]
     );
     res.json({ message: 'Supplier updated.' });
     const changes = {};
-    for (const key of ['name', 'contact_person', 'email', 'phone', 'address', 'city', 'state', 'pincode', 'gstin', 'payment_terms', 'status', 'notes']) {
+    for (const key of ['name', 'contact_person', 'email', 'phone', 'address', 'city', 'state', 'pincode', 'gstin', 'pan', 'payment_terms', 'status', 'notes', 'opening_balance', 'opening_balance_type', 'credit_period', 'credit_limit', 'billing_address', 'shipping_address', 'billing_address_line2', 'billing_city', 'billing_state', 'billing_country', 'billing_postal_code', 'shipping_address_line2', 'shipping_city', 'shipping_state', 'shipping_country', 'shipping_postal_code']) {
       if (String(existing[0][key] ?? '') !== String(req.body[key] ?? '')) {
         changes[key] = { from: existing[0][key], to: req.body[key] ?? null };
       }

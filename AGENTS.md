@@ -200,3 +200,16 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Leave Approvals search → SearchableSelect**: Same conversion. Employees now loaded for all users (not just admin). Added "Clear" link to reset employee filter.
 - **Advance Payments search → SearchableSelect**: Same conversion with import + state + JSX changes. Added "Clear" link to reset employee filter.
 - **Staff Reports filter bar consolidation**: Date controls, employee search, status dropdowns, and PDF/Excel export buttons all in a single `flex flex-wrap` row. Custom date fields appear inline. Export buttons are icon-only with `shrink-0 ml-auto`.
+
+## Completed (Jul 12)
+- **Supplier & Customer Management Revamp**: Both modules fully restructured with 3-tab modal forms:
+  - **Tab 1 — Business Information**: Party Name, Contact Number (PhoneField), GST Number, PAN Number, Email, Contact Person
+  - **Tab 2 — Credit Information**: Opening Balance (₹ amount + Receivable/Payable type), Credit Period (days), Credit Limit (₹)
+  - **Tab 3 — Address & Details**: Billing Address, Shipping Address, legacy Address/City/State/Pincode, Payment Terms, Status, Notes
+- **DB migration**: Added `pan`, `opening_balance` (BIGINT), `opening_balance_type`, `credit_period`, `credit_limit` (for suppliers), `billing_address`, `shipping_address` to both `suppliers` and `customers` tables
+- **Backend controllers**: Updated `create`/`update` in both `supplier.controller.js` and `customer.controller.js` to handle all new fields. Search now includes `gstin` and `pan` columns
+- **GST validation**: `/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/` with live inline error display
+- **PAN validation**: `/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/` with live inline error display
+- **Table columns**: Both tables now show GSTIN, Opening Balance (color-coded red/green), and Credit Limit columns
+- **Status filter**: Dropdown to filter by All/Active/Inactive in table header
+- **Search scope**: Extended to search by `gstin` and `pan` in addition to name/contact/email/phone
