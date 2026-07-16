@@ -1,0 +1,84 @@
+diff --git a/hris-backend/controllers/otp.controller.js b/hris-backend/controllers/otp.controller.js
+index c9fcb97..38c4296 100644
+--- a/hris-backend/controllers/otp.controller.js
++++ b/hris-backend/controllers/otp.controller.js
+@@ -97,7 +97,8 @@ exports.sendOtp = async (req, res) => {
+ 
+     await sendOtpSms(phone, otp);
+ 
+-    res.json({ message: 'OTP sent successfully.', retryAfter: 30 });
++    const isDev = process.env.NODE_ENV !== 'production';
++    res.json({ message: 'OTP sent successfully.', retryAfter: 30, ...(isDev && { otp }) });
+   } catch (error) {
+     console.error(error);
+     res.status(500).json({ error: 'Failed to send OTP.' });
+diff --git a/hris-frontend/src/pages/auth/Login.jsx b/hris-frontend/src/pages/auth/Login.jsx
+index b785fbd..71451b9 100644
+--- a/hris-frontend/src/pages/auth/Login.jsx
++++ b/hris-frontend/src/pages/auth/Login.jsx
+@@ -16,6 +16,7 @@ const Login = () => {
+   const [forgotPhone, setForgotPhone] = useState('');
+   const [forgotPhoneErr, setForgotPhoneErr] = useState('');
+   const [forgotOtp, setForgotOtp] = useState('');
++  const [forgotOtpFromServer, setForgotOtpFromServer] = useState('');
+   const [newPassword, setNewPassword] = useState('');
+   const [forgotStep, setForgotStep] = useState('phone'); // phone, otp, reset, done
+   const [forgotCountdown, setForgotCountdown] = useState(0);
+@@ -101,7 +102,8 @@ const Login = () => {
+     setLoading(true);
+     setError('');
+     try {
+-      await authService.sendOtp(forgotPhone, 'password_reset');
++      const res = await authService.sendOtp(forgotPhone, 'password_reset');
++      if (res.otp) setForgotOtpFromServer(res.otp);
+       setForgotStep('otp');
+       startCountdown();
+     } catch (err) {
+@@ -171,6 +173,12 @@ const Login = () => {
+                   <p className="text-sm text-gray-600">Enter the code sent to</p>
+                   <p className="text-sm font-semibold text-gray-900">{forgotPhone}</p>
+                 </div>
++                {forgotOtpFromServer && (
++                  <div className="text-center">
++                    <span className="inline-block px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm font-mono tracking-widest rounded">{forgotOtpFromServer}</span>
++                    <p className="text-xs text-yellow-600 mt-1">Dev mode — use this OTP</p>
++                  </div>
++                )}
+                 <div>
+                   <input type="text" maxLength={6} value={forgotOtp} onChange={e => setForgotOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                     className="input-field text-center text-lg tracking-widest" placeholder="000000" autoFocus />
+diff --git a/hris-frontend/src/pages/auth/Register.jsx b/hris-frontend/src/pages/auth/Register.jsx
+index 361a2bb..c7e0bc6 100644
+--- a/hris-frontend/src/pages/auth/Register.jsx
++++ b/hris-frontend/src/pages/auth/Register.jsx
+@@ -17,6 +17,7 @@ const Register = () => {
+   const [error, setError] = useState('');
+   const [loading, setLoading] = useState(false);
+   const [countdown, setCountdown] = useState(0);
++  const [otpFromServer, setOtpFromServer] = useState('');
+   const otpRefs = useRef([]);
+ 
+   const startCountdown = () => {
+@@ -37,7 +38,8 @@ const Register = () => {
+     setLoading(true);
+     setError('');
+     try {
+-      await authService.sendOtp(phone, 'registration');
++      const res = await authService.sendOtp(phone, 'registration');
++      if (res.otp) setOtpFromServer(res.otp);
+       setStep(STEPS.OTP);
+       startCountdown();
+       otpRefs.current[0]?.focus();
+@@ -153,6 +155,12 @@ const Register = () => {
+                 <p className="text-sm text-gray-600 mb-1">Enter the code sent to</p>
+                 <p className="text-sm font-semibold text-gray-900">{phone}</p>
+               </div>
++              {otpFromServer && (
++                <div className="text-center">
++                  <span className="inline-block px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm font-mono tracking-widest rounded">{otpFromServer}</span>
++                  <p className="text-xs text-yellow-600 mt-1">Dev mode — use this OTP</p>
++                </div>
++              )}
+               <div className="flex justify-center gap-2">
+                 {otpInput.map((digit, i) => (
+                   <input

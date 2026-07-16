@@ -97,7 +97,8 @@ exports.sendOtp = async (req, res) => {
 
     await sendOtpSms(phone, otp);
 
-    res.json({ message: 'OTP sent successfully.', retryAfter: 30 });
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.json({ message: 'OTP sent successfully.', retryAfter: 30, ...(isDev && { otp }) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to send OTP.' });

@@ -16,6 +16,7 @@ const Login = () => {
   const [forgotPhone, setForgotPhone] = useState('');
   const [forgotPhoneErr, setForgotPhoneErr] = useState('');
   const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotOtpFromServer, setForgotOtpFromServer] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [forgotStep, setForgotStep] = useState('phone'); // phone, otp, reset, done
   const [forgotCountdown, setForgotCountdown] = useState(0);
@@ -101,7 +102,8 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      await authService.sendOtp(forgotPhone, 'password_reset');
+      const res = await authService.sendOtp(forgotPhone, 'password_reset');
+      if (res.otp) setForgotOtpFromServer(res.otp);
       setForgotStep('otp');
       startCountdown();
     } catch (err) {
@@ -171,6 +173,12 @@ const Login = () => {
                   <p className="text-sm text-gray-600">Enter the code sent to</p>
                   <p className="text-sm font-semibold text-gray-900">{forgotPhone}</p>
                 </div>
+                {forgotOtpFromServer && (
+                  <div className="text-center">
+                    <span className="inline-block px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm font-mono tracking-widest rounded">{forgotOtpFromServer}</span>
+                    <p className="text-xs text-yellow-600 mt-1">Dev mode — use this OTP</p>
+                  </div>
+                )}
                 <div>
                   <input type="text" maxLength={6} value={forgotOtp} onChange={e => setForgotOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     className="input-field text-center text-lg tracking-widest" placeholder="000000" autoFocus />

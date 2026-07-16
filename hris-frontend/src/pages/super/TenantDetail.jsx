@@ -443,7 +443,7 @@ export default function TenantDetail() {
 
   async function handleChangePlan({ planId, reason }) {
     try {
-      await superService.changeTenantPlan(id, { planId, reason });
+      await superService.changeTenantPlan(id, { plan: planId, reason });
       setChangePlanOpen(false);
       fetchTenant();
     } catch {}

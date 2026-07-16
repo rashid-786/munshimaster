@@ -17,6 +17,7 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [otpFromServer, setOtpFromServer] = useState('');
   const otpRefs = useRef([]);
 
   const startCountdown = () => {
@@ -37,7 +38,8 @@ const Register = () => {
     setLoading(true);
     setError('');
     try {
-      await authService.sendOtp(phone, 'registration');
+      const res = await authService.sendOtp(phone, 'registration');
+      if (res.otp) setOtpFromServer(res.otp);
       setStep(STEPS.OTP);
       startCountdown();
       otpRefs.current[0]?.focus();
@@ -153,6 +155,12 @@ const Register = () => {
                 <p className="text-sm text-gray-600 mb-1">Enter the code sent to</p>
                 <p className="text-sm font-semibold text-gray-900">{phone}</p>
               </div>
+              {otpFromServer && (
+                <div className="text-center">
+                  <span className="inline-block px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm font-mono tracking-widest rounded">{otpFromServer}</span>
+                  <p className="text-xs text-yellow-600 mt-1">Dev mode — use this OTP</p>
+                </div>
+              )}
               <div className="flex justify-center gap-2">
                 {otpInput.map((digit, i) => (
                   <input
