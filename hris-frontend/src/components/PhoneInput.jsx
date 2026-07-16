@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import PhoneInput from 'react-phone-number-input';
 import { isValidPhoneNumber } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
+import { useGlobalConfig } from '../context/GlobalConfigContext';
 
 const COUNTRY_INFO = {
   KW: { national: 8, cc: '+965' }, SA: { national: 9, cc: '+966' }, AE: { national: 9, cc: '+971' },
@@ -25,13 +26,16 @@ const CUSTOM_PHONE_INPUT = React.forwardRef(({ ...rest }, ref) => (
   <input ref={ref} {...rest} className="input-field pl-14 text-base" />
 ));
 
-export default function PhoneField({ value, onChange, error, defaultCountry, placeholder = '+xxx xxxxxxxx', autoFocus, id, required }) {
+export default function PhoneField({ value, onChange, error, defaultCountry: defaultCountryProp, placeholder = '+xxx xxxxxxxx', autoFocus, id, required }) {
+  const { globalConfig } = useGlobalConfig();
+  const defaultCountry = defaultCountryProp || globalConfig?.defaultCountry || detectBrowserCountry() || 'IN';
   const [country, setCountry] = useState(defaultCountry);
   const info = COUNTRY_INFO[country];
   const maxLength = info ? info.cc.length + info.national + 5 : DEFAULT_MAX;
   return (
     <div>
       <PhoneInput
+        key={defaultCountry}
         international
         countrySelectProps={{ className: '!absolute !left-0 !top-0 !h-full !w-auto !z-10 !opacity-0 !cursor-pointer' }}
         defaultCountry={defaultCountry}
@@ -74,6 +78,8 @@ const STORAGE_KEY = 'preferred_country';
 export function getInitialCountry(tenantCountry, systemCountryCode) {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) return stored;
+  const globalConfig = (() => { try { return JSON.parse(localStorage.getItem('global_config')); } catch { return null; } })();
+  if (globalConfig?.defaultCountry) return globalConfig.defaultCountry;
   if (tenantCountry) return tenantCountry;
   if (systemCountryCode) {
     const ccMap = { '+965': 'KW', '+966': 'SA', '+971': 'AE', '+20': 'EG', '+974': 'QA', '+973': 'BH', '+968': 'OM', '+1': 'US', '+44': 'GB', '+91': 'IN', '+92': 'PK', '+880': 'BD' };
@@ -81,7 +87,7 @@ export function getInitialCountry(tenantCountry, systemCountryCode) {
       if (systemCountryCode.startsWith(code)) return country;
     }
   }
-  return detectBrowserCountry() || 'KW';
+  return detectBrowserCountry() || 'IN';
 }
 
 export { isValidPhoneNumber };

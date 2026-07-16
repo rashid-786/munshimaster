@@ -15,6 +15,10 @@ export function GlobalConfigProvider({ children }) {
     api.get('/public/global-config')
       .then(({ data }) => {
         const config = data.globalConfig || {};
+        // Ensure defaultCountry is always present
+        if (!config.defaultCountry) {
+          config.defaultCountry = 'IN';
+        }
         setGlobalConfig(config);
         localStorage.setItem('global_config', JSON.stringify(config));
       })

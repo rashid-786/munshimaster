@@ -1,15 +1,31 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 
+const COUNTRY_OPTIONS = [
+  { value: 'IN', label: 'India (+91)' },
+  { value: 'KW', label: 'Kuwait (+965)' },
+  { value: 'SA', label: 'Saudi Arabia (+966)' },
+  { value: 'AE', label: 'UAE (+971)' },
+  { value: 'QA', label: 'Qatar (+974)' },
+  { value: 'BH', label: 'Bahrain (+973)' },
+  { value: 'OM', label: 'Oman (+968)' },
+  { value: 'PK', label: 'Pakistan (+92)' },
+  { value: 'BD', label: 'Bangladesh (+880)' },
+  { value: 'EG', label: 'Egypt (+20)' },
+  { value: 'US', label: 'United States (+1)' },
+  { value: 'GB', label: 'United Kingdom (+44)' },
+];
+
 const DEFAULT_CONFIG = {
   hidePayments: false,
   hideSubscription: false,
   hideUsage: false,
   hideReferEarn: false,
   hideSubscriptionLabels: false,
+  defaultCountry: 'IN',
 };
 
-const FIELDS = [
+const TOGGLE_FIELDS = [
   { key: 'hidePayments', label: 'Hide Payments', desc: 'Removes Payments from the sidebar navigation.' },
   { key: 'hideSubscription', label: 'Hide Subscription', desc: 'Removes Subscription from the sidebar navigation.' },
   { key: 'hideUsage', label: 'Hide Usage', desc: 'Removes Usage from the sidebar navigation.' },
@@ -31,6 +47,11 @@ export default function GlobalConfig() {
         const merged = { ...DEFAULT_CONFIG, ...gc };
         setConfig(merged);
         setInitial(merged);
+        // Auto-save if backend is missing defaultCountry
+        if (!gc.defaultCountry) {
+          localStorage.setItem('global_config', JSON.stringify(merged));
+          api.put('/super/settings', { global_config: merged }).catch(() => {});
+        }
       })
       .catch(() => setMessage({ type: 'error', text: 'Failed to load global config.' }))
       .finally(() => setLoading(false));
@@ -78,8 +99,26 @@ export default function GlobalConfig() {
         </div>
       )}
 
+      {/* Default Country */}
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Default Country</p>
+            <p className="text-xs text-gray-500 mt-0.5">Sets the default country for phone number fields and state/province dropdowns across all forms.</p>
+          </div>
+          <select value={config.defaultCountry}
+            onChange={e => setConfig(prev => ({ ...prev, defaultCountry: e.target.value }))}
+            className="input-field max-w-[200px] text-sm">
+            {COUNTRY_OPTIONS.map(c => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Toggle fields */}
       <div className="card divide-y divide-gray-100">
-        {FIELDS.map(field => (
+        {TOGGLE_FIELDS.map(field => (
           <div key={field.key} className="p-5 flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-gray-900">{field.label}</p>
