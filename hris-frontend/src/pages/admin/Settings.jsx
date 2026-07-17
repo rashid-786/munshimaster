@@ -4,6 +4,7 @@ import { hrService } from '../../services/hr.service';
 import { applyTheme } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import UpgradeModal from '../../components/UpgradeModal';
+import InvoiceTemplates from './InvoiceTemplates';
 import { getRank } from '../../config/subscriptionPlans';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -24,6 +25,7 @@ const ALL_TABS = [
   { key: 'sidebar',    label: 'Sidebar' },
   { key: 'einvoice',   label: 'E-Invoicing' },
   { key: 'whatsapp',   label: 'WhatsApp' },
+  { key: 'invoice_templates', label: 'Invoice Templates' },
   { key: 'password',   label: 'Password' },
   { key: 'staff',      label: 'My Staff' },
 ];
@@ -45,7 +47,6 @@ const Settings = () => {
   const [email, setEmail] = useState(user?.email || '');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [weekendDays, setWeekendDays] = useState([0]);
-  const [taxRate, setTaxRate] = useState(18);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [hiddenItems, setHiddenItems] = useState({});
@@ -87,7 +88,6 @@ const Settings = () => {
       setCompanyName(res.companyName || '');
       if (res.settings?.primaryColor) setPrimaryColor(res.settings.primaryColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
-      if (res.settings?.taxRate) setTaxRate(res.settings.taxRate);
       if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
@@ -137,7 +137,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, taxRate, workHoursInDay, hourBasedAttendance, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, weekendDays, workHoursInDay, hourBasedAttendance, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -245,12 +245,6 @@ const Settings = () => {
           </div>
           {message && <div className="mx-6 mt-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{message}</div>}
           <form onSubmit={handleSave} className="p-6 space-y-6">
-            {planRank >= 2 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (GST %)</label>
-                <input type="number" min="0" max="100" step="0.5" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
-              </div>
-            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency Symbol</label>
               <input type="text" value={currencySymbol} onChange={e => setCurrencySymbol(e.target.value)} className="input-field max-w-[100px]" placeholder="₹" />
@@ -473,6 +467,10 @@ const Settings = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {activeTab === 'invoice_templates' && (
+        <InvoiceTemplates />
       )}
 
       {activeTab === 'password' && (

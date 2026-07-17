@@ -395,7 +395,7 @@ const Reports = () => {
             ]}
             data={Object.entries(data.buckets || {}).flatMap(([bucket, items]) => items.map(r => ({ ...r, bucket })))}
             keyField="id"
-            searchKeys={['invoice_number', 'customer_name', 'order_number', 'supplier_name']}
+            searchKeys={['invoice_number', 'customer_name', 'order_number']}
             loading={loading}
             emptyMessage="No outstanding items"
           />

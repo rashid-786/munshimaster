@@ -371,6 +371,23 @@ export const hrService = {
     const response = await api.get('/core/stock/summary');
     return response.data;
   },
+  // Party-specific pricing
+  getProductPartyPrices: async (productId) => {
+    const response = await api.get(`/core/products/${productId}/party-prices`);
+    return response.data;
+  },
+  createProductPartyPrice: async (productId, data) => {
+    const response = await api.post(`/core/products/${productId}/party-prices`, data);
+    return response.data;
+  },
+  updateProductPartyPrice: async (id, data) => {
+    const response = await api.put(`/core/products/party-prices/${id}`, data);
+    return response.data;
+  },
+  deleteProductPartyPrice: async (id) => {
+    const response = await api.delete(`/core/products/party-prices/${id}`);
+    return response.data;
+  },
 
   // Attachments
   uploadFiles: async (entity_type, entity_id, files, onProgress) => {
@@ -385,6 +402,12 @@ export const hrService = {
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     });
+    return response.data;
+  },
+  uploadFile: async (file) => {
+    const formData = new FormData();
+    formData.append('files', file);
+    const response = await api.post('/core/uploads', formData);
     return response.data;
   },
   getAttachments: async (entity_type, entity_id) => {
@@ -474,6 +497,74 @@ export const hrService = {
     link.href = window.URL.createObjectURL(blob);
     link.download = `${type}_report.xlsx`;
     link.click();
+  },
+
+  // Invoice Templates
+  getInvoiceTemplates: async () => {
+    const response = await api.get('/core/invoice-templates');
+    return response.data;
+  },
+  getInvoiceTemplateSettings: async () => {
+    const response = await api.get('/core/invoice-templates/default');
+    return response.data;
+  },
+  updateInvoiceTemplateSettings: async (payload) => {
+    const response = await api.put('/core/invoice-templates/settings', payload);
+    return response.data;
+  },
+  uploadInvoiceLogo: async (formData) => {
+    const response = await api.post('/core/invoice-templates/logo', formData);
+    return response.data;
+  },
+
+  // Phase 4: Multi-template engine
+  getDocumentTypes: async () => {
+    const response = await api.get('/core/invoice-templates/document-types');
+    return response.data;
+  },
+  getMergeTags: async () => {
+    const response = await api.get('/core/invoice-templates/merge-tags');
+    return response.data;
+  },
+  listTenantTemplates: async () => {
+    const response = await api.get('/core/invoice-templates/tenant');
+    return response.data;
+  },
+  getTenantTemplate: async (id) => {
+    const response = await api.get(`/core/invoice-templates/tenant/${id}`);
+    return response.data;
+  },
+  createTenantTemplate: async (payload) => {
+    const response = await api.post('/core/invoice-templates/tenant', payload);
+    return response.data;
+  },
+  updateTenantTemplate: async (id, payload) => {
+    const response = await api.put(`/core/invoice-templates/tenant/${id}`, payload);
+    return response.data;
+  },
+  deleteTenantTemplate: async (id) => {
+    const response = await api.delete(`/core/invoice-templates/tenant/${id}`);
+    return response.data;
+  },
+  cloneTenantTemplate: async (id) => {
+    const response = await api.post(`/core/invoice-templates/tenant/${id}/clone`);
+    return response.data;
+  },
+  setDefaultTenantTemplate: async (id) => {
+    const response = await api.put(`/core/invoice-templates/tenant/${id}/default`);
+    return response.data;
+  },
+  listMarketplaceTemplates: async () => {
+    const response = await api.get('/core/invoice-templates/marketplace');
+    return response.data;
+  },
+  activateMarketplaceTemplate: async (id) => {
+    const response = await api.post(`/core/invoice-templates/marketplace/${id}/activate`);
+    return response.data;
+  },
+  resolveTemplateForDocument: async (documentType) => {
+    const response = await api.get(`/core/invoice-templates/resolve/${documentType}`);
+    return response.data;
   },
 
   // Staff Reports
@@ -894,6 +985,51 @@ export const hrService = {
   },
   getConsolidatedPL: async (from, to) => {
     const response = await api.get('/core/reports/consolidated/pl', { params: { from, to } });
+    return response.data;
+  },
+  getPartyTransactions: async (type, id, params = {}) => {
+    const response = await api.get(`/core/parties/${type}/${id}/transactions`, { params });
+    return response.data;
+  },
+  // ---- Transactions Module ----
+  listTransactions: async (params = {}) => {
+    const response = await api.get('/core/transactions', { params });
+    return response.data;
+  },
+  getTransaction: async (id) => {
+    const response = await api.get(`/core/transactions/${id}`);
+    return response.data;
+  },
+  createTransaction: async (data) => {
+    const response = await api.post('/core/transactions', data);
+    return response.data;
+  },
+  updateTransaction: async (id, data) => {
+    const response = await api.put(`/core/transactions/${id}`, data);
+    return response.data;
+  },
+  updateTransactionStatus: async (id, status, reason) => {
+    const response = await api.patch(`/core/transactions/${id}/status`, { status, reason });
+    return response.data;
+  },
+  convertTransaction: async (id, target_type) => {
+    const response = await api.post(`/core/transactions/${id}/convert`, { target_type });
+    return response.data;
+  },
+  cancelTransaction: async (id, reason) => {
+    const response = await api.post(`/core/transactions/${id}/cancel`, { reason });
+    return response.data;
+  },
+  getTransactionSummary: async (params = {}) => {
+    const response = await api.get('/core/transactions/summary', { params });
+    return response.data;
+  },
+  getOutstandingTransactions: async (params = {}) => {
+    const response = await api.get('/core/transactions/outstanding', { params });
+    return response.data;
+  },
+  deleteTransaction: async (id) => {
+    const response = await api.delete(`/core/transactions/${id}`);
     return response.data;
   },
 };

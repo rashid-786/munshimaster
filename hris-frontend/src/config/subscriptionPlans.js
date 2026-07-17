@@ -502,8 +502,10 @@ export const MENU_SECTIONS = [
     items: [
       { feature: 'suppliers',           requiredPlan: 'BUSINESS', label: 'Suppliers',         route: '/admin/suppliers' },
       { feature: 'customers',           requiredPlan: 'BUSINESS', label: 'Customers',         route: '/admin/customers' },
-      { feature: 'purchase_orders',     requiredPlan: 'BUSINESS', label: 'Purchase Orders',   route: '/admin/purchase-orders' },
-      { feature: 'invoices',            requiredPlan: 'BUSINESS', label: 'Invoices',          route: '/admin/invoices' },
+      { feature: 'invoices',            requiredPlan: 'BUSINESS', label: 'Transactions', type: 'subheader', items: [
+        { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Sales', route: '/admin/sales-transactions' },
+        { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Purchase', route: '/admin/purchase-transactions' },
+      ] },
       { feature: 'recurring_invoices',  requiredPlan: 'BUSINESS', label: 'Recurring',         route: '/admin/recurring-invoices' },
       { feature: 'bank_import',         requiredPlan: 'BUSINESS', label: 'Bank Import',       route: '/admin/bank' },
       { feature: 'credit_debit_notes',  requiredPlan: 'BUSINESS', label: 'Credit/Debit Notes',route: '/admin/notes' },
@@ -563,6 +565,7 @@ export const MENU_SECTIONS = [
       { feature: null,                requiredPlan: 'FREE',          label: 'Business',      route: '/admin/settings/business' },
       { feature: 'e_invoicing',       requiredPlan: 'BUSINESS',      label: 'E-Invoicing',   route: '/admin/settings/einvoice' },
       { feature: 'whatsapp',          requiredPlan: 'BUSINESS',      label: 'WhatsApp',      route: '/admin/settings/whatsapp' },
+      { feature: null,                requiredPlan: 'FREE',          label: 'Invoice Templates', route: '/admin/settings/invoice_templates' },
       { feature: null,                requiredPlan: 'FREE',          label: 'Sidebar',       route: '/admin/settings/sidebar' },
       { feature: null,                requiredPlan: 'FREE',          label: 'Password',      route: '/admin/settings/password' },
       { feature: null,                requiredPlan: 'FREE',          label: 'My Staff',      route: '/admin/settings/staff' },

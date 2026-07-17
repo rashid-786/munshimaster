@@ -7,6 +7,8 @@ const sectionVisibilityController = require('../controllers/sectionVisibility.co
 const campaignController = require('../controllers/campaign.controller');
 const referralController = require('../controllers/referral.controller');
 const analyticsController = require('../controllers/analytics.controller');
+const gstTaxController = require('../controllers/gstTax.controller');
+const unitMasterController = require('../controllers/unitMaster.controller');
 const { authenticateSuperAdmin, auditSuperAdminAction } = require('../middleware/superAdmin');
 
 // ─── Auth (no middleware) ──────────────────────────────────────────
@@ -170,6 +172,24 @@ router.put('/referrals/:referralId', authenticateSuperAdmin,
 router.get('/settings', authenticateSuperAdmin, superController.getSystemSettings);
 router.put('/settings', authenticateSuperAdmin,
   auditSuperAdminAction('system.settings_updated', 'system'), superController.updateSystemSettings);
+
+// ─── Unit Master ─────────────────────────────────────────────────
+router.get('/units', authenticateSuperAdmin, unitMasterController.list);
+router.post('/units', authenticateSuperAdmin,
+  auditSuperAdminAction('unit.created', 'unit_master'), unitMasterController.create);
+router.put('/units/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('unit.updated', 'unit_master'), unitMasterController.update);
+router.delete('/units/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('unit.deleted', 'unit_master'), unitMasterController.delete);
+
+// ─── GST Tax Rates ────────────────────────────────────────────────
+router.get('/gst-tax', authenticateSuperAdmin, gstTaxController.list);
+router.post('/gst-tax', authenticateSuperAdmin,
+  auditSuperAdminAction('gst.created', 'gst_tax_rates'), gstTaxController.create);
+router.put('/gst-tax/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('gst.updated', 'gst_tax_rates'), gstTaxController.update);
+router.delete('/gst-tax/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('gst.deleted', 'gst_tax_rates'), gstTaxController.delete);
 
 // ─── Super Admin Action Log ──────────────────────────────────────
 router.get('/action-log', authenticateSuperAdmin, superController.getActionLog);

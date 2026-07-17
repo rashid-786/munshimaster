@@ -1,10 +1,47 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../utils/email');
 const { logEmail } = require('../utils/emailLogger');
 const { log } = require('../utils/audit');
 const stockCtrl = require('./stock.controller');
+
+async function resolveInvoiceSettings(tenantId, documentType = 'invoice') {
+  // Fetch legacy settings as base (provides logoUrl, companyName, gstNumber etc.)
+  const [tenant] = await db.query(
+    `SELECT invoice_settings FROM hris_saas.tenants WHERE id = $1`,
+    [tenantId]
+  );
+  const raw = tenant[0]?.invoice_settings;
+  const base = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+
+  // 1. Find template assigned to this document type
+  const [assigned] = await db.query(
+    `SELECT * FROM hris_saas.tenant_templates
+     WHERE tenant_id = $1 AND $2 = ANY(document_types) AND is_active = true
+     ORDER BY is_default DESC, created_at DESC LIMIT 1`,
+    [tenantId, documentType]
+  );
+  if (assigned.length > 0) {
+    const config = typeof assigned[0].config === 'string' ? JSON.parse(assigned[0].config) : (assigned[0].config || {});
+    return { ...base, ...config };
+  }
+
+  // 2. Fall back to default template
+  const [def] = await db.query(
+    `SELECT * FROM hris_saas.tenant_templates
+     WHERE tenant_id = $1 AND is_default = true AND is_active = true LIMIT 1`,
+    [tenantId]
+  );
+  if (def.length > 0) {
+    const config = typeof def[0].config === 'string' ? JSON.parse(def[0].config) : (def[0].config || {});
+    return { ...base, ...config };
+  }
+
+  // 3. Fall back to tenant invoice_settings only
+  return base;
+}
 
 // Compute per-item tax amounts from stored rates and total prices
 function computeTaxSplit(items) {
@@ -20,110 +57,414 @@ function computeTaxSplit(items) {
   return { totalCGST, totalSGST, totalIGST };
 }
 
-// Shared PDF generation for invoices
-function generateInvoicePDF(doc, inv, items, invTaxRate) {
+function generateInvoicePDF(doc, inv, items, invTaxRate, invoiceSettings) {
   const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
   const taxSplit = computeTaxSplit(items);
   const hasGst = inv.gst_type === 'intra' || inv.gst_type === 'inter';
+  const s = invoiceSettings || {};
+  const cl = s.customLabels || {};
+  const lbl = (key, fallback) => cl[key] || fallback;
+  const primaryColor = s.primaryColor || '#0F172A';
+  const secondaryColor = s.secondaryColor || '#16A34A';
+  const margin = s.pageMargin || 50;
+  const tableWidth = 500;
+  const logoWidth = s.logoSize || 80;
+  const baseFontSize = s.fontSize === 'large' ? 11 : (s.fontSize === 'medium' ? 10 : 9);
+  const titleFontSize = s.fontSize === 'large' ? 20 : (s.fontSize === 'medium' ? 18 : 16);
+  const headingFontSize = s.fontSize === 'large' ? 13 : (s.fontSize === 'medium' ? 12 : 11);
+  const fontFamily = s.fontFamily || 'Helvetica';
+  const fontBold = `${fontFamily}-Bold`;
+  const sectionSpacing = s.sectionSpacing || 12;
 
-  doc.fontSize(18).text(inv.company_name.toUpperCase(), { align: 'center' });
-  doc.fontSize(12).text('INVOICE', { align: 'center' }).moveDown(2);
+  const headerY = s.headerHeight ? 45 + Math.max(0, (s.headerHeight - 120) / 4) : 45;
+  const logoAlign = s.logoAlignment || 'left';
 
-  doc.fontSize(10).font('Helvetica-Bold');
-  doc.text(`Invoice #: `, { continued: true }).font('Helvetica').text(inv.invoice_number);
-  doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(inv.invoice_date));
-  if (inv.due_date) {
-    doc.font('Helvetica-Bold').text(`Due Date: `, { continued: true }).font('Helvetica').text(fmtDate(inv.due_date));
+  if (s.logoUrl) {
+    try {
+      const logoPath = s.logoUrl.startsWith('http')
+        ? s.logoUrl
+        : path.join(__dirname, '..', s.logoUrl.replace(/^\/api\/v1\/uploads\//, 'uploads/').replace(/^\//, ''));
+      let logoX;
+      if (logoAlign === 'right') {
+        logoX = margin + tableWidth - logoWidth;
+      } else if (logoAlign === 'center') {
+        logoX = margin + (tableWidth - logoWidth) / 2;
+      } else {
+        logoX = margin;
+      }
+      doc.image(logoPath, logoX, headerY, { width: logoWidth });
+    } catch (e) { /* logo failed to load */ }
   }
-  doc.moveDown(2);
 
-  doc.font('Helvetica-Bold').text('Customer:', { underline: true }).moveDown(0.5);
-  doc.font('Helvetica').text(inv.customer_name);
-  if (inv.customer_address) doc.text(inv.customer_address);
-  if (inv.customer_city) doc.text(`${inv.customer_city}${inv.customer_state ? ', ' + inv.customer_state : ''}`);
-  if (inv.customer_email) doc.text(`Email: ${inv.customer_email}`);
-  if (inv.customer_phone) doc.text(`Phone: ${inv.customer_phone}`);
-  if (inv.customer_gstin) doc.text(`GSTIN: ${inv.customer_gstin}`);
-  if (inv.place_of_supply) doc.text(`Place of Supply: ${inv.place_of_supply}`);
-  doc.moveDown(2);
+  const infoAlign = s.companyInfoPosition || 'left';
+  const textStartX = margin;
+  const textAvailWidth = tableWidth;
 
-  doc.font('Helvetica-Bold').text(`Status: ${inv.status.toUpperCase()}`).moveDown(1);
-  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
+  const companyText = s.companyName || inv.company_name || '';
+  doc.fontSize(titleFontSize).fillColor(primaryColor).font(fontBold);
+  doc.text(companyText, textStartX, headerY, { width: textAvailWidth, align: infoAlign === 'center' ? 'center' : infoAlign });
+
+  doc.fontSize(headingFontSize).fillColor('#374151').font(fontBold);
+  doc.text(lbl('invoice', 'INVOICE'), textStartX, doc.y + 2, { width: textAvailWidth, align: infoAlign === 'center' ? 'center' : infoAlign });
+
+  const showInvNo = s.showInvoiceNo !== false;
+  const showInvDate = s.showInvoiceDate !== false;
+  const showDueDate = s.showDueDate !== false;
+  const showPayTerms = s.showPaymentTerms !== false;
+  const showSalesPerson = s.showSalesPerson !== false;
+  const customerLayout = s.customerLayout || 'left';
+
+  function renderInvoiceInfo(yStart) {
+    let y = yStart;
+    doc.fontSize(baseFontSize).fillColor('#374151');
+    if (showInvNo) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('invoiceNumber', 'Invoice #')}: `, margin, y, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.invoice_number);
+      y = doc.y + 4;
+    }
+    if (showInvDate) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('invoiceDate', 'Date')}: `, margin, y, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(fmtDate(inv.invoice_date));
+      y = doc.y + 4;
+    }
+    if (showDueDate && inv.due_date) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('dueDate', 'Due Date')}: `, margin, y, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(fmtDate(inv.due_date));
+      y = doc.y + 4;
+    }
+    if (showPayTerms && inv.payment_terms) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('paymentTerms', 'Payment Terms')}: `, margin, y, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.payment_terms);
+      y = doc.y + 4;
+    }
+    if (showSalesPerson && inv.sales_person) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('salesPerson', 'Sales Person')}: `, margin, y, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.sales_person);
+      y = doc.y + 4;
+    }
+    return doc.y;
+  }
+
+  function renderCustomerBlock(yStart) {
+    let y = yStart;
+    doc.fontSize(baseFontSize).font(fontBold).fillColor(primaryColor);
+    doc.text(lbl('billTo', 'Bill To') + ':', margin, y);
+    y = doc.y + 2;
+    doc.font(fontFamily).fillColor('#374151').fontSize(baseFontSize);
+    if (inv.customer_name) { doc.text(inv.customer_name, margin, y); y = doc.y + 2; }
+    if (s.showCustomerAddress !== false) {
+      if (inv.customer_address) { doc.text(inv.customer_address, margin, y); y = doc.y + 2; }
+      if (inv.customer_city) {
+        doc.text(`${inv.customer_city}${inv.customer_state ? ', ' + inv.customer_state : ''}`, margin, y);
+        y = doc.y + 2;
+      }
+    }
+    if (inv.customer_email) { doc.text(`Email: ${inv.customer_email}`, margin, y); y = doc.y + 2; }
+    if (inv.customer_phone) { doc.text(`Phone: ${inv.customer_phone}`, margin, y); y = doc.y + 2; }
+    if (s.showCustomerGst !== false && inv.customer_gstin) { doc.text(`GSTIN: ${inv.customer_gstin}`, margin, y); y = doc.y + 2; }
+    if (inv.place_of_supply) { doc.text(`${lbl('placeOfSupply', 'Place of Supply')}: ${inv.place_of_supply}`, margin, y); y = doc.y + 2; }
+    return doc.y;
+  }
+
+  let afterInfo;
+  if (customerLayout === 'two_column') {
+    const leftEndY = renderInvoiceInfo(doc.y);
+    const rightX = margin + tableWidth / 2;
+    let cy = doc.y;
+    doc.fontSize(baseFontSize).font(fontBold).fillColor(primaryColor);
+    doc.text(lbl('billTo', 'Bill To') + ':', rightX, cy);
+    cy += 14;
+    doc.font(fontFamily).fillColor('#374151').fontSize(baseFontSize);
+    if (inv.customer_name) { doc.text(inv.customer_name, rightX, cy); cy += 12; }
+    if (s.showCustomerAddress !== false) {
+      if (inv.customer_address) { doc.text(inv.customer_address, rightX, cy); cy += 12; }
+      if (inv.customer_city) { doc.text(`${inv.customer_city}${inv.customer_state ? ', ' + inv.customer_state : ''}`, rightX, cy); cy += 12; }
+    }
+    if (inv.customer_email) { doc.text(`Email: ${inv.customer_email}`, rightX, cy); cy += 12; }
+    if (inv.customer_phone) { doc.text(`Phone: ${inv.customer_phone}`, rightX, cy); cy += 12; }
+    if (s.showCustomerGst !== false && inv.customer_gstin) { doc.text(`GSTIN: ${inv.customer_gstin}`, rightX, cy); cy += 12; }
+    if (inv.place_of_supply) { doc.text(`${lbl('placeOfSupply', 'Place of Supply')}: ${inv.place_of_supply}`, rightX, cy); cy += 12; }
+    afterInfo = Math.max(leftEndY, cy);
+  } else if (customerLayout === 'right') {
+    const rightX = margin + tableWidth / 2;
+    let ly = doc.y;
+    doc.fontSize(baseFontSize).font(fontBold).fillColor(primaryColor);
+    doc.text(lbl('billTo', 'Bill To') + ':', margin, ly);
+    ly += 14;
+    doc.font(fontFamily).fillColor('#374151').fontSize(baseFontSize);
+    if (inv.customer_name) { doc.text(inv.customer_name, margin, ly); ly += 12; }
+    if (s.showCustomerAddress !== false) {
+      if (inv.customer_address) { doc.text(inv.customer_address, margin, ly); ly += 12; }
+      if (inv.customer_city) { doc.text(`${inv.customer_city}${inv.customer_state ? ', ' + inv.customer_state : ''}`, margin, ly); ly += 12; }
+    }
+    if (inv.customer_email) { doc.text(`Email: ${inv.customer_email}`, margin, ly); ly += 12; }
+    if (inv.customer_phone) { doc.text(`Phone: ${inv.customer_phone}`, margin, ly); ly += 12; }
+    if (s.showCustomerGst !== false && inv.customer_gstin) { doc.text(`GSTIN: ${inv.customer_gstin}`, margin, ly); ly += 12; }
+    if (inv.place_of_supply) { doc.text(`${lbl('placeOfSupply', 'Place of Supply')}: ${inv.place_of_supply}`, margin, ly); ly += 12; }
+    let ry = doc.y;
+    doc.fontSize(baseFontSize).fillColor('#374151');
+    if (showInvNo) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('invoiceNumber', 'Invoice #')}: `, rightX, ry, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.invoice_number);
+      ry = doc.y + 4;
+    }
+    if (showInvDate) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('invoiceDate', 'Date')}: `, rightX, ry, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(fmtDate(inv.invoice_date));
+      ry = doc.y + 4;
+    }
+    if (showDueDate && inv.due_date) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('dueDate', 'Due Date')}: `, rightX, ry, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(fmtDate(inv.due_date));
+      ry = doc.y + 4;
+    }
+    if (showPayTerms && inv.payment_terms) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('paymentTerms', 'Payment Terms')}: `, rightX, ry, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.payment_terms);
+      ry = doc.y + 4;
+    }
+    if (showSalesPerson && inv.sales_person) {
+      doc.font(fontBold).fillColor(primaryColor);
+      doc.text(`${lbl('salesPerson', 'Sales Person')}: `, rightX, ry, { continued: true });
+      doc.font(fontFamily).fillColor('#374151').text(inv.sales_person);
+      ry = doc.y + 4;
+    }
+    afterInfo = Math.max(ly, ry);
+  } else {
+    renderCustomerBlock(doc.y);
+    doc.moveDown(0.5);
+    renderInvoiceInfo(doc.y);
+    afterInfo = doc.y;
+  }
+
+  doc.font(fontBold).fontSize(baseFontSize + 1).fillColor(secondaryColor);
+  doc.text(`${lbl('status', 'Status')}: ${inv.status.toUpperCase()}`, margin, afterInfo + 4);
+  doc.fillColor('#000');
+  doc.moveDown(1);
+
+  doc.moveTo(margin, doc.y).lineTo(margin + tableWidth, doc.y).strokeColor('#e5e7eb').stroke().moveDown(1);
+  doc.strokeColor('#000');
+
+  const colDefs = s.itemColumns && s.itemColumns.length ? s.itemColumns : [
+    { key: 'description', label: 'Description', visible: true },
+    { key: 'hsn', label: 'HSN/SAC', visible: true },
+    { key: 'quantity', label: 'Qty', visible: true },
+    { key: 'rate', label: 'Rate', visible: true },
+    { key: 'total', label: 'Amount', visible: true },
+  ];
+
+  const visibleCols = colDefs.filter(c => c.visible);
+  const colWidths = {
+    sku: 55, itemCode: 55, hsn: 60, description: 0, unit: 40,
+    quantity: 42, rate: 55, discount: 50, gst: 50, total: 60,
+  };
+  const colAligns = {
+    sku: 'center', itemCode: 'center', hsn: 'center', description: 'left', unit: 'center',
+    quantity: 'right', rate: 'right', discount: 'right', gst: 'right', total: 'right',
+  };
+
+  const otherTotal = visibleCols.reduce((sum, c) => sum + (c.key === 'description' ? 0 : (colWidths[c.key] || 55)), 0);
+  const descCol = visibleCols.find(c => c.key === 'description');
+  const hasFlex = !!descCol;
+  const descWidth = hasFlex ? Math.max(80, tableWidth - otherTotal - 25) : 0;
+
+  let xPos = margin;
+  const positions = [];
+  positions.push({ key: '#', x: xPos, width: 25, align: 'center' });
+  xPos += 25;
+  for (const col of visibleCols) {
+    const w = col.key === 'description' ? descWidth : (colWidths[col.key] || 55);
+    positions.push({ key: col.key, x: xPos, width: w, align: colAligns[col.key] || 'left' });
+    xPos += w;
+  }
 
   const tableTop = doc.y;
-  const hasHsn = items.some(i => i.hsn_code);
-  const colX = hasHsn ? [50, 160, 310, 350, 400, 460, 510] : [50, 180, 370, 420, 480];
-  doc.font('Helvetica-Bold').fontSize(8);
-  doc.text('#', colX[0], tableTop);
-  doc.text('Description', colX[1], tableTop, { width: hasHsn ? 150 : 190 });
-  let nCol = 2;
-  if (hasHsn) {
-    doc.text('HSN/SAC', colX[2], tableTop, { width: 40, align: 'center' });
-    nCol = 3;
+  let y = tableTop;
+  doc.rect(margin, y - 4, tableWidth, 16).fillColor(primaryColor).fill();
+  doc.fillColor('#fff').font(fontBold).fontSize(7);
+  for (const pos of positions) {
+    const colDef = colDefs.find(c => c.key === pos.key);
+    const colLabel = colDef ? (lbl(colDef.key, colDef.label)) : (pos.key === '#' ? '#' : pos.key);
+    doc.text(colLabel, pos.x, y, {
+      width: pos.width, align: pos.align === 'right' ? 'right' : (pos.align === 'center' ? 'center' : 'left'),
+    });
   }
-  doc.text('Qty', colX[nCol], tableTop, { width: 40, align: 'right' });
-  doc.text('Rate', colX[nCol + 1], tableTop, { width: 55, align: 'right' });
-  doc.text('Amount', colX[nCol + 2], tableTop, { width: 65, align: 'right' });
+  doc.fillColor('#374151').fontSize(7).font(fontFamily);
 
-  doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
-  let y = doc.y + 8;
-  doc.fontSize(8).font('Helvetica');
-
+  y += 18;
+  const rowH = 16;
   for (const [i, item] of items.entries()) {
-    doc.text(String(i + 1), colX[0], y);
-    doc.text(item.description, colX[1], y, { width: hasHsn ? 150 : 190 });
-    let c = 2;
-    if (hasHsn) { doc.text(item.hsn_code || '—', colX[2], y, { width: 40, align: 'center' }); c = 3; }
-    doc.text(item.quantity.toString(), colX[c], y, { width: 40, align: 'right' });
-    doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[c + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[c + 2], y, { width: 65, align: 'right' });
-    y += 18;
+    if (i % 2 === 0) doc.rect(margin, y - 2, tableWidth, rowH).fillColor('#f9fafb').fill();
+    doc.fillColor('#374151');
+    for (const pos of positions) {
+      if (pos.key === '#') {
+        doc.text(String(i + 1), pos.x, y, { width: pos.width, align: 'center' });
+      } else {
+        let val = '';
+        switch (pos.key) {
+          case 'sku': val = item.sku || ''; break;
+          case 'itemCode': val = item.item_code || ''; break;
+          case 'hsn': val = item.hsn_code || '—'; break;
+          case 'description': val = item.description || ''; break;
+          case 'unit': val = item.unit || ''; break;
+          case 'quantity': val = item.quantity != null ? item.quantity.toString() : ''; break;
+          case 'rate': val = `Rs.${(item.unit_price / 100).toFixed(2)}`; break;
+          case 'discount': val = item.discount ? `Rs.${(item.discount / 100).toFixed(2)}` : '—'; break;
+          case 'gst': val = item.cgst_rate ? `${parseFloat(item.cgst_rate) + parseFloat(item.sgst_rate || 0)}%` : '—'; break;
+          case 'total': val = `Rs.${(item.total_price / 100).toFixed(2)}`; break;
+        }
+        doc.text(val, pos.x, y, { width: pos.width, align: pos.align === 'right' ? 'right' : (pos.align === 'center' ? 'center' : 'left') });
+      }
+    }
+    y += rowH;
   }
 
-  doc.moveTo(50, y).lineTo(550, y).stroke();
+  doc.moveTo(margin, y).lineTo(margin + tableWidth, y).strokeColor('#d1d5db').stroke();
   y += 8;
 
-  doc.font('Helvetica-Bold').fontSize(9);
-  doc.text('Subtotal:', colX[nCol + 1], y, { width: 55, align: 'right' });
-  doc.text(`Rs.${(inv.subtotal / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-  y += 16;
+  const showDiscountTotal = s.showDiscountTotal !== false;
+  const showGstBreakdown = s.showGstBreakdown !== false;
+  const showRoundOff = s.showRoundOff !== false;
+  const showAmountInWords = s.showAmountInWords !== false;
 
-  if (hasGst && inv.gst_type === 'intra') {
-    doc.text(`CGST @ ${taxSplit.totalCGST > 0 ? (taxSplit.totalCGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalCGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+  const labelX = margin + tableWidth - 200;
+  const valueX = margin + tableWidth - 70;
+
+  doc.font(fontBold).fontSize(baseFontSize);
+  doc.fillColor('#374151');
+
+  doc.text(lbl('subtotal', 'Subtotal') + ':', labelX, y, { width: 130, align: 'right' });
+  doc.text(`Rs.${(inv.subtotal / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+  y += 14;
+
+  if (showDiscountTotal && inv.discount_total) {
+    doc.text(lbl('discountTotal', 'Discount') + ':', labelX, y, { width: 130, align: 'right' });
+    doc.text(`-Rs.${(inv.discount_total / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
     y += 14;
-    doc.text(`SGST @ ${taxSplit.totalSGST > 0 ? (taxSplit.totalSGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalSGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
-  } else if (hasGst && inv.gst_type === 'inter') {
-    doc.text(`IGST @ ${taxSplit.totalIGST > 0 ? (taxSplit.totalIGST / inv.subtotal * 100).toFixed(1) : invTaxRate}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalIGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
-  } else {
-    doc.text(`Tax (${invTaxRate}%):`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(inv.tax_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
   }
 
-  doc.text('Total:', colX[nCol + 1], y, { width: 55, align: 'right' });
-  doc.text(`Rs.${(inv.total_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-
-  if (inv.notes) {
-    y += 30;
-    doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
-    doc.font('Helvetica').fontSize(9).text(inv.notes, 50, doc.y + 4, { width: 500 });
+  if (showGstBreakdown) {
+    if (hasGst && inv.gst_type === 'intra') {
+      doc.text(`CGST @ ${taxSplit.totalCGST > 0 ? (taxSplit.totalCGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, labelX, y, { width: 130, align: 'right' });
+      doc.text(`Rs.${(taxSplit.totalCGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+      y += 12;
+      doc.text(`SGST @ ${taxSplit.totalSGST > 0 ? (taxSplit.totalSGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, labelX, y, { width: 130, align: 'right' });
+      doc.text(`Rs.${(taxSplit.totalSGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+      y += 14;
+    } else if (hasGst && inv.gst_type === 'inter') {
+      doc.text(`IGST @ ${taxSplit.totalIGST > 0 ? (taxSplit.totalIGST / inv.subtotal * 100).toFixed(1) : invTaxRate}%:`, labelX, y, { width: 130, align: 'right' });
+      doc.text(`Rs.${(taxSplit.totalIGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+      y += 14;
+    } else {
+      doc.text(`${lbl('tax', 'Tax')} (${invTaxRate}%):`, labelX, y, { width: 130, align: 'right' });
+      doc.text(`Rs.${(inv.tax_amount / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+      y += 14;
+    }
   }
 
-  // E-Invoice QR Code
+  if (showRoundOff) {
+    const total = (inv.total_amount || 0) / 100;
+    const rounded = Math.round(total);
+    const diff = (rounded - total).toFixed(2);
+    if (parseFloat(diff) !== 0) {
+      doc.text(lbl('roundOff', 'Round Off') + ':', labelX, y, { width: 130, align: 'right' });
+      doc.text(`${parseFloat(diff) > 0 ? '+' : ''}${diff}`, valueX, y, { width: 70, align: 'right' });
+      y += 14;
+    }
+  }
+
+  doc.rect(margin, y - 2, tableWidth, 22).fillColor(primaryColor).fill();
+  doc.fillColor('#fff').font(fontBold).fontSize(baseFontSize + 2);
+  doc.text(lbl('grandTotal', 'Grand Total') + ':', labelX, y + 2, { width: 130, align: 'right' });
+  doc.text(`Rs.${(inv.total_amount / 100).toFixed(2)}`, valueX, y + 2, { width: 70, align: 'right' });
+  y += 28;
+  doc.fillColor('#374151');
+
+  if (showAmountInWords) {
+    const totalAmt = (inv.total_amount / 100);
+    const words = numberToIndianWords(totalAmt);
+    if (words) {
+      doc.fontSize(baseFontSize).font(fontFamily).fillColor('#374151');
+      doc.text(lbl('amountInWords', 'Amount in Words') + ':', margin, y);
+      y = doc.y + 2;
+      doc.font(fontBold);
+      doc.text(`Rupees ${words} Only`, margin, y, { width: tableWidth });
+      doc.moveDown(1);
+    }
+  }
+
+  if (s.showTerms !== false && inv.notes) {
+    doc.fontSize(baseFontSize).font(fontBold).fillColor(primaryColor);
+    doc.text(lbl('notes', 'Notes') + ':', margin, doc.y + 4);
+    doc.font(fontFamily).fontSize(baseFontSize).fillColor('#374151');
+    doc.text(inv.notes, margin, doc.y + 4, { width: tableWidth });
+  }
+
+  if (s.showSignature !== false) {
+    const sigY = Math.max(doc.y + 20, 680);
+    doc.moveTo(margin + tableWidth - 130, sigY).lineTo(margin + tableWidth, sigY).strokeColor('#9ca3af').stroke();
+    doc.fontSize(baseFontSize - 1).fillColor('#6b7280').text(lbl('authorizedSignatory', 'Authorized Signatory'), margin + tableWidth - 130, sigY + 4, { width: 130, align: 'center' });
+  }
+
   if (inv.signed_qr_code) {
     const qrImage = inv.signed_qr_code.replace(/^data:image\/png;base64,/, '');
     try {
-      doc.image(Buffer.from(qrImage, 'base64'), 400, doc.y + 10, { width: 100, height: 100 });
-      doc.fontSize(6).font('Helvetica').text('IRN: ' + (inv.irn || ''), 400, doc.y + 2, { width: 150, align: 'center' });
-    } catch (e) {
-      // QR rendering failed silently
-    }
+      doc.image(Buffer.from(qrImage, 'base64'), margin, doc.y + 10, { width: 100, height: 100 });
+      doc.fontSize(6).font(fontFamily).text('IRN: ' + (inv.irn || ''), margin, doc.y + 2, { width: 150, align: 'center' });
+    } catch (e) { /* QR rendering failed silently */ }
   }
+}
+
+function numberToIndianWords(amount) {
+  if (amount == null || isNaN(amount)) return '';
+  const num = Math.round(amount * 100) / 100;
+  if (num === 0) return 'Zero';
+
+  const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function toWords(n) {
+    if (n === 0) return '';
+    if (n < 10) return units[n];
+    if (n < 20) return teens[n - 10];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + units[n % 10] : '');
+    if (n < 1000) return units[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + toWords(n % 100) : '');
+    return '';
+  }
+
+  const rupees = Math.floor(num);
+  const paise = Math.round((num - rupees) * 100);
+
+  let result = '';
+  if (rupees > 0) {
+    const crores = Math.floor(rupees / 10000000);
+    const lakhs = Math.floor((rupees % 10000000) / 100000);
+    const thousands = Math.floor((rupees % 100000) / 1000);
+    const hundreds = rupees % 1000;
+
+    if (crores > 0) result += toWords(crores) + ' Crore ';
+    if (lakhs > 0) result += toWords(lakhs) + ' Lakh ';
+    if (thousands > 0) result += toWords(thousands) + ' Thousand ';
+    if (hundreds > 0) result += toWords(hundreds) + ' ';
+  }
+
+  result = result.trim();
+
+  if (paise > 0) {
+    result += ' and ' + toWords(paise) + ' Paise';
+  }
+
+  return result;
 }
 
 exports.list = async (req, res) => {
@@ -418,12 +759,14 @@ exports.downloadPDF = async (req, res) => {
       'SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY id', [req.params.id]
     );
 
+    const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'invoice');
+
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${inv.invoice_number}.pdf`);
     doc.pipe(res);
 
-    generateInvoicePDF(doc, inv, items, invTaxRate);
+    generateInvoicePDF(doc, inv, items, invTaxRate, invoiceSettings);
 
     doc.end();
   } catch (error) {
@@ -558,12 +901,14 @@ exports.sendEmail = async (req, res) => {
       'SELECT * FROM hris_saas.invoice_items WHERE invoice_id = $1 ORDER BY id', [req.params.id]
     );
 
+    const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'invoice');
+
     const chunks = [];
     const doc = new PDFDocument({ margin: 50, bufferPages: true });
     doc.on('data', c => chunks.push(c));
     await new Promise(resolve => {
       doc.on('end', resolve);
-      generateInvoicePDF(doc, inv, items, invTaxRate);
+      generateInvoicePDF(doc, inv, items, invTaxRate, invoiceSettings);
       doc.end();
     });
 

@@ -88,18 +88,18 @@ async function fetchKiranaCashbook(tenantId, { startDate, endDate }) {
 // Sales by Customer
 // =============================================
 async function fetchSalesByCustomer(tenantId, { startDate, endDate }) {
-  let query = `SELECT c.id, c.name, c.email, c.phone,
-                      COUNT(i.id) as invoice_count,
-                      COALESCE(SUM(i.total_amount),0) as total_sales,
-                      COALESCE(SUM(i.amount_paid),0) as total_collected,
-                      COALESCE(SUM(i.total_amount - i.amount_paid),0) as balance_due
-               FROM customers c
-               JOIN invoices i ON c.id = i.customer_id AND i.tenant_id = c.tenant_id
-               WHERE c.tenant_id = ?`;
+  let query = `SELECT t.party_id as id, t.party_name as name, c.email, c.phone,
+                      COUNT(t.id) as invoice_count,
+                      COALESCE(SUM(t.grand_total),0) as total_sales,
+                      COALESCE(SUM(t.amount_paid),0) as total_collected,
+                      COALESCE(SUM(t.grand_total - t.amount_paid),0) as balance_due
+               FROM transactions t
+               LEFT JOIN customers c ON t.party_id = c.id AND c.tenant_id = t.tenant_id
+               WHERE t.tenant_id = ? AND t.transaction_type = 'sales_invoice'`;
   const params = [tenantId];
-  if (startDate) { query += ' AND i.invoice_date >= ?'; params.push(startDate); }
-  if (endDate) { query += ' AND i.invoice_date <= ?'; params.push(endDate); }
-  query += ' GROUP BY c.id, c.name, c.email, c.phone ORDER BY total_sales DESC';
+  if (startDate) { query += ' AND t.document_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND t.document_date <= ?'; params.push(endDate); }
+  query += ' GROUP BY t.party_id, t.party_name, c.email, c.phone ORDER BY total_sales DESC';
   const [rows] = await db.execute(query, params);
   return rows;
 }
@@ -108,16 +108,16 @@ async function fetchSalesByCustomer(tenantId, { startDate, endDate }) {
 // Purchases by Supplier
 // =============================================
 async function fetchPurchasesBySupplier(tenantId, { startDate, endDate }) {
-  let query = `SELECT s.id, s.name, s.email, s.phone,
-                      COUNT(po.id) as order_count,
-                      COALESCE(SUM(po.total_amount),0) as total_purchases
-               FROM suppliers s
-               JOIN purchase_orders po ON s.id = po.supplier_id AND po.tenant_id = s.tenant_id
-               WHERE s.tenant_id = ?`;
+  let query = `SELECT t.party_id as id, t.party_name as name, s.email, s.phone,
+                      COUNT(t.id) as order_count,
+                      COALESCE(SUM(t.grand_total),0) as total_purchases
+               FROM transactions t
+               LEFT JOIN suppliers s ON t.party_id = s.id AND s.tenant_id = t.tenant_id
+               WHERE t.tenant_id = ? AND t.transaction_type IN ('purchase_invoice','purchase_order')`;
   const params = [tenantId];
-  if (startDate) { query += ' AND po.order_date >= ?'; params.push(startDate); }
-  if (endDate) { query += ' AND po.order_date <= ?'; params.push(endDate); }
-  query += ' GROUP BY s.id, s.name, s.email, s.phone ORDER BY total_purchases DESC';
+  if (startDate) { query += ' AND t.document_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND t.document_date <= ?'; params.push(endDate); }
+  query += ' GROUP BY t.party_id, t.party_name, s.email, s.phone ORDER BY total_purchases DESC';
   const [rows] = await db.execute(query, params);
   return rows;
 }
@@ -128,13 +128,14 @@ async function fetchPurchasesBySupplier(tenantId, { startDate, endDate }) {
 async function fetchARAging(tenantId, { asOnDate }) {
   const asOn = asOnDate || new Date().toISOString().split('T')[0];
   const [rows] = await db.execute(
-    `SELECT id, invoice_number, customer_id,
-            (SELECT name FROM customers WHERE id = i.customer_id AND tenant_id = i.tenant_id) as customer_name,
-            invoice_date, due_date, total_amount, amount_paid,
-            (total_amount - amount_paid) as outstanding,
-            (?::date - due_date) as days_overdue
-     FROM invoices i
-     WHERE i.tenant_id = ? AND i.status IN ('sent','partial','overdue') AND i.due_date < ?
+    `SELECT t.id, t.document_number as invoice_number, t.party_id as customer_id,
+            t.party_name as customer_name,
+            t.document_date as invoice_date, t.due_date, t.grand_total as total_amount,
+            t.amount_paid,
+            (t.grand_total - t.amount_paid) as outstanding,
+            (?::date - t.due_date) as days_overdue
+     FROM transactions t
+     WHERE t.tenant_id = ? AND t.transaction_type = 'sales_invoice' AND t.status IN ('sent','partial','overdue') AND t.due_date < ?
      ORDER BY days_overdue DESC`,
     [asOn, tenantId, asOn]
   );
@@ -154,15 +155,15 @@ async function fetchARAging(tenantId, { asOnDate }) {
 // =============================================
 async function fetchAPAging(tenantId, { asOnDate }) {
   const asOn = asOnDate || new Date().toISOString().split('T')[0];
-  // Outstanding POs that are approved/sent (received but not fully paid)
   const [poRows] = await db.execute(
-    `SELECT po.id, po.po_number as order_number, po.supplier_id,
-            (SELECT name FROM suppliers WHERE id = po.supplier_id AND tenant_id = po.tenant_id) as supplier_name,
-            po.order_date, po.expected_date, po.total_amount,
-            (?::date - COALESCE(po.expected_date, po.order_date)) as days_overdue
-     FROM purchase_orders po
-     WHERE po.tenant_id = ? AND po.status IN ('approved','sent','received')
-       AND COALESCE(po.expected_date, po.order_date) < ?
+    `SELECT t.id, t.document_number as order_number, t.party_id as supplier_id,
+            t.party_name as customer_name,
+            t.document_date as order_date, t.expected_delivery_date as expected_date,
+            t.grand_total as total_amount,
+            (?::date - COALESCE(t.expected_delivery_date, t.document_date)) as days_overdue
+     FROM transactions t
+     WHERE t.tenant_id = ? AND t.transaction_type = 'purchase_order' AND t.status IN ('approved','sent','received')
+       AND COALESCE(t.expected_delivery_date, t.document_date) < ?
      ORDER BY days_overdue DESC`,
     [asOn, tenantId, asOn]
   );
@@ -181,11 +182,11 @@ async function fetchAPAging(tenantId, { asOnDate }) {
 // Invoice Status Summary
 // =============================================
 async function fetchInvoiceStatusSummary(tenantId, { startDate, endDate }) {
-  let query = `SELECT status, COUNT(*) as count, COALESCE(SUM(total_amount),0) as total_amount
-               FROM invoices WHERE tenant_id = ?`;
+  let query = `SELECT status, COUNT(*) as count, COALESCE(SUM(grand_total),0) as total_amount
+               FROM transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice'`;
   const params = [tenantId];
-  if (startDate) { query += ' AND invoice_date >= ?'; params.push(startDate); }
-  if (endDate) { query += ' AND invoice_date <= ?'; params.push(endDate); }
+  if (startDate) { query += ' AND document_date >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND document_date <= ?'; params.push(endDate); }
   query += ' GROUP BY status ORDER BY status';
   const [rows] = await db.execute(query, params);
   const totalCount = rows.reduce((s, r) => s + Number(r.count), 0);
@@ -522,15 +523,15 @@ exports.downloadExcel = async (req, res) => {
       const d = data;
       excelRows = [[
         `${d.period?.startDate || ''} — ${d.period?.endDate || ''}`,
-        `Rs.${(d.outputTax?.cgst || 0).toFixed(2)}`,
-        `Rs.${(d.outputTax?.sgst || 0).toFixed(2)}`,
-        `Rs.${(d.outputTax?.igst || 0).toFixed(2)}`,
-        `Rs.${(d.outputTax?.totalOutput || 0).toFixed(2)}`,
-        `Rs.${(d.inputTax?.cgst || 0).toFixed(2)}`,
-        `Rs.${(d.inputTax?.sgst || 0).toFixed(2)}`,
-        `Rs.${(d.inputTax?.igst || 0).toFixed(2)}`,
-        `Rs.${(d.inputTax?.totalInput || 0).toFixed(2)}`,
-        `Rs.${(d.netPayable || 0).toFixed(2)}`,
+        `Rs.${(d.output?.cgst || 0).toFixed(2)}`,
+        `Rs.${(d.output?.sgst || 0).toFixed(2)}`,
+        `Rs.${(d.output?.igst || 0).toFixed(2)}`,
+        `Rs.${(d.output?.totalOutput || 0).toFixed(2)}`,
+        `Rs.${(d.input?.cgst || 0).toFixed(2)}`,
+        `Rs.${(d.input?.sgst || 0).toFixed(2)}`,
+        `Rs.${(d.input?.igst || 0).toFixed(2)}`,
+        `Rs.${(d.input?.totalInput || 0).toFixed(2)}`,
+        `Rs.${(d.netTax >= 0 ? d.netTax : 0).toFixed(2)}`,
       ]];
     }
 
@@ -623,50 +624,31 @@ async function fetchGSTSummary(tenantId, { startDate, endDate }) {
   const sd = startDate || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
   const ed = endDate || new Date().toISOString().split('T')[0];
 
-  // Output tax (sales) — from invoices with item-level rates
+  // Output tax (sales) — sum GST from transaction_items
   const [outputTax] = await db.execute(
     `SELECT
-       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.cgst_rate, 0) / 100)), 0) as cgst,
-       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.sgst_rate, 0) / 100)), 0) as sgst,
-       COALESCE(SUM(ROUND(ii.total_price * COALESCE(ii.igst_rate, 0) / 100)), 0) as igst,
-       COUNT(DISTINCT i.id) as invoice_count
-     FROM invoices i
-     JOIN invoice_items ii ON i.id = ii.invoice_id
-     WHERE i.tenant_id = ? AND i.status IN ('paid','sent','partial')
-       AND i.invoice_date >= ? AND i.invoice_date <= ?`,
+       COALESCE(SUM(ti.cgst_amount), 0) as cgst,
+       COALESCE(SUM(ti.sgst_amount), 0) as sgst,
+       COALESCE(SUM(ti.igst_amount), 0) as igst,
+       COUNT(DISTINCT t.id) as invoice_count
+     FROM transactions t
+     JOIN transaction_items ti ON t.id = ti.transaction_id
+     WHERE t.tenant_id = ? AND t.transaction_type = 'sales_invoice' AND t.status IN ('paid','sent','partial')
+       AND t.document_date >= ? AND t.document_date <= ?`,
     [tenantId, sd, ed]
   );
 
-  // Also get output tax from flat-rate invoices (no cgst/sgst/igst)
-  const [flatOutputTax] = await db.execute(
-    `SELECT COALESCE(SUM(i.tax_amount), 0) as flat_tax, COUNT(*) as flat_count
-     FROM invoices i
-     WHERE i.tenant_id = ? AND i.status IN ('paid','sent','partial')
-       AND (i.gst_type IS NULL OR i.gst_type NOT IN ('intra','inter'))
-       AND i.invoice_date >= ? AND i.invoice_date <= ?`,
-    [tenantId, sd, ed]
-  );
-
-  // Input tax (purchases) — from POs with item-level rates
+  // Input tax (purchases) — sum GST from transaction_items
   const [inputTax] = await db.execute(
     `SELECT
-       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.cgst_rate, 0) / 100)), 0) as cgst,
-       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.sgst_rate, 0) / 100)), 0) as sgst,
-       COALESCE(SUM(ROUND(pii.total_price * COALESCE(pii.igst_rate, 0) / 100)), 0) as igst,
-       COUNT(DISTINCT po.id) as po_count
-     FROM purchase_orders po
-     JOIN purchase_order_items pii ON po.id = pii.purchase_order_id
-     WHERE po.tenant_id = ? AND po.status IN ('received','approved','sent')
-       AND po.order_date >= ? AND po.order_date <= ?`,
-    [tenantId, sd, ed]
-  );
-
-  const [flatInputTax] = await db.execute(
-    `SELECT COALESCE(SUM(po.tax_amount), 0) as flat_tax, COUNT(*) as flat_count
-     FROM purchase_orders po
-     WHERE po.tenant_id = ? AND po.status IN ('received','approved','sent')
-       AND (po.gst_type IS NULL OR po.gst_type NOT IN ('intra','inter'))
-       AND po.order_date >= ? AND po.order_date <= ?`,
+       COALESCE(SUM(ti.cgst_amount), 0) as cgst,
+       COALESCE(SUM(ti.sgst_amount), 0) as sgst,
+       COALESCE(SUM(ti.igst_amount), 0) as igst,
+       COUNT(DISTINCT t.id) as po_count
+     FROM transactions t
+     JOIN transaction_items ti ON t.id = ti.transaction_id
+     WHERE t.tenant_id = ? AND t.transaction_type = 'purchase_invoice' AND t.status IN ('paid','sent','partial')
+       AND t.document_date >= ? AND t.document_date <= ?`,
     [tenantId, sd, ed]
   );
 
@@ -674,23 +656,22 @@ async function fetchGSTSummary(tenantId, { startDate, endDate }) {
     cgst: Number(outputTax[0].cgst),
     sgst: Number(outputTax[0].sgst),
     igst: Number(outputTax[0].igst),
-    totalOutput: Number(outputTax[0].cgst) + Number(outputTax[0].sgst) + Number(outputTax[0].igst) + Number(flatOutputTax[0].flat_tax),
-    invoiceCount: Number(outputTax[0].invoice_count) + Number(flatOutputTax[0].flat_count),
+    totalOutput: Number(outputTax[0].cgst) + Number(outputTax[0].sgst) + Number(outputTax[0].igst),
+    invoiceCount: Number(outputTax[0].invoice_count),
   };
   const input = {
     cgst: Number(inputTax[0].cgst),
     sgst: Number(inputTax[0].sgst),
     igst: Number(inputTax[0].igst),
-    totalInput: Number(inputTax[0].cgst) + Number(inputTax[0].sgst) + Number(inputTax[0].igst) + Number(flatInputTax[0].flat_tax),
-    poCount: Number(inputTax[0].po_count) + Number(flatInputTax[0].flat_count),
+    totalInput: Number(inputTax[0].cgst) + Number(inputTax[0].sgst) + Number(inputTax[0].igst),
+    poCount: Number(inputTax[0].po_count),
   };
 
   return {
     period: { startDate: sd, endDate: ed },
-    outputTax: output,
-    inputTax: input,
-    netPayable: Math.max(0, output.totalOutput - input.totalInput),
-    netRefundable: Math.max(0, input.totalInput - output.totalOutput),
+    output,
+    input,
+    netTax: output.totalOutput - input.totalInput,
   };
 }
 exports.getPLStatement = async (req, res) => {
@@ -704,15 +685,14 @@ exports.getPLStatement = async (req, res) => {
     const sd = startDate || yearStart.toISOString().split('T')[0];
     const ed = endDate || new Date().toISOString().split('T')[0];
 
-    const dateFilter = ' AND invoice_date >= ? AND invoice_date <= ?';
+    const dateFilter = ' AND document_date >= ? AND document_date <= ?';
     const bsDateFilter = ' AND entry_date >= ? AND entry_date <= ?';
-    const poDateFilter = ' AND order_date >= ? AND order_date <= ?';
     const dateParams = [sd, ed];
 
-    // Revenue from paid invoices
+    // Revenue from paid sales invoices
     const [revenue] = await db.execute(
-      `SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count
-       FROM invoices WHERE tenant_id = ? AND status = 'paid'${dateFilter}`,
+      `SELECT COALESCE(SUM(grand_total),0) as total, COUNT(*) as count
+       FROM transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid'${dateFilter}`,
       [tenantId, ...dateParams]
     );
 
@@ -723,10 +703,10 @@ exports.getPLStatement = async (req, res) => {
       [tenantId, ...dateParams]
     );
 
-    // Cost of goods sold (received POs)
+    // Cost of goods sold (paid purchase invoices)
     const [cogs] = await db.execute(
-      `SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as count
-       FROM purchase_orders WHERE tenant_id = ? AND status = 'received'${poDateFilter}`,
+      `SELECT COALESCE(SUM(grand_total),0) as total, COUNT(*) as count
+       FROM transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid'${dateFilter}`,
       [tenantId, ...dateParams]
     );
 
@@ -743,8 +723,8 @@ exports.getPLStatement = async (req, res) => {
 
     // Monthly breakdown
     const [monthlyIncome] = await db.execute(
-      `SELECT DATE_TRUNC('month', invoice_date) as month, SUM(total_amount) as amount
-       FROM invoices WHERE tenant_id = ? AND status = 'paid' AND invoice_date >= ? AND invoice_date <= ?
+      `SELECT DATE_TRUNC('month', document_date) as month, SUM(grand_total) as amount
+       FROM transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid' AND document_date >= ? AND document_date <= ?
        GROUP BY month ORDER BY month`,
       [tenantId, sd, ed]
     );
@@ -757,8 +737,8 @@ exports.getPLStatement = async (req, res) => {
     );
 
     const [monthlyCOGS] = await db.execute(
-      `SELECT DATE_TRUNC('month', order_date) as month, SUM(total_amount) as amount
-       FROM purchase_orders WHERE tenant_id = ? AND status = 'received' AND order_date >= ? AND order_date <= ?
+      `SELECT DATE_TRUNC('month', document_date) as month, SUM(grand_total) as amount
+       FROM transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid' AND document_date >= ? AND document_date <= ?
        GROUP BY month ORDER BY month`,
       [tenantId, sd, ed]
     );

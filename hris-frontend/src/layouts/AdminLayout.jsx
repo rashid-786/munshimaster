@@ -18,6 +18,9 @@ const Icons = {
   menu: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
   logout: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
   lock: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>,
+  transactions: <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+  sales: <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
+  purchase: <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>,
 };
 
 export default function AdminLayout() {
@@ -101,7 +104,14 @@ export default function AdminLayout() {
     for (const section of menuItems) {
       if (section.type === 'group' && section.items) {
         for (const item of section.items) {
-          titles[item.route] = labelOf(section.label);
+          if (item.route) {
+            titles[item.route] = labelOf(section.label);
+          }
+          if (item.items) {
+            for (const child of item.items) {
+              if (child.route) titles[child.route] = labelOf(section.label);
+            }
+          }
         }
         titles[section.route] = labelOf(section.label);
       } else {
@@ -129,6 +139,7 @@ export default function AdminLayout() {
   }, [menuItems]);
 
   const [openGroups, setOpenGroups] = useState(defaultOpen);
+  const [openSubheaders, setOpenSubheaders] = useState({});
 
   useEffect(() => {
     setOpenGroups(defaultOpen);
@@ -268,6 +279,10 @@ export default function AdminLayout() {
   }, [showSearch]);
 
   const toggleGroup = (label) => setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }));
+  const toggleSubheader = (sectionLabel, subLabel) => {
+    const key = `${sectionLabel}::${subLabel}`;
+    setOpenSubheaders(prev => ({ ...prev, [key]: !prev[key] }));
+  };
   const handleLogout = () => { logout(); navigate('/login'); };
 
   const handleSwitchEntity = useCallback(async (targetTenantId) => {
@@ -305,6 +320,8 @@ export default function AdminLayout() {
     '/admin/customers': 'customers',
     '/admin/purchase-orders': 'purchase_orders',
     '/admin/invoices': 'invoices',
+    '/admin/sales-transactions': 'invoices',
+    '/admin/purchase-transactions': 'invoices',
     '/admin/recurring-invoices': 'recurring_invoices',
     '/admin/bank': 'bank_import',
     '/admin/notes': 'credit_debit_notes',
@@ -446,6 +463,45 @@ export default function AdminLayout() {
                   <div className="overflow-hidden min-h-0">
                     <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-0.5">
                       {section.items.filter(item => !hiddenItems[item.label]).map((item) => {
+                        if (item.type === 'subheader') {
+                          const subKey = `${section.label}::${item.label}`;
+                          const isOpen = openSubheaders[subKey] !== false;
+                          const children = item.items?.filter(c => !hiddenItems[c.label]) || [];
+                          return (
+                            <div key={item.label}>
+                              <button
+                                onClick={() => toggleSubheader(section.label, item.label)}
+                                className="flex items-center gap-1 w-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-700 transition-colors text-left"
+                              >
+                                <span className={`block transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>{Icons.chevron}</span>
+                                {item.label === 'Transactions' ? Icons.transactions : null}
+                                {item.label}
+                              </button>
+                              <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                                <div className="overflow-hidden min-h-0">
+                                  {children.map((child) => {
+                                const isChildActive = location.pathname === child.route;
+                                const childRo = isRouteReadOnly(child.route);
+                                return childRo ? (
+                                  <span key={child.route} className="flex items-center gap-1.5 relative px-3 py-2 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed ml-2" title="Read-only section">
+                                    {child.label === 'Sales' ? Icons.sales : child.label === 'Purchase' ? Icons.purchase : null}
+                                    {child.label}
+                                  </span>
+                                ) : (
+                                  <NavLink key={child.route} to={child.route} onClick={() => setSidebarOpen(false)}
+                                    className={`flex items-center gap-1.5 relative px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ml-2 ${
+                                      isChildActive ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                    }`}>
+                                    {child.label === 'Sales' ? Icons.sales : child.label === 'Purchase' ? Icons.purchase : null}
+                                    {child.label}
+                                  </NavLink>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                        }
                         const isItemActive = location.pathname === item.route;
                         const ro = isRouteReadOnly(item.route);
                         return ro ? (

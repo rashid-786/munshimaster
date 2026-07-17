@@ -121,6 +121,18 @@ function isItemVisible(item, plan) {
   return getRank(plan) >= getRank(item.requiredPlan || 'FREE');
 }
 
+function collectVisibleItems(items, plan) {
+  return items.filter((item) => {
+    const visible = isItemVisible(item, plan);
+    if (!visible) return false;
+    if (item.type === 'subheader' && item.items) {
+      item.items = item.items.filter((child) => isItemVisible(child, plan));
+      return item.items.length > 0;
+    }
+    return true;
+  });
+}
+
 // ─── Public API ─────────────────────────────────────
 
 /**
@@ -146,7 +158,7 @@ export function buildMenu(plan) {
           ...section,
           id: sectionId,
           icon: ICONS[section.icon] || null,
-          items: section.items.filter((item) => isItemVisible(item, resolvedPlan)),
+          items: collectVisibleItems(section.items, resolvedPlan),
         };
       }
 
@@ -184,6 +196,14 @@ export function isRouteAccessible(path, plan) {
           if (!isItemVisible(item, resolvedPlan)) return false;
           return isSectionVisible(section, resolvedPlan);
         }
+        if (item.items) {
+          for (const child of item.items) {
+            if (child.route === path) {
+              if (!isItemVisible(child, resolvedPlan)) return false;
+              return isSectionVisible(section, resolvedPlan);
+            }
+          }
+        }
       }
     }
   }
@@ -209,7 +229,12 @@ export function getAccessibleRoutes(plan) {
     if (section.items) {
       for (const item of section.items) {
         if (isItemVisible(item, resolvedPlan)) {
-          routes.push(item.route);
+          if (item.route) routes.push(item.route);
+          if (item.items) {
+            for (const child of item.items) {
+              if (child.route && isItemVisible(child, resolvedPlan)) routes.push(child.route);
+            }
+          }
         }
       }
     }
@@ -262,6 +287,18 @@ export function getRouteAccessInfo(path) {
             requiredPlan: resolvePlan(item.requiredPlan),
             featureKey,
           };
+        }
+        if (item.items) {
+          for (const child of item.items) {
+            if (child.route === path) {
+              const featureKey = child.feature || section.feature || null;
+              return {
+                featureName: featureKey ? FEATURE_LABELS[featureKey] : child.label,
+                requiredPlan: resolvePlan(child.requiredPlan),
+                featureKey,
+              };
+            }
+          }
         }
       }
     }

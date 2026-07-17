@@ -55,6 +55,9 @@ const khataRoutes = require('./routes/khata.routes');
 const portalRoutes = require('./routes/portal.routes');
 const entityRoutes = require('./routes/entity.routes');
 const consolidatedRoutes = require('./routes/consolidated.routes');
+const invoiceTemplateRoutes = require('./routes/invoiceTemplate.routes');
+const partyTransactionsRoutes = require('./controllers/partyTransactions.controller');
+const transactionsRoutes = require('./routes/transactions.routes');
 const { planGate } = require('./middleware/planGate');
 const { attachTenant } = require('./middleware/attachTenant');
 const { requireFeature } = require('./middleware/requireFeature');
@@ -69,7 +72,7 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors());
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use('/api/v1/core/subscription/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/v1/core/invoice-payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
@@ -138,6 +141,28 @@ app.get('/api/v1/public/global-config', async (req, res) => {
   } catch {
     res.json({ globalConfig: {} });
   }
+});
+
+app.get('/api/v1/public/gst-tax', async (req, res) => {
+  try {
+    const ctrl = require('./controllers/gstTax.controller');
+    return ctrl.listActive(req, res);
+  } catch { res.status(500).json({ error: 'Failed to fetch GST rates.' }); }
+});
+
+app.get('/api/v1/public/units', async (req, res) => {
+  try {
+    const ctrl = require('./controllers/unitMaster.controller');
+    return ctrl.listActive(req, res);
+  } catch { res.status(500).json({ error: 'Failed to fetch units.' }); }
+});
+
+app.get('/api/v1/public/states', async (req, res) => {
+  try {
+    const countryCode = req.query.country_code || 'IN';
+    const [rows] = await db.execute('SELECT id, state_name, state_code FROM hris_saas.system_states WHERE country_code = $1 ORDER BY state_name', [countryCode]);
+    res.json({ states: rows });
+  } catch (e) { console.error('/states error:', e.message); res.status(500).json({ error: 'Failed to fetch states.' }); }
 });
 
 // Contact form endpoint (no auth required)
@@ -242,6 +267,9 @@ app.use('/api/v1/core/cash-flow', planGate(1), cashFlowRoutes);
 app.use('/api/v1/core/khata', khataRoutes);
 app.use('/api/v1/core/entities', entityRoutes);
 app.use('/api/v1/core/reports/consolidated', planGate(1), consolidatedRoutes);
+app.use('/api/v1/core/transactions', requireFeature('invoices'), transactionsRoutes);
+app.use('/api/v1/core/invoice-templates', invoiceTemplateRoutes);
+app.get('/api/v1/core/parties/:type/:id/transactions', partyTransactionsRoutes.getTransactions);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));
 

@@ -18,6 +18,13 @@ export async function getDefaultCountryCode() {
   }
 }
 
+export async function getStates(countryCode) {
+  try {
+    const response = await api.get('/public/states', { params: { country_code: countryCode || 'IN' } });
+    return response.data.states || [];
+  } catch { return []; }
+}
+
 export async function getGeoCountry() {
   try {
     const response = await api.get('/public/country');

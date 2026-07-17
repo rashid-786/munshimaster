@@ -16,4 +16,10 @@ router.post('/bulk/delete', authenticateToken, product.bulkDelete);
 // Stock movements
 router.get('/:id/movements', authenticateToken, stock.listMovements);
 
+// Party-specific pricing
+router.get('/:productId/party-prices', authenticateToken, product.listPartyPrices);
+router.post('/:productId/party-prices', authenticateToken, product.createPartyPrice);
+router.put('/party-prices/:id', authenticateToken, product.updatePartyPrice);
+router.delete('/party-prices/:id', authenticateToken, product.deletePartyPrice);
+
 module.exports = router;

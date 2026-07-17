@@ -9,6 +9,7 @@ import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
 import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
+import TransactionsTab from '../../components/TransactionsTab';
 
 const TABS = ['Business Information', 'Credit Information', 'Address & Details'];
 
@@ -52,6 +53,9 @@ const Customers = () => {
   const limit = 200;
   const [loading, setLoading] = useState(true);
   const [addressTab, setAddressTab] = useState('billing');
+  const [detailTab, setDetailTab] = useState('details');
+
+  useEffect(() => { setDetailTab('details'); }, [selectedRecord]);
 
   const setBillingField = (key, value) => {
     setForm(prev => {
@@ -488,41 +492,53 @@ const Customers = () => {
       />
 
       {selectedRecord && (isMobile ? (
-        <BottomSheet
-          open={!!selectedRecord}
-          onClose={() => setSelectedRecord(null)}
-          title={selectedRecord?.name || 'Customer Details'}
-          actions={
-            <>
-              <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); openEdit(c); }}
-                className="flex-1 btn-primary justify-center">Edit</button>
-              {selectedRecord?.status === 'active' ? (
-                <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDeactivate(c.id, c.name); }}
-                  className="flex-1 btn-warning justify-center">Deactivate</button>
-              ) : (
-                <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleActivate(c.id); }}
-                  className="flex-1 btn-success justify-center">Activate</button>
-              )}
-              <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDelete(c.id, c.name); }}
-                className="flex-1 btn-danger justify-center">Delete</button>
-            </>
-          }>
-          <CustomerDetailContent customer={selectedRecord} />
-        </BottomSheet>
+          <BottomSheet
+            open={!!selectedRecord}
+            onClose={() => setSelectedRecord(null)}
+            title={selectedRecord?.name || 'Customer Details'}
+            actions={
+              <>
+                <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); openEdit(c); }}
+                  className="flex-1 btn-primary justify-center">Edit</button>
+                {selectedRecord?.status === 'active' ? (
+                  <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDeactivate(c.id, c.name); }}
+                    className="flex-1 btn-warning justify-center">Deactivate</button>
+                ) : (
+                  <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleActivate(c.id); }}
+                    className="flex-1 btn-success justify-center">Activate</button>
+                )}
+                <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); handleDelete(c.id, c.name); }}
+                  className="flex-1 btn-danger justify-center">Delete</button>
+              </>
+            }>
+            <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-3">
+              <button type="button" onClick={() => setDetailTab('details')}
+                className={`text-sm font-medium pb-1 ${detailTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Details</button>
+              <button type="button" onClick={() => setDetailTab('transactions')}
+                className={`text-sm font-medium pb-1 ${detailTab === 'transactions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Transactions</button>
+            </div>
+            {detailTab === 'details' ? <CustomerDetailContent customer={selectedRecord} /> : <TransactionsTab partyType="customer" partyId={selectedRecord.id} partyName={selectedRecord.name} />}
+          </BottomSheet>
       ) : (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 animate-scale-in max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.name || 'Customer Details'}</h3>
                 <p className="text-sm text-gray-500 mt-0.5">Customer Details</p>
               </div>
               <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
             </div>
-            <div className="p-6">
-              <CustomerDetailContent customer={selectedRecord} />
+            <div className="flex items-center gap-3 px-6 pt-4 border-b border-gray-100 shrink-0">
+              <button type="button" onClick={() => setDetailTab('details')}
+                className={`text-sm font-medium pb-3 ${detailTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Details</button>
+              <button type="button" onClick={() => setDetailTab('transactions')}
+                className={`text-sm font-medium pb-3 ${detailTab === 'transactions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Transactions</button>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
+            <div className="p-6 overflow-y-auto">
+              {detailTab === 'details' ? <CustomerDetailContent customer={selectedRecord} /> : <TransactionsTab partyType="customer" partyId={selectedRecord.id} partyName={selectedRecord.name} />}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end shrink-0">
               <button onClick={() => { const c = selectedRecord; setSelectedRecord(null); openEdit(c); }}
                 className="btn-primary text-sm">Edit</button>
               {selectedRecord?.status === 'active' ? (

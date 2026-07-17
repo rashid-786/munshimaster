@@ -1,19 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
-import { formatINR } from '../../utils/currency';
+function formatRupees(v) {
+  const symbol = localStorage.getItem('currency_symbol') || '₹';
+  return symbol + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import Loading from '../../components/Loading';
+import SearchableSelect from '../../components/SearchableSelect';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api/v1';
 
 const emptyForm = {
-  name: '', sku: '', unit: 'pcs', opening_stock: '', low_stock_threshold: '10',
-  selling_price: '', purchase_price: '', hsn_code: '', tax_rate: '18',
+  name: '', sku: '', unit: 'pcs', category: '', description: '', image_url: '',
+  opening_stock: '', opening_stock_as_of: '', low_stock_threshold: '10', reorder_level: '',
+  stock_tracking_enabled: true, barcode: '',
+  selling_price: '', sale_price_type: 'exclusive', discount_percent: '', purchase_price: '', purchase_price_type: 'exclusive',
+  hsn_code: '', tax_rate: '18', gst_rate_id: '', product_status: 'active',
 };
-
-const units = ['pcs', 'kg', 'g', 'l', 'ml', 'm', 'box', 'pack', 'dozen', 'bag'];
 
 function Checkbox({ checked, onChange }) {
   return (
@@ -24,7 +31,7 @@ function Checkbox({ checked, onChange }) {
   );
 }
 
-const Products = () => {
+export default function Products() {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -48,13 +55,21 @@ const Products = () => {
   const [mobileDetail, setMobileDetail] = useState(null);
   const isMobile = useIsMobile();
 
+  const [activeTab, setActiveTab] = useState(0);
+  const [units, setUnits] = useState([]);
+  const [gstRates, setGstRates] = useState([]);
+  const [showGstDetails, setShowGstDetails] = useState(false);
+  const [parties, setParties] = useState({ customers: [], suppliers: [] });
+  const [partyPrices, setPartyPrices] = useState([]);
+  const [partyPriceForm, setPartyPriceForm] = useState({ party_type: 'customer', party_id: '', custom_price: '', discount_percent: '', effective_from: '', effective_to: '' });
+
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
       if (search) params.search = search;
       const res = await hrService.getProducts(params);
-      setProducts(res.products || res.data || []);
+      setProducts(res.data || []);
       setTotal(res.total || 0);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load products.');
@@ -62,39 +77,103 @@ const Products = () => {
   }, [search]);
 
   const fetchLowStockAlerts = useCallback(async () => {
+    try { const res = await hrService.getLowStockAlerts(); setLowStockAlerts(res.data || []); } catch {}
+  }, []);
+
+  const fetchLookups = useCallback(async () => {
     try {
-      const res = await hrService.getLowStockAlerts();
-      setLowStockAlerts(res.alerts || res.data || []);
-    } catch (err) { /* ignore */ }
+      const [uRes, gRes] = await Promise.all([
+        fetch(`${API_BASE}/public/units`).then(r => r.json()),
+        fetch(`${API_BASE}/public/gst-tax`).then(r => r.json()),
+      ]);
+      if (Array.isArray(uRes)) setUnits(uRes);
+      if (Array.isArray(gRes)) setGstRates(gRes);
+    } catch {}
+    try {
+      const [custRes, suppRes] = await Promise.all([
+        hrService.getCustomers({ limit: 500 }),
+        hrService.getSuppliers({ limit: 500 }),
+      ]);
+      setParties({
+        customers: custRes.data || custRes || [],
+        suppliers: suppRes.data || suppRes || [],
+      });
+    } catch {}
   }, []);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => { fetchLowStockAlerts(); }, [fetchLowStockAlerts]);
+  useEffect(() => { fetchLookups(); }, [fetchLookups]);
+
+  const computeEffectivePrice = (price, priceType, taxRate, discountPercent) => {
+    const p = parseFloat(price || 0);
+    const disc = parseFloat(discountPercent || 0);
+    const rate = parseFloat(taxRate || 0);
+    let effective = p;
+    if (disc > 0) effective = p * (1 - disc / 100);
+    if (priceType === 'inclusive' && rate > 0) effective = effective / (1 + rate / 100);
+    return Math.round(effective * 100) / 100;
+  };
+
+  const getTaxAmount = (price, priceType, taxRate) => {
+    const p = parseFloat(price || 0);
+    const rate = parseFloat(taxRate || 0);
+    if (priceType === 'inclusive') return Math.round(p * rate / (100 + rate) * 100) / 100;
+    return Math.round(p * rate / 100 * 100) / 100;
+  };
+
+  const efSalePrice = computeEffectivePrice(form.selling_price, form.sale_price_type, form.tax_rate, form.discount_percent);
+  const efPurchasePrice = computeEffectivePrice(form.purchase_price, form.purchase_price_type, form.tax_rate, 0);
+  const saleTaxAmt = getTaxAmount(form.selling_price, form.sale_price_type, form.tax_rate);
+  const purchaseTaxAmt = getTaxAmount(form.purchase_price, form.purchase_price_type, form.tax_rate);
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setActiveTab(0);
+    setShowGstDetails(false);
+    setPartyPrices([]);
     setShowForm(true);
   };
 
-  const openEdit = (product) => {
+  const openEdit = async (product) => {
     setEditing(product);
+    let pp = [];
+    try {
+      const full = await hrService.getProduct(product.id);
+      pp = full.party_prices || [];
+      product = full;
+    } catch {}
     setForm({
       name: product.name || '',
       sku: product.sku || '',
       unit: product.unit || 'pcs',
+      category: product.category || '',
+      description: product.description || '',
+      image_url: product.image_url || '',
       opening_stock: product.opening_stock ?? '',
+      opening_stock_as_of: product.opening_stock_as_of ? product.opening_stock_as_of.split('T')[0] : '',
       low_stock_threshold: product.low_stock_threshold ?? '10',
+      reorder_level: product.reorder_level ?? '',
+      stock_tracking_enabled: product.stock_tracking_enabled !== false,
+      barcode: product.barcode || '',
       selling_price: product.selling_price ?? '',
+      sale_price_type: product.sale_price_type || 'exclusive',
+      discount_percent: product.discount_percent ?? '',
       purchase_price: product.purchase_price ?? '',
+      purchase_price_type: product.purchase_price_type || 'exclusive',
       hsn_code: product.hsn_code || '',
       tax_rate: product.tax_rate ?? '18',
+      gst_rate_id: product.gst_rate_id || '',
+      product_status: product.product_status || 'active',
     });
+    setPartyPrices(pp);
+    setShowGstDetails(!!product.gst_rate_id || parseFloat(product.tax_rate) > 0);
+    setActiveTab(0);
     setShowForm(true);
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!form.name.trim()) { setError('Product name is required.'); return; }
     setSaving(true);
     setError('');
@@ -114,20 +193,14 @@ const Products = () => {
 
   const handleDelete = (id) => {
     setModal({
-      variant: 'danger',
-      title: 'Delete Product',
+      variant: 'danger', title: 'Delete Product',
       message: 'Permanently delete this product and all its stock movements? This cannot be undone.',
       confirmLabel: 'Delete',
       onConfirm: async () => {
         setModalLoading(true);
-        try {
-          await hrService.deleteProduct(id);
-          setModal(null);
-          fetchProducts();
-        } catch (err) {
-          setError(err.response?.data?.error || 'Delete failed.');
-          setModal(null);
-        } finally { setModalLoading(false); }
+        try { await hrService.deleteProduct(id); setModal(null); fetchProducts(); }
+        catch (err) { setError(err.response?.data?.error || 'Delete failed.'); setModal(null); }
+        finally { setModalLoading(false); }
       },
     });
   };
@@ -135,21 +208,14 @@ const Products = () => {
   const handleBulkDelete = () => {
     if (selectedIds.size === 0) return;
     setModal({
-      variant: 'danger',
-      title: `Delete ${selectedIds.size} Product(s)`,
+      variant: 'danger', title: `Delete ${selectedIds.size} Product(s)`,
       message: `Permanently delete ${selectedIds.size} product(s)? This cannot be undone.`,
       confirmLabel: 'Delete All',
       onConfirm: async () => {
         setBulkLoading(true);
-        try {
-          await hrService.bulkDeleteProducts([...selectedIds]);
-          setSelectedIds(new Set());
-          setModal(null);
-          fetchProducts();
-        } catch (err) {
-          setError(err.response?.data?.error || 'Bulk delete failed.');
-          setModal(null);
-        } finally { setBulkLoading(false); }
+        try { await hrService.bulkDeleteProducts([...selectedIds]); setSelectedIds(new Set()); setModal(null); fetchProducts(); }
+        catch (err) { setError(err.response?.data?.error || 'Bulk delete failed.'); setModal(null); }
+        finally { setBulkLoading(false); }
       },
     });
   };
@@ -157,12 +223,9 @@ const Products = () => {
   const openMovements = async (product) => {
     setShowMovement(product);
     setMovementsLoading(true);
-    try {
-      const res = await hrService.getStockMovements({ product_id: product.id });
-      setMovements(res.movements || res.data || []);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load movements.');
-    } finally { setMovementsLoading(false); }
+    try { const res = await hrService.getStockMovements({ product_id: product.id }); setMovements(res.data || []); }
+    catch (err) { setError(err.response?.data?.error || 'Failed to load movements.'); }
+    finally { setMovementsLoading(false); }
   };
 
   const openAdjust = (product) => {
@@ -176,84 +239,77 @@ const Products = () => {
     setAdjustSaving(true);
     setError('');
     try {
-      await hrService.recordStockMovement({
-        product_id: showAdjustForm.id,
-        type: adjustForm.type,
-        quantity: Number(adjustForm.quantity),
-        notes: adjustForm.notes || 'Manual adjustment',
-        reference_type: 'manual',
-      });
+      await hrService.recordStockMovement({ product_id: showAdjustForm.id, type: adjustForm.type, quantity: Number(adjustForm.quantity), notes: adjustForm.notes || 'Manual adjustment', reference_type: 'manual' });
       setShowAdjustForm(null);
       fetchProducts();
       fetchLowStockAlerts();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to adjust stock.');
-    } finally { setAdjustSaving(false); }
+    } catch (err) { setError(err.response?.data?.error || 'Failed to adjust stock.'); }
+    finally { setAdjustSaving(false); }
   };
 
   const toggleSelect = (id) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
-  const columns = React.useMemo(() => [
+  // ─── Party Price handlers ────────────────────────────
+  const addPartyPrice = () => {
+    if (!partyPriceForm.party_id || !partyPriceForm.custom_price) return;
+    const disc = parseFloat(partyPriceForm.discount_percent || 0);
+    const price = parseFloat(partyPriceForm.custom_price || 0);
+    const effPrice = disc > 0 ? Math.round(price * (1 - disc / 100) * 100) / 100 : price;
+    const pp = { ...partyPriceForm, custom_price: price, discount_percent: disc, effective_price: effPrice, _temp: true };
+    setPartyPrices([...partyPrices, pp]);
+    setPartyPriceForm({ party_type: 'customer', party_id: '', custom_price: '', discount_percent: '', effective_from: '', effective_to: '' });
+  };
+
+  const removePartyPrice = (idx) => {
+    setPartyPrices(partyPrices.filter((_, i) => i !== idx));
+  };
+
+  const savePartyPrices = async (productId) => {
+    for (const pp of partyPrices) {
+      if (pp._temp) {
+        await hrService.createProductPartyPrice(productId, pp);
+      }
+    }
+  };
+
+  // ─── Columns ─────────────────────────────────────────
+  const columns = [
     {
-      key: 'select', label: React.createElement(Checkbox, {
-        checked: products.length > 0 && selectedIds.size === products.length,
-        onChange: () => {
-          if (selectedIds.size === products.length) setSelectedIds(new Set());
-          else setSelectedIds(new Set(products.map(p => p.id)));
-        },
-      }),
-      render: (_, r) => React.createElement(Checkbox, {
-        checked: selectedIds.has(r.id),
-        onChange: () => toggleSelect(r.id),
-      }),
+      key: 'select', label: <Checkbox checked={products.length > 0 && selectedIds.size === products.length}
+        onChange={() => { if (selectedIds.size === products.length) setSelectedIds(new Set()); else setSelectedIds(new Set(products.map(p => p.id))); }} />,
+      render: (_, r) => <Checkbox checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />,
     },
     { key: 'name', label: 'Product', render: (v, r) => (
       <div><span className="font-medium text-indigo-600">{v}</span>{r.sku && <span className="text-xs text-gray-400 ml-2">SKU: {r.sku}</span>}</div>
     )},
     { key: 'current_stock', label: 'Stock', render: (v, r) => {
-      const low = r.low_stock_threshold && Number(v) <= Number(r.low_stock_threshold);
-      return (
-        <span className={`font-semibold ${low ? 'text-red-600' : 'text-gray-900'}`}>
-          {v ?? 0} {r.unit || 'pcs'}
-          {low && <span className="block text-xs text-red-500 font-normal">Low stock!</span>}
-        </span>
-      );
+      if (v == null) return <span className="text-gray-400">—</span>;
+      const threshold = r.low_stock_threshold;
+      const isLow = threshold != null && threshold > 0 && r.stock_tracking_enabled && Number(v) <= Number(threshold);
+      return <span className={`font-semibold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>{v} {r.unit || 'pcs'}{isLow ? <span className="block text-xs text-red-500 font-normal">Low stock!</span> : null}</span>;
     }},
-    { key: 'selling_price', label: 'Sale Price', render: (v) => v ? formatINR(v) : '—' },
-    { key: 'purchase_price', label: 'Cost Price', render: (v) => v ? formatINR(v) : '—' },
-    { key: 'hsn_code', label: 'HSN', render: (v) => v || '—' },
-    { key: 'actions', label: 'Actions', className: 'text-right', render: (_, r) => (
+    { key: 'effective_sale_price', label: 'Sale Price', render: (v, r) => v ? formatRupees(v) : (r.selling_price ? formatRupees(r.selling_price) : '—') },
+    { key: 'effective_purchase_price', label: 'Cost Price', render: (v, r) => v ? formatRupees(v) : (r.purchase_price ? formatRupees(r.purchase_price) : '—') },
+    { key: 'category', label: 'Category', render: (v) => v || '—' },
+    { key: 'actions', label: '', className: 'text-right', render: (_, r) => (
       <div className="flex gap-1.5 justify-end">
         <ActionEdit onClick={(e) => { e.stopPropagation(); openEdit(r); }} />
-        <button onClick={(e) => { e.stopPropagation(); openAdjust(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Adjust">
+        <button onClick={(e) => { e.stopPropagation(); openAdjust(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Adjust Stock">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
         </button>
-        <button onClick={(e) => { e.stopPropagation(); openMovements(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="History">
+        <button onClick={(e) => { e.stopPropagation(); openMovements(r); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Stock History">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         </button>
         <ActionDelete onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} />
       </div>
     )},
-  ], [products, selectedIds]);
-
-  const movementColumns = React.useMemo(() => [
-    { key: 'created_at', label: 'Date', render: (v) => v?.split('T')[0] || '—' },
-    { key: 'type', label: 'Type', render: (v) => (
-      <span className={`${v === 'in' ? 'text-green-600' : v === 'out' ? 'text-red-600' : 'text-amber-600'} font-medium`}>{v}</span>
-    )},
-    { key: 'quantity', label: 'Qty', render: (v) => v },
-    { key: 'reference_type', label: 'Reference', render: (v) => v || '—' },
-    { key: 'notes', label: 'Notes', render: (v) => v || '—' },
-  ], []);
+  ];
 
   if (loading) return <Loading text="Loading inventory..." />;
+
+  const TABS = ['General', 'Pricing', 'Stock', 'Party Price'];
 
   return (
     <div className="space-y-6">
@@ -275,8 +331,7 @@ const Products = () => {
           <div className="space-y-1">
             {lowStockAlerts.map((item) => (
               <div key={item.id} className="text-sm text-amber-700">
-                <span className="font-medium">{item.name}</span> — {item.current_stock ?? 0} {item.unit || 'pcs'} remaining
-                (threshold: {item.low_stock_threshold})
+                <span className="font-medium">{item.name}</span> — {item.current_stock ?? 0} {item.unit || 'pcs'} remaining (threshold: {item.low_stock_threshold})
               </div>
             ))}
           </div>
@@ -292,8 +347,7 @@ const Products = () => {
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-sm text-indigo-700 font-medium">{selectedIds.size} selected</span>
           <div className="flex gap-2">
-            <button onClick={handleBulkDelete} disabled={bulkLoading}
-              className="btn-danger text-xs px-3 py-1.5">{bulkLoading ? 'Deleting...' : 'Delete Selected'}</button>
+            <button onClick={handleBulkDelete} disabled={bulkLoading} className="btn-danger text-xs px-3 py-1.5">{bulkLoading ? 'Deleting...' : 'Delete Selected'}</button>
             <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
           </div>
         </div>
@@ -303,11 +357,9 @@ const Products = () => {
         columns={columns}
         data={products}
         keyField="id"
-       
-        searchKeys={['name', 'sku', 'hsn_code']}
-        onRowClick={(p) => {
-          if (isMobile) setMobileDetail(p);
-        }}
+        searchable
+        searchKeys={['name', 'sku', 'barcode', 'hsn_code', 'category']}
+        onRowClick={(p) => { if (isMobile) setMobileDetail(p); }}
       />
 
       <ConfirmModal
@@ -321,76 +373,326 @@ const Products = () => {
         onCancel={() => setModal(null)}
       />
 
-      {/* Create/Edit Form Modal */}
+      {/* ─── TABBED FORM MODAL ─────────────────────────── */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">{editing ? 'Edit Product' : 'New Product'}</h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10">
+          <div className="fixed inset-0 bg-black/30" onClick={() => setShowForm(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
+              <h3 className="text-lg font-semibold text-gray-900">{editing ? 'Edit Product' : 'New Product'}</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
-            <form onSubmit={handleSave} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
-                  <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                    className="input-field" placeholder="e.g. Notebook A4" required />
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200 px-6 shrink-0">
+              {TABS.map((tab, i) => (
+                <button key={tab} onClick={() => setActiveTab(i)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* TAB 1: General Information */}
+              {activeTab === 0 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Item Name *</label>
+                      <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. Notebook A4" />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Product Category</label>
+                      <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="input-field" placeholder="e.g. Stationery" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field" rows={2} placeholder="Optional description" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                    <input value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} className="input-field" placeholder="https://..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select value={form.product_status} onChange={e => setForm({ ...form, product_status: e.target.value })} className="input-field">
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
-                  <input type="text" value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })}
-                    className="input-field" placeholder="Optional" />
+              )}
+
+              {/* TAB 2: Pricing */}
+              {activeTab === 1 && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure *</label>
+                      <SearchableSelect
+                        options={units.map(u => ({ value: u.name, label: u.name }))}
+                        value={form.unit}
+                        onChange={v => setForm({ ...form, unit: v })}
+                        placeholder="Search unit..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">HSN/SAC Code</label>
+                      <input value={form.hsn_code} onChange={e => setForm({ ...form, hsn_code: e.target.value })} className="input-field" placeholder="e.g. 4820" />
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-gray-900">Sales Pricing</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Sale Price (₹)</label>
+                        <input type="number" step="0.01" min="0" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Price Type</label>
+                        <select value={form.sale_price_type} onChange={e => setForm({ ...form, sale_price_type: e.target.value })} className="input-field">
+                          <option value="exclusive">Tax Exclusive</option>
+                          <option value="inclusive">Tax Inclusive</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Discount (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" value={form.discount_percent} onChange={e => setForm({ ...form, discount_percent: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-500 mb-1">Effective Sale Price</label>
+                        <div className="input-field bg-gray-50 flex items-center h-[38px] font-semibold text-gray-900">{formatRupees(efSalePrice)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <h4 className="font-medium text-gray-900">Purchase Pricing</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Price (₹)</label>
+                        <input type="number" step="0.01" min="0" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Price Type</label>
+                        <select value={form.purchase_price_type} onChange={e => setForm({ ...form, purchase_price_type: e.target.value })} className="input-field">
+                          <option value="exclusive">Tax Exclusive</option>
+                          <option value="inclusive">Tax Inclusive</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-500 mb-1">Effective Purchase Price</label>
+                      <div className="input-field bg-gray-50 flex items-center h-[38px] font-semibold text-gray-900">{formatRupees(efPurchasePrice)}</div>
+                    </div>
+                  </div>
+
+                  {/* GST & Tax Details */}
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button type="button" onClick={() => setShowGstDetails(!showGstDetails)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      <span>+ GST & Tax Details</span>
+                      <svg className={`w-4 h-4 transition-transform ${showGstDetails ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showGstDetails && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-gray-200 pt-3">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (%)</label>
+                            <input type="number" step="0.01" min="0" max="100" value={form.tax_rate} onChange={e => setForm({ ...form, tax_rate: e.target.value })} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">GST Rate</label>
+                            <SearchableSelect
+                              options={gstRates.map(r => ({ value: r.id, label: r.name }))}
+                              value={form.gst_rate_id}
+                              onChange={v => {
+                                const selected = gstRates.find(r => r.id === v);
+                                setForm({ ...form, gst_rate_id: v, tax_rate: selected ? selected.gst_percentage : form.tax_rate });
+                              }}
+                              placeholder="Search GST..."
+                            />
+                          </div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                          <div className="flex justify-between"><span className="text-gray-500">Taxable Amount (Sale)</span><span className="font-medium">{formatRupees(parseFloat(form.selling_price || 0))}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Tax Amount (Sale)</span><span className="font-medium text-indigo-600">{formatRupees(saleTaxAmt)}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Total (Sale)</span><span className="font-semibold">{formatRupees(parseFloat(form.selling_price || 0) + saleTaxAmt)}</span></div>
+                          <hr className="my-1" />
+                          <div className="flex justify-between"><span className="text-gray-500">Taxable Amount (Purchase)</span><span className="font-medium">{formatRupees(parseFloat(form.purchase_price || 0))}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Tax Amount (Purchase)</span><span className="font-medium text-indigo-600">{formatRupees(purchaseTaxAmt)}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Total (Purchase)</span><span className="font-semibold">{formatRupees(parseFloat(form.purchase_price || 0) + purchaseTaxAmt)}</span></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
-                  <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}
-                    className="input-field">
-                    {units.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
+              )}
+
+              {/* TAB 3: Stock */}
+              {activeTab === 2 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <label className="text-sm font-medium text-gray-700">Stock Tracking</label>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" checked={form.stock_tracking_enabled} onChange={e => setForm({ ...form, stock_tracking_enabled: e.target.checked })} className="sr-only peer" />
+                      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600" />
+                    </label>
+                    <span className="text-xs text-gray-500">{form.stock_tracking_enabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
+
+                  {form.stock_tracking_enabled && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Opening Stock</label>
+                          <input type="number" min="0" step="0.01" value={form.opening_stock} onChange={e => setForm({ ...form, opening_stock: e.target.value })} className="input-field" disabled={!!editing} placeholder="0" />
+                          {editing && <p className="text-xs text-amber-500 mt-1">Opening stock can only be set on creation.</p>}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Opening Stock As Of</label>
+                          <input type="date" value={form.opening_stock_as_of} onChange={e => setForm({ ...form, opening_stock_as_of: e.target.value })} className="input-field" disabled={!!editing} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Low Stock Alert Quantity</label>
+                          <input type="number" min="0" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
+                          <input type="number" min="0" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} className="input-field" placeholder="0" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Identification</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">SKU / Item Code</label>
+                        <input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="input-field" placeholder="Auto-generated if empty" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
+                        <input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="input-field" placeholder="Optional" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Opening Stock</label>
-                  <input type="number" min="0" value={form.opening_stock} onChange={e => setForm({ ...form, opening_stock: e.target.value })}
-                    className="input-field" placeholder="0" />
+              )}
+
+              {/* TAB 4: Party Price */}
+              {activeTab === 3 && (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-500">Set customer/supplier-specific pricing for this product. Party-specific prices take priority during invoice creation.</p>
+
+                  <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Party Type</label>
+                        <select value={partyPriceForm.party_type} onChange={e => setPartyPriceForm({ ...partyPriceForm, party_type: e.target.value, party_id: '' })} className="input-field">
+                          <option value="customer">Customer</option>
+                          <option value="supplier">Supplier</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select {partyPriceForm.party_type === 'customer' ? 'Customer' : 'Supplier'}</label>
+                        <select value={partyPriceForm.party_id} onChange={e => setPartyPriceForm({ ...partyPriceForm, party_id: e.target.value })} className="input-field">
+                          <option value="">Select...</option>
+                          {(partyPriceForm.party_type === 'customer' ? parties.customers : parties.suppliers).map(p => (
+                            <option key={p.id} value={p.id}>{p.name || p.company_name || p.contact_person}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Custom Price (₹)</label>
+                        <input type="number" step="0.01" min="0" value={partyPriceForm.custom_price} onChange={e => setPartyPriceForm({ ...partyPriceForm, custom_price: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Discount %</label>
+                        <input type="number" step="0.01" min="0" max="100" value={partyPriceForm.discount_percent} onChange={e => setPartyPriceForm({ ...partyPriceForm, discount_percent: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-500 mb-1">Effective Price</label>
+                        <div className="input-field bg-gray-50 flex items-center h-[38px] font-semibold text-gray-900">
+                          {Number(computeEffectivePrice(partyPriceForm.custom_price, 'exclusive', 0, partyPriceForm.discount_percent)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Effective From</label>
+                        <input type="date" value={partyPriceForm.effective_from} onChange={e => setPartyPriceForm({ ...partyPriceForm, effective_from: e.target.value })} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Effective To</label>
+                        <input type="date" value={partyPriceForm.effective_to} onChange={e => setPartyPriceForm({ ...partyPriceForm, effective_to: e.target.value })} className="input-field" />
+                      </div>
+                    </div>
+                    <button type="button" onClick={addPartyPrice} disabled={!partyPriceForm.party_id || !partyPriceForm.custom_price}
+                      className="btn-secondary text-sm px-4">+ Add Price</button>
+                  </div>
+
+                  {partyPrices.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 text-gray-500 text-xs uppercase">
+                            <th className="text-left py-2">Party</th>
+                            <th className="text-right py-2">Price</th>
+                            <th className="text-right py-2">Disc%</th>
+                            <th className="text-right py-2">Effective</th>
+                            <th className="text-left py-2 pl-8">From</th>
+                            <th className="text-left py-2 pl-2">To</th>
+                            <th className="w-8" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {partyPrices.map((pp, i) => (
+                            <tr key={i} className="border-b border-gray-50">
+                              <td className="py-2 font-medium text-gray-900">
+                                {(() => {
+                                  const list = pp.party_type === 'supplier' ? parties.suppliers : parties.customers;
+                                  const found = list.find(p => p.id === pp.party_id);
+                                  return found ? (found.name || found.company_name || found.contact_person) : pp.party_id?.substring(0, 8);
+                                })()}
+                              </td>
+                              <td className="py-2 text-right">{Number(pp.custom_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="py-2 text-right">{pp.discount_percent || 0}%</td>
+                              <td className="py-2 text-right font-semibold">{Number(pp.effective_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="py-2 text-gray-500 pl-8">{pp.effective_from || '—'}</td>
+                              <td className="py-2 text-gray-500 pl-2">{pp.effective_to || '—'}</td>
+                              <td className="py-2">
+                                <button onClick={() => removePartyPrice(i)} className="text-red-400 hover:text-red-600">&times;</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Low Stock Threshold</label>
-                  <input type="number" min="0" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })}
-                    className="input-field" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sale Price (₹)</label>
-                  <input type="number" step="0.01" min="0" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })}
-                    className="input-field" placeholder="0.00" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Price (₹)</label>
-                  <input type="number" step="0.01" min="0" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })}
-                    className="input-field" placeholder="0.00" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">HSN/SAC Code</label>
-                  <input type="text" value={form.hsn_code} onChange={e => setForm({ ...form, hsn_code: e.target.value })}
-                    className="input-field" placeholder="e.g. 4820" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (%)</label>
-                  <input type="number" step="0.01" min="0" max="100" value={form.tax_rate} onChange={e => setForm({ ...form, tax_rate: e.target.value })}
-                    className="input-field" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Create'}</button>
-              </div>
-            </form>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 shrink-0">
+              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update Product' : 'Create Product'}</button>
+            </div>
           </div>
         </div>
       )}
@@ -405,13 +707,10 @@ const Products = () => {
               <button type="button" onClick={() => setShowAdjustForm(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <form onSubmit={handleAdjustSave} className="p-5 space-y-4">
-              <div className="text-sm text-gray-500">
-                Current stock: <span className="font-semibold text-gray-900">{showAdjustForm.current_stock ?? 0} {showAdjustForm.unit || 'pcs'}</span>
-              </div>
+              <div className="text-sm text-gray-500">Current stock: <span className="font-semibold text-gray-900">{showAdjustForm.current_stock ?? 0} {showAdjustForm.unit || 'pcs'}</span></div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select value={adjustForm.type} onChange={e => setAdjustForm({ ...adjustForm, type: e.target.value })}
-                  className="input-field">
+                <select value={adjustForm.type} onChange={e => setAdjustForm({ ...adjustForm, type: e.target.value })} className="input-field">
                   <option value="in">Stock In</option>
                   <option value="out">Stock Out</option>
                   <option value="adjustment">Adjustment</option>
@@ -419,14 +718,11 @@ const Products = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                <input type="number" step="0.01" min="0.01" value={adjustForm.quantity}
-                  onChange={e => setAdjustForm({ ...adjustForm, quantity: e.target.value })}
-                  className="input-field" placeholder="Enter quantity" required />
+                <input type="number" step="0.01" min="0.01" value={adjustForm.quantity} onChange={e => setAdjustForm({ ...adjustForm, quantity: e.target.value })} className="input-field" placeholder="Enter quantity" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea value={adjustForm.notes} onChange={e => setAdjustForm({ ...adjustForm, notes: e.target.value })}
-                  className="input-field" rows={2} placeholder="Reason for adjustment" />
+                <textarea value={adjustForm.notes} onChange={e => setAdjustForm({ ...adjustForm, notes: e.target.value })} className="input-field" rows={2} placeholder="Reason for adjustment" />
               </div>
               <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setShowAdjustForm(null)} className="btn-secondary">Cancel</button>
@@ -447,9 +743,7 @@ const Products = () => {
               <button type="button" onClick={() => setShowMovement(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <div className="p-5">
-              {movementsLoading ? (
-                <Loading text="Loading movements..." />
-              ) : movements.length === 0 ? (
+              {movementsLoading ? <Loading text="Loading movements..." /> : movements.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">No stock movements recorded yet.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -467,9 +761,7 @@ const Products = () => {
                       {movements.map((m) => (
                         <tr key={m.id} className="border-b border-gray-50">
                           <td className="py-2 text-gray-500">{m.created_at?.split('T')[0] || '—'}</td>
-                          <td className="py-2">
-                            <span className={`${m.type === 'in' ? 'text-green-600' : m.type === 'out' ? 'text-red-600' : 'text-amber-600'} font-medium`}>{m.type}</span>
-                          </td>
+                          <td className="py-2"><span className={`${m.type === 'in' ? 'text-green-600' : m.type === 'out' ? 'text-red-600' : 'text-amber-600'} font-medium`}>{m.type}</span></td>
                           <td className="py-2 font-medium">{m.quantity}</td>
                           <td className="py-2 text-gray-500">{m.reference_type || '—'}{m.reference_id ? ` #${m.reference_id}` : ''}</td>
                           <td className="py-2 text-gray-500 max-w-[200px] truncate">{m.notes || '—'}</td>
@@ -490,32 +782,12 @@ const Products = () => {
           <div className="space-y-3">
             <h3 className="text-lg font-semibold text-gray-900">{mobileDetail.name}</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-gray-500">SKU</span>
-                <p className="font-medium">{mobileDetail.sku || '—'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Current Stock</span>
-                <p className={`font-semibold ${mobileDetail.low_stock_threshold && Number(mobileDetail.current_stock) <= Number(mobileDetail.low_stock_threshold) ? 'text-red-600' : ''}`}>
-                  {mobileDetail.current_stock ?? 0} {mobileDetail.unit || 'pcs'}
-                </p>
-              </div>
-              <div>
-                <span className="text-gray-500">Sale Price</span>
-                <p className="font-medium">{mobileDetail.selling_price ? formatINR(mobileDetail.selling_price) : '—'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Purchase Price</span>
-                <p className="font-medium">{mobileDetail.purchase_price ? formatINR(mobileDetail.purchase_price) : '—'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">HSN</span>
-                <p className="font-medium">{mobileDetail.hsn_code || '—'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Tax Rate</span>
-                <p className="font-medium">{mobileDetail.tax_rate ? `${mobileDetail.tax_rate}%` : '—'}</p>
-              </div>
+              <div><span className="text-gray-500">SKU</span><p className="font-medium">{mobileDetail.sku || '—'}</p></div>
+              <div><span className="text-gray-500">Stock</span><p className={`font-semibold ${mobileDetail.low_stock_threshold && Number(mobileDetail.current_stock) <= Number(mobileDetail.low_stock_threshold) ? 'text-red-600' : ''}`}>{mobileDetail.current_stock ?? 0} {mobileDetail.unit || 'pcs'}</p></div>
+              <div><span className="text-gray-500">Sale Price</span><p className="font-medium">{mobileDetail.effective_sale_price ? formatRupees(mobileDetail.effective_sale_price) : mobileDetail.selling_price ? formatRupees(mobileDetail.selling_price) : '—'}</p></div>
+              <div><span className="text-gray-500">Cost Price</span><p className="font-medium">{mobileDetail.effective_purchase_price ? formatRupees(mobileDetail.effective_purchase_price) : mobileDetail.purchase_price ? formatRupees(mobileDetail.purchase_price) : '—'}</p></div>
+              <div><span className="text-gray-500">Category</span><p className="font-medium">{mobileDetail.category || '—'}</p></div>
+              <div><span className="text-gray-500">HSN</span><p className="font-medium">{mobileDetail.hsn_code || '—'}</p></div>
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => { setMobileDetail(null); openEdit(mobileDetail); }} className="btn-secondary flex-1 text-sm">Edit</button>
@@ -527,6 +799,4 @@ const Products = () => {
       )}
     </div>
   );
-};
-
-export default Products;
+}

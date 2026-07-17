@@ -53,6 +53,8 @@ import Gstr2bReconciliation from './pages/admin/Gstr2bReconciliation';
 import TDSManagement from './pages/admin/TDSManagement';
 import TallyExport from './pages/admin/TallyExport';
 import BulkImport from './pages/admin/BulkImport';
+import SalesTransactions from './pages/admin/SalesTransactions';
+import PurchaseTransactions from './pages/admin/PurchaseTransactions';
 import Entities from './pages/admin/Entities';
 import CustomerPortal from './pages/portal/CustomerPortal';
 import Workspace from './pages/employee/Workspace';
@@ -76,6 +78,8 @@ import PlanAdoption from './pages/super/PlanAdoption';
 import UsageAnalytics from './pages/super/UsageAnalytics';
 import SuperAuditLogs from './pages/super/SuperAuditLogs';
 import GlobalConfig from './pages/super/GlobalConfig';
+import GstTaxConfig from './pages/super/GstTaxConfig';
+import UnitMasterConfig from './pages/super/UnitMasterConfig';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -137,6 +141,8 @@ function App() {
             <Route path="analytics/usage" element={<UsageAnalytics />} />
             <Route path="audit-logs" element={<SuperAuditLogs />} />
             <Route path="global-config" element={<GlobalConfig />} />
+            <Route path="units" element={<UnitMasterConfig />} />
+            <Route path="gst-tax" element={<GstTaxConfig />} />
 
           </Route>
 
@@ -169,6 +175,8 @@ function App() {
             <Route path="customers" element={<PlanRoute minPlan="business"><Customers /></PlanRoute>} />
             <Route path="purchase-orders" element={<PlanRoute minPlan="business"><PurchaseOrders /></PlanRoute>} />
             <Route path="invoices" element={<PlanRoute minPlan="business"><Invoices /></PlanRoute>} />
+            <Route path="sales-transactions" element={<PlanRoute minPlan="business"><SalesTransactions /></PlanRoute>} />
+            <Route path="purchase-transactions" element={<PlanRoute minPlan="business"><PurchaseTransactions /></PlanRoute>} />
             <Route path="recurring-invoices" element={<PlanRoute minPlan="business"><RecurringInvoices /></PlanRoute>} />
             <Route path="bank" element={<PlanRoute minPlan="business"><BankImport /></PlanRoute>} />
             <Route path="notes" element={<PlanRoute minPlan="business"><CreditDebitNotes /></PlanRoute>} />

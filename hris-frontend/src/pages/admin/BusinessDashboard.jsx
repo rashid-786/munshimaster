@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useGlobalConfig } from '../../context/GlobalConfigContext';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import { resolvePlan } from '../../config/subscriptionPlans';
@@ -99,6 +100,7 @@ const StatusPie = ({ data }) => {
 const BusinessDashboard = () => {
   const navigate = useNavigate();
   const { tenant } = useAuth();
+  const { globalConfig } = useGlobalConfig();
   const rawPlan = tenant?.subscriptionPlan || 'FREE';
   const plan = resolvePlan(rawPlan);
   const isBusinessPro = plan === 'BUSINESS_PRO';
@@ -185,10 +187,10 @@ const BusinessDashboard = () => {
             onClick={() => navigate('/admin/reports')} />
           <KpiCard title="Receivables" value={`₹${(s.outstandingReceivables || 0).toLocaleString()}`}
             subtitle={`${s.invoiceCounts?.pending || 0} pending`} color="text-amber-600" icon="📋"
-            onClick={() => navigate('/admin/invoices')} />
+            onClick={() => navigate('/admin/sales-transactions')} />
           <KpiCard title="Payables" value={`₹${(s.outstandingPayables || 0).toLocaleString()}`}
             subtitle={`${s.invoiceCounts?.overdue || 0} overdue`} color="text-red-600" icon="💳"
-            onClick={() => navigate('/admin/purchase-orders')} />
+            onClick={() => navigate('/admin/purchase-transactions')} />
           {isBusinessPro && <KpiCard title="Cash Flow" value={`₹${(s.cashFlow?.net || 0).toLocaleString()}`}
             subtitle={`In ₹${(s.cashFlow?.in || 0).toLocaleString()} / Out ₹${(s.cashFlow?.out || 0).toLocaleString()}`}
             color={(s.cashFlow?.net || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} icon="💵"
@@ -360,8 +362,8 @@ const BusinessDashboard = () => {
                   <div key={inv.id} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                     onClick={() => navigate('/admin/invoices')}>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{inv.invoiceNumber}</p>
-                      <p className="text-xs text-gray-400 truncate">{inv.customerName || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">{inv.documentNumber}</p>
+                      <p className="text-xs text-gray-400 truncate">{inv.partyName || '—'}</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <p className="text-sm font-semibold text-gray-900">{formatINR(inv.totalAmount * 100)}</p>
@@ -393,7 +395,7 @@ const BusinessDashboard = () => {
                   <div key={po.id} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                     onClick={() => navigate('/admin/purchase-orders')}>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{po.poNumber}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">{po.documentNumber}</p>
                       <p className="text-xs text-gray-400">{po.createdAt?.split('T')[0]}</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
@@ -415,43 +417,43 @@ const BusinessDashboard = () => {
 
       {/* Quick Actions / Subscription Info */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <button onClick={() => navigate('/admin/invoices')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">💰</p>
+        <div className={`${globalConfig.hideSubscriptionLabels ? 'lg:col-span-3' : 'lg:col-span-2'} flex flex-wrap gap-3`}>
+          <button onClick={() => navigate('/admin/invoices')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">💰</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Invoices</p>
           </button>
-          <button onClick={() => navigate('/admin/purchase-orders')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">📦</p>
+          <button onClick={() => navigate('/admin/purchase-orders')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">📦</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Purchase Orders</p>
           </button>
-          <button onClick={() => navigate('/admin/reports')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">📊</p>
+          <button onClick={() => navigate('/admin/reports')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">📊</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Reports</p>
           </button>
-          <button onClick={() => navigate('/admin/products')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">📦</p>
+          <button onClick={() => navigate('/admin/products')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">📦</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Inventory</p>
           </button>
-          <button onClick={() => navigate('/admin/customers')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">👥</p>
+          <button onClick={() => navigate('/admin/customers')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">👥</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Customers</p>
           </button>
-          <button onClick={() => navigate('/admin/suppliers')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">🏢</p>
+          <button onClick={() => navigate('/admin/suppliers')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">🏢</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Suppliers</p>
           </button>
-          {isBusinessPro && <button onClick={() => navigate('/admin/notes')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">📝</p>
+          {isBusinessPro && <button onClick={() => navigate('/admin/notes')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">📝</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Credit/Debit Notes</p>
           </button>}
-          {isBusinessPro && <button onClick={() => navigate('/admin/cash-flow')} className="card p-3 hover:shadow-md transition-shadow text-center">
-            <p className="text-lg">💵</p>
+          {isBusinessPro && <button onClick={() => navigate('/admin/cash-flow')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+            <p className="text-xl">💵</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Cash Flow</p>
           </button>}
         </div>
 
         {/* Subscription */}
-        <div className="card">
+        {!globalConfig.hideSubscriptionLabels && <div className="card">
           <div className="card-header"><h3 className="text-sm font-semibold text-gray-900">Subscription</h3></div>
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -479,7 +481,7 @@ const BusinessDashboard = () => {
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -124,21 +124,21 @@ exports.getBusinessDashboard = async (req, res) => {
       [kiranaPayables],
       [subscriptionRes],
     ] = await Promise.all([
-      // Current period revenue (paid invoices)
+      // Current period revenue (paid sales invoices)
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status = 'paid'
+        `SELECT COALESCE(SUM(grand_total),0) as t, COUNT(*) as c
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid'
          AND updated_at BETWEEN ? AND ?`,
         [tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
       // Previous period revenue
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status = 'paid'
+        `SELECT COALESCE(SUM(grand_total),0) as t
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid'
          AND updated_at BETWEEN ? AND ?`,
         [tenantId, prevFromDate, fromDate]
       ),
-      // Current period expenses (balance sheet OUT + pending PO totals)
+      // Current period expenses (balance sheet OUT + paid purchase invoices)
       db.query(
         `SELECT COALESCE(SUM(amount),0) as t
          FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
@@ -154,33 +154,36 @@ exports.getBusinessDashboard = async (req, res) => {
       ),
       // Paid invoice total (all time)
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status = 'paid'`,
+        `SELECT COALESCE(SUM(grand_total),0) as t, COUNT(*) as c
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid'`,
         [tenantId]
       ),
       // Pending invoices (sent/overdue/partial)
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status IN ('sent','overdue','partial')`,
+        `SELECT COALESCE(SUM(grand_total),0) as t, COUNT(*) as c
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status IN ('sent','overdue','partial')`,
         [tenantId]
       ),
       // Overdue invoices
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status = 'overdue'`,
+        `SELECT COALESCE(SUM(grand_total),0) as t, COUNT(*) as c
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'overdue'`,
         [tenantId]
       ),
-      // Outstanding receivables (unpaid invoices)
+      // Outstanding receivables (unpaid sales invoices)
       db.query(
-        `SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount,0)),0) as t
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status IN ('sent','overdue','partial')`,
+        `SELECT COALESCE(SUM(grand_total - COALESCE(amount_paid,0)),0) as t
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status IN ('sent','overdue','partial')`,
         [tenantId]
       ),
-      // Outstanding payables (pending PO totals)
+      // Outstanding payables (pending purchase orders + unpaid purchase invoices)
       db.query(
-        `SELECT COALESCE(SUM(total_amount),0) as t
-         FROM hris_saas.purchase_orders WHERE tenant_id = ? AND status IN ('draft','sent','approved')`,
-        [tenantId]
+        `SELECT COALESCE(SUM(t.grand_total),0) as t FROM (
+          SELECT grand_total FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_order' AND status IN ('draft','sent','approved')
+          UNION ALL
+          SELECT grand_total - COALESCE(amount_paid,0) FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status IN ('sent','partial','overdue')
+        ) t`,
+        [tenantId, tenantId]
       ),
       // Total active customers
       db.query(
@@ -198,58 +201,60 @@ exports.getBusinessDashboard = async (req, res) => {
         `SELECT COUNT(*) as c FROM hris_saas.suppliers WHERE tenant_id = ? AND status = 'active'`,
         [tenantId]
       ),
-      // Invoice status breakdown
+      // Invoice status breakdown (sales invoices only)
       db.query(
-        `SELECT status, COUNT(*) as c, COALESCE(SUM(total_amount),0) as t
-         FROM hris_saas.invoices WHERE tenant_id = ? GROUP BY status`,
+        `SELECT status, COUNT(*) as c, COALESCE(SUM(grand_total),0) as t
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' GROUP BY status`,
         [tenantId]
       ),
       // Monthly revenue trend (12 months)
       db.query(
-        `SELECT DATE_TRUNC('month', updated_at) as month, COALESCE(SUM(total_amount),0) as revenue
-         FROM hris_saas.invoices WHERE tenant_id = ? AND status = 'paid' AND updated_at IS NOT NULL
+        `SELECT DATE_TRUNC('month', updated_at) as month, COALESCE(SUM(grand_total),0) as revenue
+         FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'sales_invoice' AND status = 'paid' AND updated_at IS NOT NULL
          AND updated_at >= ?
          GROUP BY DATE_TRUNC('month', updated_at) ORDER BY month`,
         [tenantId, `${now.getFullYear() - 1}-01-01`]
       ),
-      // Monthly expense trend (12 months)
+      // Monthly expense trend (12 months — balance sheet OUT + paid purchase invoices)
       db.query(
-        `SELECT DATE_TRUNC('month', entry_date) as month, COALESCE(SUM(amount),0) as expenses
-         FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
-         AND entry_date >= ?
-         GROUP BY DATE_TRUNC('month', entry_date) ORDER BY month`,
-        [tenantId, `${now.getFullYear() - 1}-01-01`]
+        `SELECT COALESCE(SUM(t.amount),0) as expenses FROM (
+          SELECT amount, entry_date as dt FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
+          UNION ALL
+          SELECT grand_total, updated_at FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid'
+        ) t
+        WHERE t.dt >= ?`,
+        [tenantId, tenantId, `${now.getFullYear() - 1}-01-01`]
       ),
       // Top 5 customers by revenue
       db.query(
-        `SELECT c.name, c.id, SUM(i.total_amount) as revenue, COUNT(i.id) as invoice_count
-         FROM hris_saas.invoices i JOIN hris_saas.customers c ON i.customer_id = c.id
-         WHERE i.tenant_id = ? AND i.status = 'paid'
-         GROUP BY c.id, c.name ORDER BY revenue DESC LIMIT 5`,
+        `SELECT t.party_name as name, t.party_id as id, SUM(t.grand_total) as revenue, COUNT(t.id) as invoice_count
+         FROM hris_saas.transactions t
+         WHERE t.tenant_id = ? AND t.transaction_type = 'sales_invoice' AND t.status = 'paid'
+         GROUP BY t.party_id, t.party_name ORDER BY revenue DESC LIMIT 5`,
         [tenantId]
       ),
-      // Top 5 suppliers by PO amount
+      // Top 5 suppliers by amount
       db.query(
-        `SELECT s.name, s.id, SUM(po.total_amount) as amount, COUNT(po.id) as po_count
-         FROM hris_saas.purchase_orders po JOIN hris_saas.suppliers s ON po.supplier_id = s.id
-         WHERE po.tenant_id = ? AND po.status IN ('approved','received')
-         GROUP BY s.id, s.name ORDER BY amount DESC LIMIT 5`,
+        `SELECT t.party_name as name, t.party_id as id, SUM(t.grand_total) as amount, COUNT(t.id) as po_count
+         FROM hris_saas.transactions t
+         WHERE t.tenant_id = ? AND t.transaction_type IN ('purchase_invoice','purchase_order') AND t.status IN ('paid','approved','received')
+         GROUP BY t.party_id, t.party_name ORDER BY amount DESC LIMIT 5`,
         [tenantId]
       ),
-      // Recent invoices
+      // Recent sales invoices
       db.query(
-        `SELECT i.id, i.invoice_number, i.total_amount, i.status, i.created_at,
-                c.name as customer_name
-         FROM hris_saas.invoices i LEFT JOIN hris_saas.customers c ON i.customer_id = c.id
-         WHERE i.tenant_id = ?
-         ORDER BY i.created_at DESC LIMIT 5`,
+        `SELECT t.id, t.document_number, t.grand_total as total_amount, t.status, t.created_at,
+                t.party_name as customer_name
+         FROM hris_saas.transactions t
+         WHERE t.tenant_id = ? AND t.transaction_type = 'sales_invoice'
+         ORDER BY t.created_at DESC LIMIT 5`,
         [tenantId]
       ),
       // Pending Purchase Orders
       db.query(
-        `SELECT id, po_number, total_amount, status, created_at
-         FROM hris_saas.purchase_orders
-         WHERE tenant_id = ? AND status NOT IN ('received','cancelled')
+        `SELECT id, document_number, grand_total as total_amount, status, created_at
+         FROM hris_saas.transactions
+         WHERE tenant_id = ? AND transaction_type = 'purchase_order' AND status NOT IN ('received','cancelled')
          ORDER BY created_at DESC LIMIT 5`,
         [tenantId]
       ),
@@ -262,20 +267,22 @@ exports.getBusinessDashboard = async (req, res) => {
          ORDER BY t.created_at DESC LIMIT 5`,
         [tenantId]
       ),
-      // Cash flow in (invoice payments)
+      // Cash flow in (completed payment_in transactions)
       db.query(
-        `SELECT COALESCE(SUM(ip.amount),0) as t
-         FROM hris_saas.invoice_payments ip
-         JOIN hris_saas.invoices i ON ip.invoice_id = i.id
-         WHERE i.tenant_id = ? AND ip.payment_date BETWEEN ? AND ?`,
+        `SELECT COALESCE(SUM(grand_total),0) as t
+         FROM hris_saas.transactions
+         WHERE tenant_id = ? AND transaction_type = 'payment_in' AND status = 'completed'
+         AND document_date BETWEEN ? AND ?`,
         [tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
-      // Cash flow out (balance sheet expenses)
+      // Cash flow out (balance sheet expenses + completed payment_out)
       db.query(
-        `SELECT COALESCE(SUM(amount),0) as t
-         FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
-         AND entry_date BETWEEN ? AND ?`,
-        [tenantId, fromDate, toDate + 'T23:59:59Z']
+        `SELECT COALESCE(SUM(t.amount),0) as t FROM (
+          SELECT amount, entry_date as dt FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
+          UNION ALL
+          SELECT grand_total, document_date FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'payment_out' AND status = 'completed'
+        ) t WHERE t.dt BETWEEN ? AND ?`,
+        [tenantId, tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
       // Kirana buyer count
       db.query(
@@ -352,7 +359,7 @@ exports.getBusinessDashboard = async (req, res) => {
     const customerScore = Math.min(10, Math.max(0, Math.min(10, activeCustomers * 2)));
     const healthScore = Math.round(profitScore + collectionScore + growthScore + cashScore + customerScore);
 
-    // Build monthly trend
+    // Monthly trend — combine transaction revenue with balance_sheet expenses
     const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     const monthMap = {};
     const nowYear = now.getFullYear();
@@ -367,10 +374,23 @@ exports.getBusinessDashboard = async (req, res) => {
       const key = monthKey(d);
       if (monthMap[key]) monthMap[key].revenue = Math.round(row.revenue / 100);
     }
-    for (const row of monthlyExpenses) {
+    // monthlyExpenses result is a single aggregated row from the UNION query
+    // We need to break it down by month — handle separately
+    // For simplicity, keep the balance_sheet monthly trend (already aggregated)
+    // But we lost the per-month breakdown from the UNION — refetch with DATE_TRUNC
+    const monthlyExpenseRows = await db.query(
+      `SELECT DATE_TRUNC('month', t.dt) as month, COALESCE(SUM(t.amount),0) as expenses FROM (
+        SELECT amount, entry_date as dt FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
+        UNION ALL
+        SELECT grand_total, updated_at FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid'
+      ) t WHERE t.dt >= ?
+      GROUP BY DATE_TRUNC('month', t.dt) ORDER BY month`,
+      [tenantId, tenantId, `${now.getFullYear() - 1}-01-01`]
+    );
+    for (const row of monthlyExpenseRows) {
       const d = new Date(row.month);
       const key = monthKey(d);
-      if (monthMap[key]) monthMap[key].expenses = Math.round(row.expenses / 100);
+      if (monthMap[key]) monthMap[key].expenses = Math.round(Number(row.expenses) / 100);
     }
     for (const key of Object.keys(monthMap)) {
       monthMap[key].profit = monthMap[key].revenue - monthMap[key].expenses;
@@ -435,13 +455,13 @@ exports.getBusinessDashboard = async (req, res) => {
         poCount: Number(s.po_count),
       })),
       recentInvoices: recentInvoices.map(i => ({
-        id: i.id, invoiceNumber: i.invoice_number,
+        id: i.id, documentNumber: i.document_number,
         totalAmount: Math.round(Number(i.total_amount) / 100),
         status: i.status, createdAt: i.created_at,
-        customerName: i.customer_name,
+        partyName: i.customer_name,
       })),
       pendingPOs: pendingPOs.map(p => ({
-        id: p.id, poNumber: p.po_number,
+        id: p.id, documentNumber: p.document_number,
         totalAmount: Math.round(Number(p.total_amount) / 100),
         status: p.status, createdAt: p.created_at,
       })),
