@@ -191,12 +191,7 @@ export default function TransactionDetailView({ transaction, templateConfig, dir
             <span>{lbl('grandTotal', 'Grand Total')}:</span>
             <span>{fmtCurrency(t.grand_total || 0)}</span>
           </div>
-          {t.amount_paid > 0 && (
-            <div className="flex justify-between w-64 text-sm">
-              <span className="text-gray-600">{lbl('paid', 'Amount Paid')}:</span>
-              <span className="text-green-700 font-medium">{fmtCurrency(t.amount_paid)}</span>
-            </div>
-          )}
+          
 
         </div>
 

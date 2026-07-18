@@ -1042,4 +1042,12 @@ export const hrService = {
     const response = await api.delete('/core/invoice-template/signature');
     return response.data;
   },
+  downloadTransactionPDF: async (id) => {
+    const response = await api.get(`/core/transactions/${id}/pdf`, { responseType: 'blob' });
+    return response.data;
+  },
+  getTransactionPrintHTML: async (id) => {
+    const response = await api.get(`/core/transactions/${id}`);
+    return response.data;
+  },
 };

@@ -26,8 +26,6 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
   const today = new Date().toISOString().split('T')[0];
 
   const initForm = useMemo(() => ({
-    document_date: today,
-    due_date: addDays(today, 30),
     document_number: '',
     status: 'draft',
     ...initial,
@@ -35,7 +33,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
     due_date: toDateInput(initial?.due_date) || addDays(today, 30),
     valid_until: toDateInput(initial?.valid_until),
     expected_delivery_date: toDateInput(initial?.expected_delivery_date),
-  }), [initial]);
+  }), [initial, today]);
 
   const [form, setForm] = useState(initForm);
   const [partyData, setPartyData] = useState(null);

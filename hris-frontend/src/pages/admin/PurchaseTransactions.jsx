@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { hrService } from '../../services/hr.service';
 import { DOC_LABELS, DOCUMENT_CONFIG, STATUS_STYLES } from '../../config/documentConfig';
 import TransactionForm from '../../components/TransactionForm';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import Drawer from '../../components/Drawer';
 import TransactionDetailView from '../../components/TransactionDetailView';
+import ConfirmModal from '../../components/ConfirmModal';
 
 const TYPES = ['purchase_invoice', 'payment_out', 'purchase_return', 'debit_note', 'purchase_order'];
 
@@ -94,10 +96,21 @@ export default function PurchaseTransactions() {
   const [detail, setDetail] = useState(null);
   const [generateMsg, setGenerateMsg] = useState('');
   const [templateConfig, setTemplateConfig] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [printData, setPrintData] = useState(null);
 
   useEffect(() => {
     hrService.getInvoiceTemplateSettings().then(r => setTemplateConfig(r || {})).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (printData) {
+      const handler = () => setPrintData(null);
+      window.addEventListener('afterprint', handler);
+      setTimeout(() => { window.print(); }, 300);
+      return () => window.removeEventListener('afterprint', handler);
+    }
+  }, [printData]);
 
   const dateParams = period === 'custom'
     ? { startDate: fromDate || undefined, endDate: toDate || undefined }
@@ -135,10 +148,12 @@ export default function PurchaseTransactions() {
       setEditing(full); setShowForm(true);
     } catch { setEditing(row); setShowForm(true); }
   };
-  const handleDelete = async (row) => {
-    if (!window.confirm(`Delete draft ${row.document_number}?`)) return;
+  const handleDelete = async (row) => { setConfirmDelete(row); };
+  const confirmDeleteAction = async () => {
+    if (!confirmDelete) return;
     try {
-      await hrService.deleteTransaction(row.id);
+      await hrService.deleteTransaction(confirmDelete.id);
+      setConfirmDelete(null);
       fetchData();
     } catch { alert('Failed to delete.'); }
   };
@@ -236,6 +251,29 @@ export default function PurchaseTransactions() {
         </div>
       )}
 
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Delete Document"
+        message={`Are you sure you want to delete draft ${confirmDelete?.document_number || ''}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDeleteAction}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {printData && createPortal((() => {
+        const rawHtml = buildInvoiceHTML(printData, templateConfig, 'purchase');
+        const styles = (rawHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/g) || []).map(s => s.replace(/<\/?style[^>]*>/g, '')).join('\n');
+        const bodyContent = rawHtml.replace(/[\s\S]*<body[^>]*>/i, '').replace(/<\/body>[\s\S]*/i, '');
+        return (
+          <div className="print-view">
+            <style>{styles}</style>
+            <style>{`@media print { @page { size: A4; margin: 0; } body > :not(.print-view) { display: none !important; } .print-view { display: block; } }`}</style>
+            <div dangerouslySetInnerHTML={{ __html: bodyContent }} />
+          </div>
+        );
+      })(), document.body)}
+
       {detail && (
         <Drawer
           open={!!detail}
@@ -246,6 +284,42 @@ export default function PurchaseTransactions() {
               <button onClick={() => { const d = detail; setDetail(null); openEdit(d); }} className="btn-primary text-sm">Edit</button>
               {detail.status === 'draft' && (
                 <button onClick={() => { const d = detail; setDetail(null); handleDelete(d); }} className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">Delete</button>
+              )}
+              <div className="flex-1" />
+              {detail.status !== 'draft' && (
+                <>
+                  <button onClick={async () => {
+                    try {
+                      const full = await hrService.getTransaction(detail.id);
+                      setPrintData(full);
+                    } catch { alert('Failed to generate print view.'); }
+                  }} className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1.5" title="Print">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Print
+                  </button>
+                  <button onClick={async () => {
+                    try {
+                      const blob = await hrService.downloadTransactionPDF(detail.id);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url; a.download = `${detail.document_number || 'invoice'}.pdf`; a.click();
+                      URL.revokeObjectURL(url);
+                    } catch { alert('Failed to download PDF.'); }
+                  }} className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1.5" title="Download PDF">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    PDF
+                  </button>
+                  <button onClick={async () => {
+                    const url = `${window.location.origin}/invoice/${detail.id}`;
+                    if (navigator.share) {
+                      try { await navigator.share({ title: detail.document_number || 'Invoice', text: `Invoice ${detail.document_number}`, url }); } catch {}
+                    } else {
+                      try { await navigator.clipboard.writeText(url); alert('Link copied!'); } catch { prompt('Copy link:', url); }
+                    }
+                  }} className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1.5" title="Share">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                    Share
+                  </button>
+                </>
               )}
               {detail.status !== 'draft' && cfg?.conversions?.length > 0 && cfg.conversions.map(ct => (
                 <button key={ct} onClick={async () => {
@@ -285,4 +359,115 @@ export default function PurchaseTransactions() {
 function formatINR(cents) {
   const symbol = localStorage.getItem('currency_symbol') || '₹';
   return symbol + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function buildInvoiceHTML(t, cfg, direction) {
+  const s = cfg || {};
+  const isSales = direction === 'sales';
+  const partyLabel = isSales ? 'Customer' : 'Supplier';
+  const gstRates = [...new Set((t.items || []).map(i => i.gst_rate || 0).filter(r => r > 0))];
+  const gstLabel = gstRates.length === 1 ? `GST @ ${gstRates[0]}%` : 'GST';
+  const gstTotal = (Number(t.cgst_amount) || 0) + (Number(t.sgst_amount) || 0) + (Number(t.igst_amount) || 0);
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+  const imgUrl = (url) => url ? (url.startsWith('http') ? url : apiBase + url.replace(/^\/api\/v1/, '')) : '';
+  const fmt = (cents) => {
+    const sym = localStorage.getItem('currency_symbol') || '₹';
+    return sym + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const statusBg = { draft:'#F3F4F6', sent:'#DBEAFE', paid:'#DCFCE7', partial:'#FEF3C7', overdue:'#FEE2E2', completed:'#DCFCE7', issued:'#E0E7FF', delivered:'#CCFBF1', cancelled:'#FEE2E2' };
+  const statusFg = { draft:'#6B7280', sent:'#2563EB', paid:'#16A34A', partial:'#D97706', overdue:'#DC2626', completed:'#16A34A', issued:'#6366F1', delivered:'#0D9488', cancelled:'#DC2626' };
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${t.document_number || 'Document'}</title>
+<style>
+  @page { size: A4; margin: 5mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: ${s.fontFamily || 'Helvetica, Arial, sans-serif'}; font-size: ${s.fontSize === 'large' ? '14px' : s.fontSize === 'medium' ? '13px' : '12px'}; color: #111827; padding: 20px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid ${s.primaryColor || '#0F172A'}; }
+  .header-left { display: flex; align-items: center; gap: 15px; }
+  .header-right { text-align: right; }
+  .header-right h1 { font-size: 18px; color: ${s.primaryColor || '#0F172A'}; margin-bottom: 4px; }
+  .company-name { font-size: 16px; font-weight: bold; color: ${s.primaryColor || '#0F172A'}; }
+  .section-title { font-weight: 600; color: #374151; margin-bottom: 4px; font-size: 12px; }
+  .party-info { font-size: 12px; line-height: 1.6; }
+  .party-info .name { font-weight: 600; color: #111827; }
+  .party-info .detail { color: #6B7280; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+  th { background: ${s.primaryColor || '#374151'}; color: #fff; padding: 6px 8px; font-size: 11px; text-align: left; font-weight: 600; }
+  th.right { text-align: right; }
+  td { padding: 5px 8px; font-size: 11px; border-bottom: 1px solid #E5E7EB; color: #374151; }
+  td.right { text-align: right; }
+  tr:nth-child(even) td { background: #F9FAFB; }
+  .summary { margin-left: auto; width: 280px; }
+  .summary-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+  .summary-row.total { border-top: 2px solid ${s.primaryColor || '#0F172A'}; padding-top: 6px; margin-top: 4px; font-weight: bold; font-size: 14px; color: ${s.primaryColor || '#0F172A'}; }
+  .summary-label { color: #6B7280; }
+  .summary-value { color: #111827; }
+  .notes { font-size: 11px; color: #6B7280; margin-top: 20px; padding-top: 10px; border-top: 1px solid #E5E7EB; }
+  .signature { text-align: right; margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; }
+  .signature img { max-width: 130px; max-height: 40px; margin-bottom: 4px; }
+  .signature .name { font-weight: 600; font-size: 13px; color: #111827; }
+  .signature .designation { font-size: 11px; color: #6B7280; }
+  .signature .line { width: 140px; border-top: 1px solid #9CA3AF; margin-left: auto; margin-bottom: 4px; }
+  .signature .label { font-size: 10px; color: #9CA3AF; }
+  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+</style></head><body>
+  <div class="header">
+    <div class="header-left">
+      ${s.logoUrl ? `<img src="${imgUrl(s.logoUrl)}" style="max-height:60px;object-fit:contain;" />` : ''}
+      <div>
+        <div class="company-name">${s.companyName || ''}</div>
+        ${s.gstNumber ? `<div style="font-size:11px;color:#6B7280;">GST: ${s.gstNumber}</div>` : ''}
+      </div>
+    </div>
+    <div class="header-right">
+      <h1>${DOC_LABELS[t.transaction_type] || 'Document'}</h1>
+      <p style="color:#6B7280;font-size:11px;">${t.document_number || ''}</p>
+      <p style="color:#6B7280;font-size:11px;">${t.document_date ? new Date(t.document_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+      ${t.due_date ? `<p style="color:#6B7280;font-size:11px;">Due: ${new Date(t.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>` : ''}
+      <div style="margin-top:4px;">Status: <span class="status-badge" style="background:${statusBg[t.status] || '#F3F4F6'};color:${statusFg[t.status] || '#6B7280'};">${t.status || ''}</span></div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:15px;">
+    <div class="party-info">
+      <div class="section-title">${partyLabel}</div>
+      <div class="name">${t.party_name || '—'}</div>
+      ${t.party_gstin ? `<div class="detail">GSTIN: ${t.party_gstin}</div>` : ''}
+      ${t.party_address ? `<div class="detail">${t.party_address}</div>` : ''}
+      ${t.party_city ? `<div class="detail">${t.party_city}${t.party_state ? ', ' + t.party_state : ''}</div>` : ''}
+    </div>
+    ${t.place_of_supply ? `<div class="party-info"><div class="section-title">Place of Supply</div><div class="detail">${t.place_of_supply}</div></div>` : ''}
+  </div>
+
+  <table>
+    <tr><th style="width:30px;">#</th><th>Item</th><th class="right" style="width:60px;">Qty</th><th class="right" style="width:80px;">Rate</th><th class="right" style="width:55px;">GST%</th><th class="right" style="width:90px;">Amount</th></tr>
+    ${(t.items || []).map((item, i) => `<tr>
+      <td>${i + 1}</td>
+      <td>${item.description || item.item_name || '—'}</td>
+      <td class="right">${item.quantity || 1}</td>
+      <td class="right">${fmt(item.rate || 0)}</td>
+      <td class="right">${item.gst_rate || 0}%</td>
+      <td class="right">${fmt(item.total_amount || 0)}</td>
+    </tr>`).join('')}
+  </table>
+
+  <div class="summary">
+    <div class="summary-row"><span class="summary-label">Subtotal:</span><span class="summary-value">${fmt(t.subtotal || 0)}</span></div>
+    ${Number(t.discount_amount) > 0 ? `<div class="summary-row"><span class="summary-label">Discount:</span><span class="summary-value" style="color:#DC2626;">-${fmt(t.discount_amount)}</span></div>` : ''}
+    ${gstTotal > 0 ? `<div class="summary-row"><span class="summary-label">${gstLabel}:</span><span class="summary-value">${fmt(gstTotal)}</span></div>` : ''}
+    ${Number(t.round_off) !== 0 ? `<div class="summary-row"><span class="summary-label">Round Off:</span><span class="summary-value">${fmt(t.round_off)}</span></div>` : ''}
+    <div class="summary-row total"><span>Grand Total:</span><span>${fmt(t.grand_total || 0)}</span></div>
+    
+  </div>
+
+  ${t.notes ? `<div class="notes"><strong>Notes:</strong><br>${t.notes.replace(/\\n/g, '<br>')}</div>` : ''}
+
+  ${s.showSignature !== false ? `<div class="signature">
+    ${s.signatureUrl ? `<img src="${imgUrl(s.signatureUrl)}" />` : ''}
+    ${s.signatoryName ? `<div class="name">${s.signatoryName}</div>` : ''}
+    ${s.signatoryDesignation ? `<div class="designation">${s.signatoryDesignation}</div>` : ''}
+    <div class="line"></div>
+    <div class="label">Authorized Signatory</div>
+  </div>` : ''}
+</body></html>`;
 }

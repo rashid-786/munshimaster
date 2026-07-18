@@ -12,5 +12,6 @@ router.patch('/:id/status', ctrl.updateStatus);
 router.post('/:id/convert', ctrl.convert);
 router.post('/:id/cancel', ctrl.cancel);
 router.delete('/:id', ctrl.delete);
+router.get('/:id/pdf', ctrl.downloadPDF);
 
 module.exports = router;

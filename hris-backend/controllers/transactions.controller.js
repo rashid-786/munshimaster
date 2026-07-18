@@ -1,6 +1,9 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../utils/audit');
+const PDFDocument = require('pdfkit');
+const path = require('path');
+const fs = require('fs');
 
 const DIRECTION = { sales_invoice: 'sales', payment_in: 'sales', sales_return: 'sales', credit_note: 'sales', delivery_challan: 'sales', quotation: 'sales', proforma_invoice: 'sales', purchase_invoice: 'purchase', payment_out: 'purchase', purchase_return: 'purchase', debit_note: 'purchase', purchase_order: 'purchase' };
 
@@ -610,5 +613,217 @@ exports.delete = async (req, res) => {
   } catch (err) {
     console.error('Transaction delete error:', err);
     res.status(500).json({ error: 'Failed to delete transaction.' });
+  }
+};
+
+exports.downloadPDF = async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id || req.headers['x-tenant-id'];
+    const [rows] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ? AND tenant_id = ?', [req.params.id, tenantId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Transaction not found.' });
+    const txn = rows[0];
+    const [items] = await db.execute('SELECT * FROM hris_saas.transaction_items WHERE transaction_id = ? ORDER BY sort_order', [txn.id]);
+
+    // Fetch tenant info + invoice settings (merge legacy + default template)
+    const [tenantRows] = await db.query('SELECT company_name, invoice_settings FROM hris_saas.tenants WHERE id = ?', [tenantId]);
+    const tenantInfo = tenantRows[0] || {};
+    let settings = {};
+    if (tenantInfo.invoice_settings) {
+      settings = typeof tenantInfo.invoice_settings === 'string' ? JSON.parse(tenantInfo.invoice_settings) : tenantInfo.invoice_settings;
+    }
+    try {
+      const [tplRows] = await db.query('SELECT config FROM hris_saas.tenant_templates WHERE tenant_id = ? AND is_default = true AND is_active = true LIMIT 1', [tenantId]);
+      if (tplRows.length > 0 && tplRows[0].config) {
+        const tplCfg = typeof tplRows[0].config === 'string' ? JSON.parse(tplRows[0].config) : tplRows[0].config;
+        settings = { ...settings, ...tplCfg };
+      }
+    } catch {}
+
+    const companyName = settings.companyName || tenantInfo.company_name || '';
+    const docLabel = DOC_LABELS[txn.transaction_type] || 'Document';
+    const isSales = DIRECTION[txn.transaction_type] === 'sales';
+    const partyLabel = isSales ? 'Customer' : 'Supplier';
+    const primaryColor = settings.primaryColor || '#0F172A';
+    const gstTotal = (Number(txn.cgst_amount) || 0) + (Number(txn.sgst_amount) || 0) + (Number(txn.igst_amount) || 0);
+    const statusColors = { draft: '#9CA3AF', sent: '#3B82F6', paid: '#16A34A', partial: '#D97706', overdue: '#DC2626', completed: '#16A34A', issued: '#6366F1', delivered: '#0D9488', cancelled: '#DC2626' };
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${txn.document_number || 'invoice'}.pdf"`);
+    doc.pipe(res);
+
+    // Register font with ₹ support (fall back to Helvetica if unavailable)
+    const fontDir = path.join(__dirname, '..', 'fonts');
+    const fontRegular = path.join(fontDir, 'NotoSans-Regular.ttf');
+    const fontBold = path.join(fontDir, 'NotoSans-Bold.ttf');
+    const hasFont = fs.existsSync(fontRegular);
+    if (hasFont) {
+      doc.registerFont('Custom', fontRegular);
+      doc.registerFont('Custom-Bold', fontBold);
+    }
+    const RF = (bold) => hasFont ? (bold ? 'Custom-Bold' : 'Custom') : (bold ? 'Helvetica-Bold' : 'Helvetica');
+
+    const fmt = (paise) => '₹' + (Number(paise || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pw = () => doc.page.width - doc.page.margins.right;
+
+    // ═══════════════════ HEADER ═══════════════════
+    const logoPath = settings.logoUrl ? path.join(__dirname, '..', settings.logoUrl) : null;
+    const logoWidth = 80;
+    let logoHeight = 0;
+    let leftX = 50;
+    const topY = 45;
+
+    if (logoPath && fs.existsSync(logoPath)) {
+      const img = doc.openImage(logoPath);
+      logoHeight = (logoWidth / img.width) * img.height;
+      doc.image(logoPath, leftX, topY, { width: logoWidth });
+      leftX = 145;
+    }
+
+    const companyY = logoHeight > 0 ? topY + Math.max(0, (logoHeight - 22) / 2) : topY;
+    doc.fontSize(18).font(RF(true)).fillColor(primaryColor).text(companyName || docLabel, leftX, companyY);
+
+    if (settings.gstNumber) {
+      doc.fontSize(9).font(RF(false)).fillColor('#6B7280').text('GST: ' + settings.gstNumber, leftX, companyY + 24);
+    }
+
+    // Right-aligned document info
+    const rX = pw();
+    let riY = topY;
+    doc.fontSize(16).font(RF(true)).fillColor(primaryColor);
+    doc.text(docLabel, rX - doc.widthOfString(docLabel), riY); riY += 22;
+    doc.fontSize(9).font(RF(false)).fillColor('#6B7280');
+    if (txn.document_number) { doc.text(txn.document_number, rX - doc.widthOfString(txn.document_number), riY); riY += 14; }
+    if (txn.document_date) {
+      const dd = new Date(txn.document_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      doc.text('Date: ' + dd, rX - doc.widthOfString('Date: ' + dd), riY); riY += 14;
+    }
+    if (txn.due_date) {
+      const dd = new Date(txn.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      doc.text('Due: ' + dd, rX - doc.widthOfString('Due: ' + dd), riY); riY += 14;
+    }
+    doc.fontSize(9).font(RF(false)).fillColor('#6B7280');
+    doc.text('Status: ', rX - doc.widthOfString('Status: ' + (txn.status || '').toUpperCase()), riY);
+    doc.font(RF(true)).fillColor(statusColors[txn.status] || '#6B7280');
+    doc.text((txn.status || '').toUpperCase(), rX - doc.widthOfString((txn.status || '').toUpperCase()), riY);
+    doc.fillColor('#000000');
+
+    // ═══════════════════ HEADER LINE ═══════════════════
+    const lineY = Math.max(topY + Math.max(logoHeight, 60) + 8, riY + 14);
+    doc.lineWidth(2).moveTo(50, lineY).lineTo(pw(), lineY).strokeColor(primaryColor).stroke();
+    doc.lineWidth(1);
+
+    // ═══════════════════ PARTY INFO ═══════════════════
+    const piy = lineY + 15;
+    doc.fontSize(10).font(RF(true)).fillColor(primaryColor).text(partyLabel + ':', 50, piy);
+    doc.fontSize(10).font(RF(false)).fillColor('#111827');
+    let piLine = piy + 16;
+    doc.text(txn.party_name || '—', 50, piLine); piLine += 14;
+    if (txn.party_gstin) { doc.text('GSTIN: ' + txn.party_gstin, 50, piLine); piLine += 14; }
+    if (txn.party_address) { doc.text(txn.party_address, 50, piLine); piLine += 14; }
+    if (txn.party_city) { doc.text(txn.party_city + (txn.party_state ? ', ' + txn.party_state : ''), 50, piLine); piLine += 14; }
+    doc.fillColor('#000000');
+    
+    // Place of supply
+    if (txn.place_of_supply) {
+      doc.fontSize(9).font(RF(false)).fillColor('#6B7280').text('Place of Supply: ' + txn.place_of_supply, 50, piLine + 6);
+      piLine += 14;
+    }
+
+    // ═══════════════════ ITEMS TABLE ═══════════════════
+    const tY = Math.max(piLine + 14, 240);
+    const colW = pw() - 50;
+    const cols = [
+      { x: 50, w: 26, label: '#', align: 'center' },
+      { x: 76, w: colW - 336, label: 'Item', align: 'left' },
+      { x: 50 + colW - 260, w: 55, label: 'Qty', align: 'right' },
+      { x: 50 + colW - 205, w: 75, label: 'Rate', align: 'right' },
+      { x: 50 + colW - 130, w: 55, label: 'GST%', align: 'right' },
+      { x: 50 + colW - 75, w: 75, label: 'Amount', align: 'right' },
+    ];
+
+    // Table header with primary color background
+    doc.rect(50, tY, pw() - 50, 18).fill(primaryColor);
+    doc.fontSize(8).font(RF(true)).fillColor('#FFFFFF');
+    cols.forEach(c => doc.text(c.label, c.x, tY + 5, { width: c.w, align: c.align }));
+
+    // Items
+    let rY = tY + 22;
+    items.forEach((item, i) => {
+      if (rY > 680) { doc.addPage({ margin: 50 }); rY = 50; }
+      if (i % 2 === 0) doc.rect(50, rY - 3, pw() - 50, 16).fill('#F9FAFB');
+      doc.fontSize(8).font(RF(false)).fillColor('#374151');
+      doc.text(String(i + 1), cols[0].x, rY, { width: cols[0].w, align: cols[0].align });
+      doc.text(item.description || item.item_name || '—', cols[1].x, rY, { width: cols[1].w });
+      doc.text(String(item.quantity || 1), cols[2].x, rY, { width: cols[2].w, align: 'right' });
+      doc.text(fmt(item.rate || 0), cols[3].x, rY, { width: cols[3].w, align: 'right' });
+      doc.text((item.gst_rate || 0) + '%', cols[4].x, rY, { width: cols[4].w, align: 'right' });
+      doc.text(fmt(item.total_amount || 0), cols[5].x, rY, { width: cols[5].w, align: 'right' });
+      rY += 16;
+    });
+
+    // Line after items
+    doc.lineWidth(1).moveTo(50, rY).lineTo(pw(), rY).strokeColor('#E5E7EB').stroke();
+
+    // ═══════════════════ FINANCIAL SUMMARY ═══════════════════
+    rY = Math.max(rY + 12, 320);
+    const sx = pw() - 195;
+    const sw = 195;
+    doc.fontSize(9);
+    const addLine = (label, value, opts = {}) => {
+      if (opts.separator) {
+        doc.lineWidth(1).moveTo(sx, rY).lineTo(pw(), rY).strokeColor(primaryColor).stroke();
+        rY += 8;
+      }
+      doc.font(RF(opts.bold)).fillColor(opts.bold ? primaryColor : '#6B7280');
+      doc.text(label, sx, rY, { width: sw - 80 });
+      doc.text(value, sx + sw - 80, rY, { width: 80, align: 'right' });
+      rY += opts.bold ? 18 : 14;
+    };
+    addLine('Subtotal', fmt(txn.subtotal));
+    if (Number(txn.discount_amount) > 0) addLine('Discount', '-' + fmt(txn.discount_amount));
+    if (gstTotal > 0) addLine('GST', fmt(gstTotal));
+    if (txn.round_off && Number(txn.round_off) !== 0) addLine('Round Off', fmt(txn.round_off));
+    addLine('Grand Total', fmt(txn.grand_total), { bold: true, separator: true });
+
+    // ═══════════════════ NOTES ═══════════════════
+    rY = Math.max(rY, 480);
+    if (txn.notes) {
+      if (rY + 40 > doc.page.height - 50) { doc.addPage({ margin: 50 }); rY = 50; }
+      doc.lineWidth(1).moveTo(50, rY).lineTo(pw(), rY).strokeColor('#E5E7EB').stroke();
+      rY += 10;
+      doc.fontSize(9).font(RF(true)).fillColor('#374151').text('Notes', 50, rY);
+      rY += 14;
+      doc.fontSize(9).font(RF(false)).fillColor('#6B7280').text(txn.notes, 50, rY, { width: pw() - 100 });
+    }
+
+    // ═══════════════════ SIGNATURE ═══════════════════
+    if (settings.showSignature !== false) {
+      const sigY = Math.max(rY + 30, doc.page.height - 140);
+      const sigPath2 = settings.signatureUrl ? path.join(__dirname, '..', settings.signatureUrl) : null;
+      const sigBlockW = 140;
+      const sigX = pw() - sigBlockW;
+      if (sigPath2 && fs.existsSync(sigPath2)) {
+        doc.image(sigPath2, sigX + (sigBlockW - 100) / 2, sigY, { width: 100 });
+      }
+      const sigTextY = sigY + (sigPath2 && fs.existsSync(sigPath2) ? 40 : 0);
+      if (settings.signatoryName) {
+        doc.fontSize(10).font(RF(true)).fillColor('#111827')
+          .text(settings.signatoryName, sigX, sigTextY, { width: sigBlockW, align: 'center' });
+      }
+      if (settings.signatoryDesignation) {
+        doc.fontSize(8).font(RF(false)).fillColor('#6B7280')
+          .text(settings.signatoryDesignation, sigX, doc.y + 2, { width: sigBlockW, align: 'center' });
+      }
+      const linePos = Math.max(doc.y + 6, sigTextY + (settings.signatoryDesignation ? 20 : 16));
+      doc.lineWidth(1).moveTo(sigX, linePos).lineTo(pw(), linePos).strokeColor('#D1D5DB').stroke();
+      doc.fontSize(8).font(RF(false)).fillColor('#9CA3AF')
+        .text('Authorized Signatory', sigX, linePos + 3, { width: sigBlockW, align: 'center' });
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error('downloadPDF error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to generate PDF.' });
   }
 };
