@@ -4,6 +4,7 @@ import { formatINR } from '../../utils/currency';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
+import InvoiceTemplateView from '../../components/InvoiceTemplateView';
 import useIsMobile from '../../hooks/useIsMobile';
 import useFormDraft from '../../hooks/useFormDraft';
 import DraftBanner from '../../components/DraftBanner';
@@ -412,6 +413,8 @@ const PurchaseOrders = () => {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={() => window.print()}
+                  className="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap">Print</button>
                 <button onClick={() => hrService.downloadPurchaseOrderPDF(detail.id)}
                   className="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap">PDF</button>
                 <button
@@ -443,32 +446,32 @@ const PurchaseOrders = () => {
                 <button onClick={() => { setDetail(null); setAttachments([]); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-1">&times;</button>
               </div>
             </div>
-            <div className="p-6 space-y-4">
+            <InvoiceTemplateView templateConfig={detail.templateConfig} className="p-6 space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <p className="text-xs text-gray-500 font-medium">Supplier</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Supplier</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.supplier_name}</p>
                 {detail.supplier_gstin && <p className="text-xs text-gray-400 mt-0.5">GST: {detail.supplier_gstin}</p>}
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Order Date</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Order Date</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.order_date?.split('T')[0]}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Expected Date</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Expected Date</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.expected_date?.split('T')[0] || '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Supplier Contact</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Supplier Contact</p>
                 {detail.supplier_email && <p className="text-sm text-gray-900 mt-0.5">{detail.supplier_email}</p>}
                 {detail.supplier_phone && <p className="text-xs text-gray-500">{detail.supplier_phone}</p>}
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">GST Type</p>
-                <p className="text-sm text-gray-900 mt-0.5 capitalize">{detail.gst_type === 'intra' ? 'Intra-state (CGST+SGST)' : detail.gst_type === 'inter' ? 'Inter-state (IGST)' : '-'}</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>GST Type</p>
+                <p className="text-sm text-gray-900 mt-0.5 capitalize">{detail.gst_type === 'intra' ? 'Intra-state' : detail.gst_type === 'inter' ? 'Inter-state' : '-'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Place of Supply</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Place of Supply</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.place_of_supply || '-'}</p>
               </div>
             </div>
@@ -502,10 +505,7 @@ const PurchaseOrders = () => {
               <div className="w-64 space-y-1">
                 <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatINR(detail.subtotal)}</span></div>
                 {detail.gst_type === 'intra' ? (
-                  <>
-                    <div className="flex justify-between text-sm text-green-600"><span>CGST</span><span>{formatINR(Math.round(detail.tax_amount / 2))}</span></div>
-                    <div className="flex justify-between text-sm text-green-600"><span>SGST</span><span>{formatINR(Math.round(detail.tax_amount / 2))}</span></div>
-                  </>
+                  <div className="flex justify-between text-sm text-green-600"><span>GST</span><span>{formatINR(detail.tax_amount)}</span></div>
                 ) : detail.gst_type === 'inter' ? (
                   <div className="flex justify-between text-sm text-blue-600"><span>IGST</span><span>{formatINR(detail.tax_amount)}</span></div>
                 ) : (
@@ -538,7 +538,7 @@ const PurchaseOrders = () => {
                 </div>
               </div>
             )}
-          </div>
+          </InvoiceTemplateView>
         </div>
       </div>
       )}
@@ -589,7 +589,7 @@ const PurchaseOrders = () => {
           {mobileDetail?.supplier_phone && <DetailRow label="Phone" value={mobileDetail.supplier_phone} />}
           <DetailRow label="Order Date" value={mobileDetail?.order_date?.split('T')[0]} />
           <DetailRow label="Expected" value={mobileDetail?.expected_date?.split('T')[0] || '—'} />
-          <DetailRow label="GST Type" value={mobileDetail?.gst_type === 'intra' ? 'Intra (CGST+SGST)' : mobileDetail?.gst_type === 'inter' ? 'Inter (IGST)' : '-'} />
+          <DetailRow label="GST Type" value={mobileDetail?.gst_type === 'intra' ? 'Intra-state' : mobileDetail?.gst_type === 'inter' ? 'Inter-state' : '-'} />
           <DetailRow label="Place of Supply" value={mobileDetail?.place_of_supply || '-'} />
           <DetailRow label="Status">
             <span className={statusBadge[mobileDetail?.status]}>{mobileDetail?.status}</span>
@@ -629,10 +629,7 @@ const PurchaseOrders = () => {
             <div className="w-full max-w-[200px] space-y-0.5">
               <div className="flex justify-between text-xs text-gray-600"><span>Subtotal</span><span>{formatINR(mobileDetail?.subtotal)}</span></div>
               {mobileDetail?.gst_type === 'intra' ? (
-                <>
-                  <div className="flex justify-between text-xs text-green-600"><span>CGST</span><span>{formatINR(Math.round(mobileDetail.tax_amount / 2))}</span></div>
-                  <div className="flex justify-between text-xs text-green-600"><span>SGST</span><span>{formatINR(Math.round(mobileDetail.tax_amount / 2))}</span></div>
-                </>
+                <div className="flex justify-between text-xs text-green-600"><span>GST</span><span>{formatINR(mobileDetail.tax_amount)}</span></div>
               ) : mobileDetail?.gst_type === 'inter' ? (
                 <div className="flex justify-between text-xs text-blue-600"><span>IGST</span><span>{formatINR(mobileDetail.tax_amount)}</span></div>
               ) : (
@@ -706,8 +703,8 @@ const PurchaseOrders = () => {
                     <span className="text-sm text-gray-500">GST Type:</span>
                     <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })}
                       className="input-field text-sm w-32">
-                      <option value="intra">Intra-state (CGST+SGST)</option>
-                      <option value="inter">Inter-state (IGST)</option>
+                      <option value="intra">Intra-state</option>
+                      <option value="inter">Inter-state</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
@@ -771,10 +768,7 @@ const PurchaseOrders = () => {
                   <div className="w-64 space-y-1">
                     <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
                     {form.gst_type === 'intra' ? (
-                      <>
-                        <div className="flex justify-between text-sm text-green-600"><span>CGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                        <div className="flex justify-between text-sm text-green-600"><span>SGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                      </>
+                      <div className="flex justify-between text-sm text-green-600"><span>GST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : form.gst_type === 'inter' ? (
                       <div className="flex justify-between text-sm text-blue-600"><span>IGST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : (

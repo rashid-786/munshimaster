@@ -83,8 +83,8 @@ export default function Dashboard() {
   const kpiCards = [
     { label: 'Customers', value: totalCustomers, to: '/admin/customers', color: 'bg-indigo-500' },
     { label: 'Suppliers', value: totalSuppliers, to: '/admin/suppliers', color: 'bg-emerald-500' },
-    { label: 'Invoices', value: totalInvoices, to: '/admin/invoices', color: 'bg-purple-500' },
-    { label: 'Pending Invoices', value: pendingInvoicesCount, to: '/admin/invoices', color: 'bg-amber-500', sub: `₹${parseInt(pendingInvoicesAmount || 0).toLocaleString('en-IN')}` },
+    { label: 'Invoices', value: totalInvoices, to: '/admin/sales-transactions', color: 'bg-purple-500' },
+    { label: 'Pending Invoices', value: pendingInvoicesCount, to: '/admin/sales-transactions', color: 'bg-amber-500', sub: `₹${parseInt(pendingInvoicesAmount || 0).toLocaleString('en-IN')}` },
   ];
 
   const financialCards = [
@@ -222,7 +222,7 @@ export default function Dashboard() {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: 'New Invoice', to: '/admin/invoices' },
+              { label: 'New Invoice', to: '/admin/sales-transactions' },
               { label: 'Add Customer', to: '/admin/customers' },
               { label: 'Add Supplier', to: '/admin/suppliers' },
               { label: 'Record Ledger', to: '/admin/ledger' },
@@ -276,17 +276,17 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Pending Purchase Orders</h3>
-            <Link to="/admin/purchase-orders" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</Link>
+            <Link to="/admin/purchase-transactions" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</Link>
           </div>
           {pendingPOs.length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm">
               <p>No pending POs.</p>
-              <Link to="/admin/purchase-orders" className="text-indigo-600 hover:underline mt-1 inline-block">Create a purchase order</Link>
+              <Link to="/admin/purchase-transactions" className="text-indigo-600 hover:underline mt-1 inline-block">Create a purchase order</Link>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {pendingPOs.map(po => (
-                <Link key={po.id} to={`/admin/purchase-orders`} className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-5 px-5 transition-colors">
+                <Link key={po.id} to={`/admin/purchase-transactions`} className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-5 px-5 transition-colors">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900">{po.po_number}</p>
                     <p className="text-xs text-gray-400 capitalize">{po.status.replace(/_/g, ' ')}</p>

@@ -11,7 +11,7 @@ const logoFullUrl = (url) => {
 const TEMPLATES = [
   { id: 'modern', name: 'Modern Professional', description: 'Clean, contemporary layout with accent colors and minimal design', features: ['Color accents', 'Clean typography', 'GST summary', 'Signature space'] },
   { id: 'classic', name: 'Classic Business', description: 'Traditional formal layout suitable for all business types', features: ['Formal layout', 'Company letterhead', 'Full border', 'Watermark support'] },
-  { id: 'gst_detailed', name: 'GST Detailed', description: 'Comprehensive GST breakdown with HSN/SAC and tax rate columns', features: ['HSN/SAC column', 'CGST/SGST/IGST split', 'Tax rate per item', 'GST summary table'] },
+  { id: 'gst_detailed', name: 'GST Detailed', description: 'Comprehensive GST breakdown with HSN/SAC and tax rate columns', features: ['HSN/SAC column', 'GST rate per item', 'Tax rate per item', 'GST summary table'] },
   { id: 'retail_pos', name: 'Retail POS', description: 'Simple receipt-style layout optimized for retail counters', features: ['Compact layout', 'Receipt style', 'Quick print', 'Minimal fields'] },
 ];
 
@@ -51,6 +51,7 @@ const DEFAULT_CUSTOM_LABELS = {
 function freshConfig() {
   return {
     logoUrl: '', companyName: '', gstNumber: '',
+    signatureUrl: '', signatoryName: '', signatoryDesignation: '',
     primaryColor: '#0F172A', secondaryColor: '#16A34A',
     showCustomerAddress: true, showShippingAddress: true, showCustomerGst: true, showTerms: true, showSignature: true,
     logoAlignment: 'left', companyInfoPosition: 'left', customerLayout: 'left',
@@ -75,10 +76,10 @@ const SAMPLE_INVOICE = {
 };
 
 const SAMPLE_ITEMS = [
-  { description: 'Premium Widget A', hsn_code: '847130', quantity: 10, unit_price: 5000, total_price: 50000, unit: 'pcs', cgst_rate: 9, sgst_rate: 9 },
-  { description: 'Eco-Friendly Packaging Box', hsn_code: '481910', quantity: 50, unit_price: 200, total_price: 10000, unit: 'pcs', cgst_rate: 9, sgst_rate: 9 },
-  { description: 'Industrial Lubricant - Grade A', hsn_code: '271019', quantity: 20, unit_price: 3000, total_price: 60000, unit: 'ltr', cgst_rate: 9, sgst_rate: 9 },
-  { description: 'Safety Equipment Kit', hsn_code: '902000', quantity: 15, unit_price: 2000, total_price: 30000, unit: 'set', cgst_rate: 9, sgst_rate: 9 },
+  { description: 'Premium Widget A', hsn_code: '847130', quantity: 10, unit_price: 5000, total_price: 50000, unit: 'pcs', gst_rate: 18 },
+  { description: 'Eco-Friendly Packaging Box', hsn_code: '481910', quantity: 50, unit_price: 200, total_price: 10000, unit: 'pcs', gst_rate: 18 },
+  { description: 'Industrial Lubricant - Grade A', hsn_code: '271019', quantity: 20, unit_price: 3000, total_price: 60000, unit: 'ltr', gst_rate: 18 },
+  { description: 'Safety Equipment Kit', hsn_code: '902000', quantity: 15, unit_price: 2000, total_price: 30000, unit: 'set', gst_rate: 18 },
 ];
 
 function fmtCurrency(paise) { return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
@@ -103,6 +104,7 @@ const InvoiceTemplates = () => {
   const [confirmLabel, setConfirmLabel] = useState('Discard');
   const [confirmDanger, setConfirmDanger] = useState(false);
   const fileInputRef = useRef(null);
+  const sigInputRef = useRef(null);
   const savedRef = useRef(true);
 
   useEffect(() => {
@@ -231,6 +233,25 @@ const InvoiceTemplates = () => {
       const res = await hrService.uploadInvoiceLogo(fd);
       if (res?.url) { update('logoUrl', res.url); setMessage('Logo uploaded.'); }
     } catch { setMessage('Failed to upload logo.'); }
+  };
+
+  const handleSignatureUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('signature', file);
+    try {
+      const res = await hrService.uploadInvoiceSignature(fd);
+      if (res?.url) { update('signatureUrl', res.url); setMessage('Signature uploaded.'); }
+    } catch { setMessage('Failed to upload signature.'); }
+  };
+
+  const handleRemoveSignature = async () => {
+    try {
+      await hrService.removeInvoiceSignature();
+      update('signatureUrl', '');
+      setMessage('Signature removed.');
+    } catch { setMessage('Failed to remove signature.'); }
   };
 
   const toggleColumn = (key) => {
@@ -456,6 +477,37 @@ const InvoiceTemplates = () => {
             }).map(([key, label]) => (
               <LabelInput key={key} label={label} value={settings.customLabels[key] || ''} onChange={v => updateLabel(key, v)} />
             ))}
+          </div>
+        </Section>
+
+        {/* Authorized Signatory */}
+        <Section title="Authorized Signatory">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-24 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50 shrink-0">
+                {settings.signatureUrl
+                  ? <img src={logoFullUrl(settings.signatureUrl)} alt="Signature" className="w-full h-full object-contain" style={{ maxHeight: '100%' }} />
+                  : <svg className="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <button type="button" onClick={() => sigInputRef.current?.click()} className="btn-secondary text-xs">Upload Signature</button>
+                {settings.signatureUrl && (
+                  <button type="button" onClick={handleRemoveSignature} className="text-xs text-red-600 hover:text-red-800">Remove</button>
+                )}
+                <input ref={sigInputRef} type="file" accept="image/png,image/jpeg,image/jpg" onChange={handleSignatureUpload} className="hidden" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Signatory Name</label>
+                <input type="text" value={settings.signatoryName || ''} onChange={e => update('signatoryName', e.target.value)} className="input-field text-sm" placeholder="Rajesh Kumar" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Designation / Role</label>
+                <input type="text" value={settings.signatoryDesignation || ''} onChange={e => update('signatoryDesignation', e.target.value)} className="input-field text-sm" placeholder="Finance Manager" />
+              </div>
+            </div>
+            <Toggle label="Display Authorized Signatory on Invoices" checked={settings.showSignature !== false} onChange={v => update('showSignature', v)} />
           </div>
         </Section>
 
@@ -784,9 +836,9 @@ function InvoicePreview({ settings }) {
                   {col.key === 'description' && item.description}
                   {col.key === 'hsn' && (item.hsn_code || '—')}
                   {col.key === 'quantity' && item.quantity}
-                  {col.key === 'rate' && fmtCurrency(item.unit_price * 100)}
-                  {col.key === 'total' && fmtCurrency(item.total_price * 100)}
-                  {col.key === 'gst' && `${(item.cgst_rate || 0) + (item.sgst_rate || 0)}%`}
+                  {col.key === 'rate' && fmtCurrency(item.unit_price)}
+                  {col.key === 'total' && fmtCurrency(item.total_price)}
+                  {col.key === 'gst' && `${item.gst_rate || 0}%`}
                   {col.key === 'unit' && (item.unit || '—')}
                   {col.key === 'discount' && '—'}
                   {col.key === 'sku' && '—'}
@@ -805,10 +857,7 @@ function InvoicePreview({ settings }) {
         {s.showGstBreakdown !== false && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', width: 260, marginBottom: 2 }}>
-              <span style={labelS}>CGST @ 9%:</span><span>{fmtCurrency(13500)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: 260, marginBottom: 2 }}>
-              <span style={labelS}>SGST @ 9%:</span><span>{fmtCurrency(13500)}</span>
+              <span style={labelS}>GST @ 18%:</span><span>{fmtCurrency(27000)}</span>
             </div>
           </>
         )}
@@ -837,6 +886,15 @@ function InvoicePreview({ settings }) {
 
       {s.showSignature !== false && (
         <div style={{ marginTop: spacing * 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          {s.signatureUrl && (
+            <img src={logoFullUrl(s.signatureUrl)} alt="Signature" style={{ maxWidth: 130, maxHeight: 40, marginBottom: 4, objectFit: 'contain' }} />
+          )}
+          {s.signatoryName && (
+            <div style={{ fontSize: base, color: '#374151', fontWeight: 600, textAlign: 'center' }}>{s.signatoryName}</div>
+          )}
+          {s.signatoryDesignation && (
+            <div style={{ fontSize: base - 1, color: '#6b7280', textAlign: 'center', marginBottom: 2 }}>{s.signatoryDesignation}</div>
+          )}
           <div style={{ width: 130, borderTop: '1px solid #9ca3af', marginBottom: 4 }} />
           <div style={{ fontSize: base - 1, color: '#6b7280', textAlign: 'center', width: 130 }}>
             {lbl('authorizedSignatory', 'Authorized Signatory')}

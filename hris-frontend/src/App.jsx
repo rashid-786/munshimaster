@@ -39,8 +39,6 @@ import BusinessDashboard from './pages/admin/BusinessDashboard';
 import HrDashboard from './pages/admin/HrDashboard';
 import Suppliers from './pages/admin/Suppliers';
 import Customers from './pages/admin/Customers';
-import PurchaseOrders from './pages/admin/PurchaseOrders';
-import Invoices from './pages/admin/Invoices';
 import Settings from './pages/admin/Settings';
 import Referrals from './pages/admin/Referrals';
 import PaymentHistory from './pages/admin/PaymentHistory';
@@ -173,8 +171,8 @@ function App() {
             <Route path="hr" element={<PlanRoute minPlan="pro"><HrDashboard /></PlanRoute>} />
             <Route path="suppliers" element={<PlanRoute minPlan="business"><Suppliers /></PlanRoute>} />
             <Route path="customers" element={<PlanRoute minPlan="business"><Customers /></PlanRoute>} />
-            <Route path="purchase-orders" element={<PlanRoute minPlan="business"><PurchaseOrders /></PlanRoute>} />
-            <Route path="invoices" element={<PlanRoute minPlan="business"><Invoices /></PlanRoute>} />
+            <Route path="invoices" element={<Navigate to="/admin/sales-transactions" replace />} />
+            <Route path="purchase-orders" element={<Navigate to="/admin/purchase-transactions" replace />} />
             <Route path="sales-transactions" element={<PlanRoute minPlan="business"><SalesTransactions /></PlanRoute>} />
             <Route path="purchase-transactions" element={<PlanRoute minPlan="business"><PurchaseTransactions /></PlanRoute>} />
             <Route path="recurring-invoices" element={<PlanRoute minPlan="business"><RecurringInvoices /></PlanRoute>} />

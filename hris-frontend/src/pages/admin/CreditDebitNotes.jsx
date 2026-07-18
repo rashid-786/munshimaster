@@ -30,7 +30,7 @@ const CreditDebitNotes = () => {
   const [form, setForm] = useState({
     invoice_id: '', date: new Date().toISOString().split('T')[0], reason: '',
     notes: '', gst_type: 'intra', place_of_supply: '',
-    items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }],
+    items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', gst_rate: '' }],
   });
   const [formSaving, setFormSaving] = useState(false);
   const [modal, setModal] = useState(null);
@@ -116,14 +116,14 @@ const CreditDebitNotes = () => {
           quantity: parseFloat(i.quantity) || 1,
           unit_price: parseFloat(i.unit_price) || 0,
           hsn_code: i.hsn_code || undefined,
-          cgst_rate: parseFloat(i.cgst_rate) || 0,
-          sgst_rate: parseFloat(i.sgst_rate) || 0,
-          igst_rate: parseFloat(i.igst_rate) || 0,
+          cgst_rate: form.gst_type === 'intra' ? (parseFloat(i.gst_rate) || 0) / 2 : 0,
+          sgst_rate: form.gst_type === 'intra' ? (parseFloat(i.gst_rate) || 0) / 2 : 0,
+          igst_rate: form.gst_type === 'inter' ? (parseFloat(i.gst_rate) || 0) : 0,
         })),
       });
       setShowForm(false);
       setInvSearch('');
-      setForm({ ...form, invoice_id: '', invoice_number: '', reason: '', notes: '', items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }] });
+      setForm({ ...form, invoice_id: '', invoice_number: '', reason: '', notes: '', items: [{ description: '', quantity: 1, unit_price: '', hsn_code: '', gst_rate: '' }] });
       fetch();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create.');
@@ -132,7 +132,7 @@ const CreditDebitNotes = () => {
   };
 
   const addItem = () => {
-    setForm(f => ({ ...f, items: [...f.items, { description: '', quantity: 1, unit_price: '', hsn_code: '', cgst_rate: '', sgst_rate: '', igst_rate: '' }] }));
+    setForm(f => ({ ...f, items: [...f.items, { description: '', quantity: 1, unit_price: '', hsn_code: '', gst_rate: '' }] }));
   };
 
   const updateItem = (idx, field, value) => {
@@ -225,7 +225,7 @@ const CreditDebitNotes = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">GST Type</label>
                   <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })} className="input-field">
-                    <option value="intra">Intra-state (CGST+SGST)</option>
+                    <option value="intra">Intra-state</option>
                     <option value="inter">Inter-state (IGST)</option>
                   </select>
                 </div>
@@ -256,10 +256,15 @@ const CreditDebitNotes = () => {
                         <input type="number" step="0.01" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} className="input-field text-sm" placeholder="Unit Price (INR)" />
                         <input type="text" value={item.hsn_code} onChange={e => updateItem(idx, 'hsn_code', e.target.value)} className="input-field text-sm" placeholder="HSN" />
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <input type="number" step="0.01" value={item.cgst_rate} onChange={e => updateItem(idx, 'cgst_rate', e.target.value)} className="input-field text-sm" placeholder="CGST %" />
-                        <input type="number" step="0.01" value={item.sgst_rate} onChange={e => updateItem(idx, 'sgst_rate', e.target.value)} className="input-field text-sm" placeholder="SGST %" />
-                        <input type="number" step="0.01" value={item.igst_rate} onChange={e => updateItem(idx, 'igst_rate', e.target.value)} className="input-field text-sm" placeholder="IGST %" />
+                      <div className="grid grid-cols-1 gap-2">
+                        <select value={item.gst_rate} onChange={e => updateItem(idx, 'gst_rate', e.target.value)} className="input-field text-sm">
+                          <option value="">GST %</option>
+                          <option value="0">0%</option>
+                          <option value="5">5%</option>
+                          <option value="12">12%</option>
+                          <option value="18">18%</option>
+                          <option value="28">28%</option>
+                        </select>
                       </div>
                     </div>
                   ))}

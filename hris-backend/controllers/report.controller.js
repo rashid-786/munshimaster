@@ -454,7 +454,7 @@ exports.downloadExcel = async (req, res) => {
       case 'gst_summary':
         data = await fetchGSTSummary(tenantId, { startDate, endDate });
         title = 'GST Tax Summary';
-        columns = ['Period', 'Output CGST', 'Output SGST', 'Output IGST', 'Total Output Tax', 'Input CGST', 'Input SGST', 'Input IGST', 'Total Input Tax', 'Net Payable'];
+        columns = ['Period', 'Total Output Tax', 'Total Input Tax', 'Net Payable'];
         break;
       default:
         return res.status(400).json({ error: 'Invalid report type.' });
@@ -523,13 +523,7 @@ exports.downloadExcel = async (req, res) => {
       const d = data;
       excelRows = [[
         `${d.period?.startDate || ''} — ${d.period?.endDate || ''}`,
-        `Rs.${(d.output?.cgst || 0).toFixed(2)}`,
-        `Rs.${(d.output?.sgst || 0).toFixed(2)}`,
-        `Rs.${(d.output?.igst || 0).toFixed(2)}`,
         `Rs.${(d.output?.totalOutput || 0).toFixed(2)}`,
-        `Rs.${(d.input?.cgst || 0).toFixed(2)}`,
-        `Rs.${(d.input?.sgst || 0).toFixed(2)}`,
-        `Rs.${(d.input?.igst || 0).toFixed(2)}`,
         `Rs.${(d.input?.totalInput || 0).toFixed(2)}`,
         `Rs.${(d.netTax >= 0 ? d.netTax : 0).toFixed(2)}`,
       ]];

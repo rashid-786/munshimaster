@@ -5,6 +5,7 @@ const { sendEmail } = require('../utils/email');
 const { logEmail } = require('../utils/emailLogger');
 const { log } = require('../utils/audit');
 const stockCtrl = require('./stock.controller');
+const { resolveInvoiceSettings, resolveLogoUrl } = require('../utils/invoiceRenderer');
 
 function computeTaxSplit(items) {
   let totalCGST = 0, totalSGST = 0, totalIGST = 0;
@@ -16,94 +17,154 @@ function computeTaxSplit(items) {
   return { totalCGST, totalSGST, totalIGST };
 }
 
-function generatePODoc(doc, po, items, poTaxRate) {
+function generatePODoc(doc, po, items, poTaxRate, templateSettings) {
   const fmtDate = (d) => d ? new Date(d).toISOString().split('T')[0] : '';
   const taxSplit = computeTaxSplit(items);
   const hasGst = po.gst_type === 'intra' || po.gst_type === 'inter';
   const hasHsn = items.some(i => i.hsn_code);
+  const s = templateSettings || {};
+  const primaryColor = s.primaryColor || '#0F172A';
+  const secondaryColor = s.secondaryColor || '#16A34A';
+  const margin = s.pageMargin || 50;
+  const tableWidth = 500;
+  const logoWidth = s.logoSize || 80;
+  const baseFontSize = s.fontSize === 'large' ? 11 : (s.fontSize === 'medium' ? 10 : 9);
+  const titleFontSize = s.fontSize === 'large' ? 20 : (s.fontSize === 'medium' ? 18 : 16);
+  const headingFontSize = s.fontSize === 'large' ? 13 : (s.fontSize === 'medium' ? 12 : 11);
+  const fontFamily = s.fontFamily || 'Helvetica';
+  const fontBold = `${fontFamily}-Bold`;
+  const logoAlign = s.logoAlignment || 'left';
+  const headerY = s.headerHeight ? 45 + Math.max(0, (s.headerHeight - 120) / 4) : 45;
 
-  doc.fontSize(18).text(po.company_name.toUpperCase(), { align: 'center' });
-  doc.fontSize(12).text('PURCHASE ORDER', { align: 'center' }).moveDown(2);
+  if (s.logoUrl) {
+    try {
+      const logoPath = resolveLogoUrl(s.logoUrl);
+      if (logoPath) {
+        let logoX;
+        if (logoAlign === 'right') {
+          logoX = margin + tableWidth - logoWidth;
+        } else if (logoAlign === 'center') {
+          logoX = margin + (tableWidth - logoWidth) / 2;
+        } else {
+          logoX = margin;
+        }
+        doc.image(logoPath, logoX, headerY, { width: logoWidth });
+      }
+    } catch (e) { /* logo failed to load */ }
+  }
 
-  doc.fontSize(10).font('Helvetica-Bold');
-  doc.text(`PO Number: `, { continued: true }).font('Helvetica').text(po.po_number);
-  doc.font('Helvetica-Bold').text(`Date: `, { continued: true }).font('Helvetica').text(fmtDate(po.order_date));
+  const companyText = s.companyName || po.company_name || '';
+  const infoAlign = s.companyInfoPosition || 'left';
+  doc.fontSize(titleFontSize).fillColor(primaryColor).font(fontBold);
+  doc.text(companyText, margin, headerY, { width: tableWidth, align: infoAlign === 'center' ? 'center' : infoAlign });
+
+  doc.fontSize(headingFontSize).fillColor('#374151').font(fontBold);
+  doc.text('PURCHASE ORDER', margin, doc.y + 4, { width: tableWidth, align: infoAlign === 'center' ? 'center' : infoAlign });
+
+  doc.fontSize(baseFontSize).fillColor('#374151').font(fontFamily);
+
+  const cl = s.customLabels || {};
+  const lbl = (key, fallback) => cl[key] || fallback;
+
+  doc.font(fontBold).fillColor(primaryColor);
+  doc.text(`${lbl('poNumber', 'PO #')}: `, margin, doc.y + 8, { continued: true });
+  doc.font(fontFamily).fillColor('#374151').text(po.po_number);
+
+  doc.font(fontBold).fillColor(primaryColor);
+  doc.text(`${lbl('orderDate', 'Date')}: `, margin, doc.y + 2, { continued: true });
+  doc.font(fontFamily).fillColor('#374151').text(fmtDate(po.order_date));
   if (po.expected_date) {
-    doc.font('Helvetica-Bold').text(`Expected Delivery: `, { continued: true }).font('Helvetica').text(fmtDate(po.expected_date));
+    doc.font(fontBold).fillColor(primaryColor);
+    doc.text(`${lbl('expectedDate', 'Expected Delivery')}: `, margin, doc.y + 2, { continued: true });
+    doc.font(fontFamily).fillColor('#374151').text(fmtDate(po.expected_date));
   }
   doc.moveDown(2);
 
-  doc.font('Helvetica-Bold').text('Supplier:', { underline: true }).moveDown(0.5);
-  doc.font('Helvetica').text(po.supplier_name);
+  doc.font(fontBold).fillColor(primaryColor);
+  doc.text(`${lbl('supplier', 'Supplier')}:`, { underline: true }).moveDown(0.5);
+  doc.font(fontFamily).fillColor('#374151').fontSize(baseFontSize);
+  doc.text(po.supplier_name);
   if (po.supplier_address) doc.text(po.supplier_address);
   if (po.supplier_city) doc.text(`${po.supplier_city}${po.supplier_state ? ', ' + po.supplier_state : ''}`);
   if (po.supplier_email) doc.text(`Email: ${po.supplier_email}`);
   if (po.supplier_phone) doc.text(`Phone: ${po.supplier_phone}`);
   if (po.supplier_gstin) doc.text(`GSTIN: ${po.supplier_gstin}`);
-  if (po.place_of_supply) doc.text(`Place of Supply: ${po.place_of_supply}`);
+  if (po.place_of_supply) doc.text(`${lbl('placeOfSupply', 'Place of Supply')}: ${po.place_of_supply}`);
   doc.moveDown(2);
 
-  doc.font('Helvetica-Bold').text(`Status: ${po.status.toUpperCase()}`).moveDown(1);
-  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
+  doc.font(fontBold).fillColor(secondaryColor);
+  doc.text(`${lbl('status', 'Status')}: ${po.status.toUpperCase()}`).moveDown(1);
+  doc.fillColor('#000');
+  doc.moveTo(margin, doc.y).lineTo(margin + tableWidth, doc.y).strokeColor('#e5e7eb').stroke().moveDown(1);
+  doc.strokeColor('#000');
 
   const tableTop = doc.y;
-  const colX = hasHsn ? [50, 160, 310, 350, 400, 460, 510] : [50, 180, 370, 420, 480];
-  doc.font('Helvetica-Bold').fontSize(8);
-  doc.text('#', colX[0], tableTop);
-  doc.text('Description', colX[1], tableTop, { width: hasHsn ? 150 : 190 });
+  const colX = hasHsn ? [margin, margin + 110, margin + 260, margin + 300, margin + 350, margin + 410, margin + 460] : [margin, margin + 130, margin + 320, margin + 370, margin + 430];
+  doc.rect(margin, tableTop - 4, tableWidth, 16).fillColor(primaryColor).fill();
+  doc.fillColor('#fff').font(fontBold).fontSize(7);
+  doc.text('#', colX[0], tableTop, { width: 25, align: 'center' });
+  doc.text('Description', colX[1], tableTop, { width: hasHsn ? 150 : 190, align: 'left' });
   let nCol = 2;
   if (hasHsn) { doc.text('HSN/SAC', colX[2], tableTop, { width: 40, align: 'center' }); nCol = 3; }
   doc.text('Qty', colX[nCol], tableTop, { width: 40, align: 'right' });
   doc.text('Rate', colX[nCol + 1], tableTop, { width: 55, align: 'right' });
   doc.text('Amount', colX[nCol + 2], tableTop, { width: 65, align: 'right' });
+  doc.fillColor('#374151').fontSize(7).font(fontFamily);
 
-  doc.moveTo(50, doc.y + 4).lineTo(550, doc.y + 4).stroke();
-  let y = doc.y + 8;
-  doc.fontSize(8).font('Helvetica');
-
+  let y = tableTop + 18;
+  const rowH = 16;
   for (const [i, item] of items.entries()) {
-    doc.text(String(i + 1), colX[0], y);
+    if (i % 2 === 0) doc.rect(margin, y - 2, tableWidth, rowH).fillColor('#f9fafb').fill();
+    doc.fillColor('#374151');
+    doc.text(String(i + 1), colX[0], y, { width: 25, align: 'center' });
     doc.text(item.description, colX[1], y, { width: hasHsn ? 150 : 190 });
     let c = 2;
     if (hasHsn) { doc.text(item.hsn_code || '—', colX[2], y, { width: 40, align: 'center' }); c = 3; }
     doc.text(item.quantity.toString(), colX[c], y, { width: 40, align: 'right' });
     doc.text(`Rs.${(item.unit_price / 100).toFixed(2)}`, colX[c + 1], y, { width: 55, align: 'right' });
     doc.text(`Rs.${(item.total_price / 100).toFixed(2)}`, colX[c + 2], y, { width: 65, align: 'right' });
-    y += 18;
+    y += rowH;
   }
 
-  doc.moveTo(50, y).lineTo(550, y).stroke();
+  doc.moveTo(margin, y).lineTo(margin + tableWidth, y).strokeColor('#d1d5db').stroke();
   y += 8;
 
-  doc.font('Helvetica-Bold').fontSize(9);
-  doc.text('Subtotal:', colX[nCol + 1], y, { width: 55, align: 'right' });
-  doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-  y += 16;
+  const labelX = margin + tableWidth - 200;
+  const valueX = margin + tableWidth - 70;
+
+  doc.font(fontBold).fontSize(baseFontSize).fillColor('#374151');
+  doc.text(`${lbl('subtotal', 'Subtotal')}:`, labelX, y, { width: 130, align: 'right' });
+  doc.text(`Rs.${(po.subtotal / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+  y += 14;
 
   if (hasGst && po.gst_type === 'intra') {
-    doc.text(`CGST @ ${poTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalCGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+    const gstAmt = taxSplit.totalCGST + taxSplit.totalSGST;
+    const gstRate = gstAmt > 0 ? (gstAmt / po.subtotal * 100).toFixed(1) : poTaxRate;
+    doc.text(`GST @ ${gstRate}%:`, labelX, y, { width: 130, align: 'right' });
+    doc.text(`Rs.${(gstAmt / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
     y += 14;
-    doc.text(`SGST @ ${poTaxRate / 2}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalSGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
   } else if (hasGst && po.gst_type === 'inter') {
-    doc.text(`IGST @ ${poTaxRate}%:`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(taxSplit.totalIGST / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
+    doc.text(`IGST @ ${poTaxRate}%:`, labelX, y, { width: 130, align: 'right' });
+    doc.text(`Rs.${(taxSplit.totalIGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+    y += 14;
   } else {
-    doc.text(`Tax (${poTaxRate}%):`, colX[nCol + 1], y, { width: 55, align: 'right' });
-    doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
-    y += 16;
+    doc.text(`${lbl('tax', 'Tax')} (${poTaxRate}%):`, labelX, y, { width: 130, align: 'right' });
+    doc.text(`Rs.${(po.tax_amount / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+    y += 14;
   }
 
-  doc.text('Total:', colX[nCol + 1], y, { width: 55, align: 'right' });
-  doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, colX[nCol + 2], y, { width: 65, align: 'right' });
+  doc.rect(margin, y - 2, tableWidth, 22).fillColor(primaryColor).fill();
+  doc.fillColor('#fff').font(fontBold).fontSize(baseFontSize + 2);
+  doc.text(`${lbl('grandTotal', 'Grand Total')}:`, labelX, y + 2, { width: 130, align: 'right' });
+  doc.text(`Rs.${(po.total_amount / 100).toFixed(2)}`, valueX, y + 2, { width: 70, align: 'right' });
+  y += 28;
+  doc.fillColor('#374151');
 
-  if (po.notes) {
-    y += 30;
-    doc.fontSize(9).font('Helvetica-Bold').text('Notes:', 50, y);
-    doc.font('Helvetica').fontSize(9).text(po.notes, 50, doc.y + 4, { width: 500 });
+  if (s.showTerms !== false && po.notes) {
+    doc.fontSize(baseFontSize).font(fontBold).fillColor(primaryColor);
+    doc.text(lbl('notes', 'Notes') + ':', margin, doc.y + 4);
+    doc.font(fontFamily).fontSize(baseFontSize).fillColor('#374151');
+    doc.text(po.notes, margin, doc.y + 4, { width: tableWidth });
   }
 }
 
@@ -158,7 +219,8 @@ exports.get = async (req, res) => {
     const [items] = await db.query(
       'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
     );
-    res.json({ ...pos[0], items });
+    const templateConfig = await resolveInvoiceSettings(req.tenantId, 'purchase_order');
+    res.json({ ...pos[0], items, templateConfig });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch purchase order.' });
@@ -361,18 +423,19 @@ exports.downloadPDF = async (req, res) => {
     );
     if (pos.length === 0) return res.status(404).json({ error: 'Purchase order not found.' });
     const po = pos[0];
-    const poSettings = typeof po.settings === 'string' ? JSON.parse(po.settings) : (po.settings || {});
-    const poTaxRate = poSettings.taxRate || 18;
     const [items] = await db.query(
       'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
     );
+
+    const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'purchase_order');
+    const poTaxRate = invoiceSettings.taxRate || 18;
 
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${po.po_number}.pdf`);
     doc.pipe(res);
 
-    generatePODoc(doc, po, items, poTaxRate);
+    generatePODoc(doc, po, items, poTaxRate, invoiceSettings);
 
     doc.end();
   } catch (error) {
@@ -400,22 +463,24 @@ exports.sendEmail = async (req, res) => {
       return res.status(400).json({ error: 'Supplier has no email address.' });
     }
 
-    const poSettings = typeof po.settings === 'string' ? JSON.parse(po.settings) : (po.settings || {});
-    const poTaxRate = poSettings.taxRate || 18;
     const [items] = await db.query(
       'SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id', [req.params.id]
     );
+
+    const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'purchase_order');
+    const poTaxRate = invoiceSettings.taxRate || 18;
 
     const chunks = [];
     const doc = new PDFDocument({ margin: 50, bufferPages: true });
     doc.on('data', c => chunks.push(c));
     await new Promise(resolve => {
       doc.on('end', resolve);
-      generatePODoc(doc, po, items, poTaxRate);
+      generatePODoc(doc, po, items, poTaxRate, invoiceSettings);
       doc.end();
     });
 
     const pdfBuffer = Buffer.concat(chunks);
+    const fmtEDate = po.expected_date ? new Date(po.expected_date).toISOString().split('T')[0] : '';
 
     const result = await sendEmail({
       to: po.supplier_email,
@@ -424,7 +489,7 @@ exports.sendEmail = async (req, res) => {
         <p>Dear ${po.supplier_name},</p>
         <p>Please find attached purchase order <strong>${po.po_number}</strong> from ${po.company_name}.</p>
         <p>Amount: <strong>Rs.${(po.total_amount / 100).toFixed(2)}</strong></p>
-        ${po.expected_date ? `<p>Expected Delivery: ${fmtDate(po.expected_date)}</p>` : ''}
+        ${fmtEDate ? `<p>Expected Delivery: ${fmtEDate}</p>` : ''}
         <br/>
         <p style="color:#6b7280;font-size:12px;">Thank you for your partnership!</p>
       `,

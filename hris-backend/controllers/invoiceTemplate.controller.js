@@ -24,7 +24,7 @@ const TEMPLATES = [
     name: 'GST Detailed',
     description: 'Comprehensive GST breakdown with HSN/SAC and tax rate columns',
     preview: null,
-    features: ['HSN/SAC column', 'CGST/SGST/IGST split', 'Tax rate per item', 'GST summary table'],
+    features: ['HSN/SAC column', 'GST rate per item', 'Tax rate per item', 'GST summary table'],
   },
   {
     id: 'retail_pos',
@@ -47,6 +47,9 @@ const DEFAULT_SETTINGS = {
   showCustomerGst: true,
   showTerms: true,
   showSignature: true,
+  signatureUrl: '',
+  signatoryName: '',
+  signatoryDesignation: '',
   // Phase 2 — Layout Configuration
   logoAlignment: 'left',
   companyInfoPosition: 'left',
@@ -117,8 +120,19 @@ exports.getDefaultSettings = async (req, res) => {
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Tenant not found.' });
     const raw = rows[0].invoice_settings;
-    const settings = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-    res.json({ settings: { ...DEFAULT_SETTINGS, ...settings } });
+    const legacy = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+    // Merge with default tenant template config (multi-template system)
+    let tplConfig = {};
+    try {
+      const [tplRows] = await db.query(
+        `SELECT config FROM hris_saas.tenant_templates WHERE tenant_id = ? AND is_default = true AND is_active = true LIMIT 1`,
+        [req.tenantId]
+      );
+      if (tplRows.length > 0 && tplRows[0].config) {
+        tplConfig = typeof tplRows[0].config === 'string' ? JSON.parse(tplRows[0].config) : tplRows[0].config;
+      }
+    } catch {}
+    res.json({ settings: { ...DEFAULT_SETTINGS, ...legacy, ...tplConfig } });
   } catch (error) {
     console.error('getDefaultSettings error:', error);
     res.status(500).json({ error: 'Failed to fetch invoice settings.' });
@@ -135,6 +149,7 @@ exports.updateSettings = async (req, res) => {
       'showInvoiceNo', 'showInvoiceDate', 'showDueDate', 'showPaymentTerms', 'showSalesPerson',
       'itemColumns',
       'showDiscountTotal', 'showGstBreakdown', 'showRoundOff', 'showAmountInWords',
+      'signatureUrl', 'signatoryName', 'signatoryDesignation',
       'headerBackground', 'footerBackground', 'fontFamily', 'fontSize',
       'headerHeight', 'logoSize', 'pageMargin', 'sectionPadding', 'sectionSpacing',
       'customLabels',
@@ -192,5 +207,52 @@ exports.uploadLogo = async (req, res) => {
   } catch (error) {
     console.error('uploadLogo error:', error);
     res.status(500).json({ error: 'Failed to upload logo.' });
+  }
+};
+
+exports.uploadSignature = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded.' });
+  }
+  try {
+    const filename = req.file.filename;
+    const url = `/uploads/${filename}`;
+    const [existing] = await db.query(
+      `SELECT invoice_settings FROM hris_saas.tenants WHERE id = ?`,
+      [req.tenantId]
+    );
+    const current = existing[0]?.invoice_settings
+      ? (typeof existing[0].invoice_settings === 'string' ? JSON.parse(existing[0].invoice_settings) : existing[0].invoice_settings)
+      : {};
+    const updated = { ...DEFAULT_SETTINGS, ...current, signatureUrl: url };
+    await db.query(
+      `UPDATE hris_saas.tenants SET invoice_settings = ? WHERE id = ?`,
+      [JSON.stringify(updated), req.tenantId]
+    );
+    res.json({ url, message: 'Signature uploaded successfully.' });
+  } catch (error) {
+    console.error('uploadSignature error:', error);
+    res.status(500).json({ error: 'Failed to upload signature.' });
+  }
+};
+
+exports.removeSignature = async (req, res) => {
+  try {
+    const [existing] = await db.query(
+      `SELECT invoice_settings FROM hris_saas.tenants WHERE id = ?`,
+      [req.tenantId]
+    );
+    const current = existing[0]?.invoice_settings
+      ? (typeof existing[0].invoice_settings === 'string' ? JSON.parse(existing[0].invoice_settings) : existing[0].invoice_settings)
+      : {};
+    const updated = { ...DEFAULT_SETTINGS, ...current, signatureUrl: '' };
+    await db.query(
+      `UPDATE hris_saas.tenants SET invoice_settings = ? WHERE id = ?`,
+      [JSON.stringify(updated), req.tenantId]
+    );
+    res.json({ message: 'Signature removed.' });
+  } catch (error) {
+    console.error('removeSignature error:', error);
+    res.status(500).json({ error: 'Failed to remove signature.' });
   }
 };

@@ -58,8 +58,8 @@ const TYPE_ICONS = {
 };
 
 const TRANSACTION_ROUTES = {
-  sales_invoice: '/admin/invoices',
-  purchase_order: '/admin/purchase-orders',
+  sales_invoice: '/admin/sales-transactions',
+  purchase_order: '/admin/purchase-transactions',
 };
 
 function today() {

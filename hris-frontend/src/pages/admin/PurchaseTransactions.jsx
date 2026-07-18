@@ -3,8 +3,8 @@ import { hrService } from '../../services/hr.service';
 import { DOC_LABELS, DOCUMENT_CONFIG, STATUS_STYLES } from '../../config/documentConfig';
 import TransactionForm from '../../components/TransactionForm';
 import ResponsiveTable from '../../components/ResponsiveTable';
-import BottomSheet from '../../components/BottomSheet';
-import useIsMobile from '../../hooks/useIsMobile';
+import Drawer from '../../components/Drawer';
+import TransactionDetailView from '../../components/TransactionDetailView';
 
 const TYPES = ['purchase_invoice', 'payment_out', 'purchase_return', 'debit_note', 'purchase_order'];
 
@@ -79,7 +79,6 @@ function getPeriodDates(period) {
 }
 
 export default function PurchaseTransactions() {
-  const isMobile = useIsMobile();
   const [tab, setTab] = useState('purchase_invoice');
   const [data, setData] = useState([]);
   const [total, setTotal] = useState(0);
@@ -93,6 +92,12 @@ export default function PurchaseTransactions() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [generateMsg, setGenerateMsg] = useState('');
+  const [templateConfig, setTemplateConfig] = useState(null);
+
+  useEffect(() => {
+    hrService.getInvoiceTemplateSettings().then(r => setTemplateConfig(r || {})).catch(() => {});
+  }, []);
 
   const dateParams = period === 'custom'
     ? { startDate: fromDate || undefined, endDate: toDate || undefined }
@@ -124,7 +129,12 @@ export default function PurchaseTransactions() {
   ];
 
   const openNew = () => { setEditing(null); setShowForm(true); };
-  const openEdit = (row) => { setEditing(row); setShowForm(true); };
+  const openEdit = async (row) => {
+    try {
+      const full = await hrService.getTransaction(row.id);
+      setEditing(full); setShowForm(true);
+    } catch { setEditing(row); setShowForm(true); }
+  };
   const handleDelete = async (row) => {
     if (!window.confirm(`Delete draft ${row.document_number}?`)) return;
     try {
@@ -200,7 +210,12 @@ export default function PurchaseTransactions() {
         totalPages={Math.ceil(total / 35)}
         onPageChange={setPage}
         searchable={false}
-        onRowClick={(r) => setDetail(r)}
+        onRowClick={async (r) => {
+          try {
+            const full = await hrService.getTransaction(r.id);
+            setDetail(full);
+          } catch { setDetail(r); }
+        }}
         actions={(row) => (
           <div className="flex items-center gap-1">
             <button onClick={(e) => { e.stopPropagation(); openEdit(row); }}
@@ -221,60 +236,51 @@ export default function PurchaseTransactions() {
         </div>
       )}
 
-      {detail && (isMobile ? (
-        <BottomSheet open={!!detail} onClose={() => setDetail(null)} title={detail.document_number || 'Transaction Details'}>
-          <DetailContent data={detail} />
-        </BottomSheet>
-      ) : (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setDetail(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">{detail.document_number}</h3>
-              <button onClick={() => setDetail(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
-            </div>
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              <DetailContent data={detail} />
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
+      {detail && (
+        <Drawer
+          open={!!detail}
+          onClose={() => setDetail(null)}
+          title={`${DOC_LABELS[tab] || 'Transaction'} — ${detail.document_number || ''}`}
+          footer={
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => { const d = detail; setDetail(null); openEdit(d); }} className="btn-primary text-sm">Edit</button>
               {detail.status === 'draft' && (
                 <button onClick={() => { const d = detail; setDetail(null); handleDelete(d); }} className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">Delete</button>
               )}
+              {detail.status !== 'draft' && cfg?.conversions?.length > 0 && cfg.conversions.map(ct => (
+                <button key={ct} onClick={async () => {
+                  setGenerateMsg(`Generating ${DOC_LABELS[ct] || ct}...`);
+                  try {
+                    const res = await hrService.convertTransaction(detail.id, ct);
+                    if (res?.id) {
+                      try {
+                        const full = await hrService.getTransaction(res.id);
+                        setDetail(null);
+                        setTimeout(() => { setTab(ct); setDetail(full); }, 100);
+                      } catch { setDetail(null); setTimeout(() => setTab(ct), 100); }
+                    }
+                  } catch { alert('Conversion failed.'); }
+                  setGenerateMsg('');
+                }} className="px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
+                  {DOC_LABELS[ct] || ct}
+                </button>
+              ))}
+              {generateMsg && <span className="text-sm text-indigo-600 animate-pulse ml-2">{generateMsg}</span>}
             </div>
-          </div>
-        </div>
-      ))}
+          }
+        >
+          <TransactionDetailView
+            transaction={detail}
+            templateConfig={templateConfig || {}}
+            direction="purchase"
+          />
+        </Drawer>
+      )}
     </div>
   );
 }
 
-function DetailContent({ data }) {
-  return (
-    <div className="space-y-3 text-sm">
-      <DetailRow label="Document No" value={data.document_number} />
-      <DetailRow label="Date" value={data.document_date ? new Date(data.document_date).toLocaleDateString('en-IN') : '—'} />
-      <DetailRow label="Supplier" value={data.party_name || '—'} />
-      <DetailRow label="GSTIN" value={data.party_gstin || '—'} />
-      {data.due_date && <DetailRow label="Due Date" value={new Date(data.due_date).toLocaleDateString('en-IN')} />}
-      <DetailRow label="Amount" value={formatINR(data.grand_total || 0)} />
-      <DetailRow label="Paid" value={formatINR(data.amount_paid || 0)} />
-      <DetailRow label="Balance" value={formatINR(data.balance_due || 0)} />
-      <DetailRow label="Status">
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[data.status] || 'bg-gray-100 text-gray-600'}`}>{data.status}</span>
-      </DetailRow>
-      {data.notes && <DetailRow label="Notes" value={data.notes} />}
-    </div>
-  );
-}
 
-function DetailRow({ label, value, children }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="text-gray-500 w-28 shrink-0">{label}</span>
-      <span className="text-gray-900 flex-1 break-words">{children || value || '—'}</span>
-    </div>
-  );
-}
 
 function formatINR(cents) {
   const symbol = localStorage.getItem('currency_symbol') || '₹';

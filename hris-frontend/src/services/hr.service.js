@@ -506,7 +506,7 @@ export const hrService = {
   },
   getInvoiceTemplateSettings: async () => {
     const response = await api.get('/core/invoice-templates/default');
-    return response.data;
+    return response.data?.settings || response.data || {};
   },
   updateInvoiceTemplateSettings: async (payload) => {
     const response = await api.put('/core/invoice-templates/settings', payload);
@@ -1030,6 +1030,16 @@ export const hrService = {
   },
   deleteTransaction: async (id) => {
     const response = await api.delete(`/core/transactions/${id}`);
+    return response.data;
+  },
+  uploadInvoiceSignature: async (formData) => {
+    const response = await api.post('/core/invoice-template/signature', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  removeInvoiceSignature: async () => {
+    const response = await api.delete('/core/invoice-template/signature');
     return response.data;
   },
 };

@@ -147,7 +147,7 @@ const RecurringInvoices = () => {
   const handleGenerate = async (id) => {
     try {
       const res = await hrService.generateRecurringInvoice(id);
-      navigate(`/admin/invoices`);
+      navigate(`/admin/sales-transactions`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate invoice.');
     }
@@ -287,8 +287,8 @@ const RecurringInvoices = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-500">GST Type:</span>
                     <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })} className="input-field text-sm w-32">
-                      <option value="intra">Intra-state (CGST+SGST)</option>
-                      <option value="inter">Inter-state (IGST)</option>
+                      <option value="intra">Intra-state</option>
+                      <option value="inter">Inter-state</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
@@ -351,10 +351,7 @@ const RecurringInvoices = () => {
                   <div className="w-64 space-y-1">
                     <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
                     {form.gst_type === 'intra' ? (
-                      <>
-                        <div className="flex justify-between text-sm text-green-600"><span>CGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                        <div className="flex justify-between text-sm text-green-600"><span>SGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                      </>
+                      <div className="flex justify-between text-sm text-green-600"><span>GST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : form.gst_type === 'inter' ? (
                       <div className="flex justify-between text-sm text-blue-600"><span>IGST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : (

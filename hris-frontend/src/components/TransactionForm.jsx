@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { hrService } from '../services/hr.service';
-import { DOCUMENT_CONFIG, DOC_LABELS, DOC_PREFIXES } from '../config/documentConfig';
+import { DIRECTION, DOCUMENT_CONFIG, DOC_LABELS, DOC_PREFIXES } from '../config/documentConfig';
 import LineItemsTable from './LineItemsTable';
 import SearchableSelect from './SearchableSelect';
 import { getStates } from '../services/auth.service';
@@ -11,6 +11,12 @@ function addDays(date, days) {
   return d.toISOString().split('T')[0];
 }
 
+function toDateInput(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? v : d.toISOString().split('T')[0];
+}
+
 export default function TransactionForm({ transactionType, initial, onClose, onSaved }) {
   const cfg = DOCUMENT_CONFIG[transactionType];
   const isSalesInvoice = transactionType === 'sales_invoice';
@@ -19,13 +25,19 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
   const TAB_LABELS = { document: 'Invoice Info', items: 'Line Items', payment: 'Payment & Notes' };
   const today = new Date().toISOString().split('T')[0];
 
-  const [form, setForm] = useState({
+  const initForm = useMemo(() => ({
     document_date: today,
     due_date: addDays(today, 30),
     document_number: '',
     status: 'draft',
     ...initial,
-  });
+    document_date: toDateInput(initial?.document_date) || today,
+    due_date: toDateInput(initial?.due_date) || addDays(today, 30),
+    valid_until: toDateInput(initial?.valid_until),
+    expected_delivery_date: toDateInput(initial?.expected_delivery_date),
+  }), [initial]);
+
+  const [form, setForm] = useState(initForm);
   const [partyData, setPartyData] = useState(null);
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
@@ -56,7 +68,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
 
   useEffect(() => {
     if (initial) {
-      if (initial.items) setItems(initial.items);
+      if (initial.items) setItems(initial.items.map(i => ({ ...i, rate: (i.rate || 0) / 100 })));
       if (initial.party_id) {
         setPartyData({
           id: initial.party_id, name: initial.party_name, gstin: initial.party_gstin,
@@ -127,7 +139,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
       const payload = {
         transaction_type: transactionType,
         ...form,
-        items: items.filter(i => i.item_name),
+        items: items.filter(i => i.item_name).map(i => ({ ...i, rate: Math.round((i.rate || 0) * 100) })),
         gst_type: form.gst_type || 'intra',
       };
       if (editing) {
@@ -352,7 +364,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
         {activeTab === 'items' && (
           <div className="space-y-4">
             {fields('lineItems') && (
-              <LineItemsTable items={items} onChange={setItems} gstType={form.gst_type || 'intra'} />
+              <LineItemsTable items={items} onChange={setItems} gstType={form.gst_type || 'intra'} direction={DIRECTION[transactionType] || 'sales'} />
             )}
             {fields('reason') && (
               <div>
@@ -449,7 +461,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
   );
 }
 
-function formatINR(cents) {
+function formatINR(val) {
   const symbol = localStorage.getItem('currency_symbol') || '₹';
-  return symbol + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return symbol + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

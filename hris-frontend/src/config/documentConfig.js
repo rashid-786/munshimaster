@@ -62,7 +62,7 @@ export const DOCUMENT_CONFIG = {
   sales_invoice: {
     direction: 'sales', label: 'Sales Invoice', partyType: 'customer', fields: {
       ...COMMON_FIELDS, dueDate: true, placeOfSupply: true,
-    }, conversions: ['proforma_invoice'],
+    }, conversions: [],
   },
   payment_in: {
     direction: 'sales', label: 'Payment Received', partyType: 'customer', fields: {

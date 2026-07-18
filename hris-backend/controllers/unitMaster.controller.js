@@ -33,7 +33,7 @@ exports.create = async (req, res) => {
       'INSERT INTO hris_saas.unit_master (id, name, description, is_active, display_order) VALUES (?,?,?,?,?)',
       [id, name, description || null, is_active !== false, order]
     );
-    await log(req, 'created', `Created unit: ${name}`, 'unit_master', id);
+    await log({ tenantId: req.tenant?.id, actorId: req.user?.id, actorName: req.user?.name, action: 'unit.created', entityType: 'unit_master', entityId: id, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.unit_master WHERE id = ?', [id]);
     res.status(201).json(result[0]);
   } catch (err) {
@@ -54,7 +54,7 @@ exports.update = async (req, res) => {
       'UPDATE hris_saas.unit_master SET name=?, description=?, is_active=?, display_order=?, updated_at=NOW() WHERE id=?',
       [name || existing[0].name, description !== undefined ? description : existing[0].description, is_active !== undefined ? is_active : existing[0].is_active, display_order ?? existing[0].display_order, id]
     );
-    await log(req, 'updated', `Updated unit: ${name || existing[0].name}`, 'unit_master', id);
+    await log({ tenantId: req.tenant?.id, actorId: req.user?.id, actorName: req.user?.name, action: 'unit.updated', entityType: 'unit_master', entityId: id, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.unit_master WHERE id = ?', [id]);
     res.json(result[0]);
   } catch (err) {
@@ -70,7 +70,7 @@ exports.delete = async (req, res) => {
     if (existing.length === 0) return res.status(404).json({ error: 'Unit not found.' });
 
     await db.execute('DELETE FROM hris_saas.unit_master WHERE id = ?', [id]);
-    await log(req, 'deleted', `Deleted unit: ${existing[0].name}`, 'unit_master', id);
+    await log({ tenantId: req.tenant?.id, actorId: req.user?.id, actorName: req.user?.name, action: 'unit.deleted', entityType: 'unit_master', entityId: id, req });
     res.json({ success: true });
   } catch (err) {
     console.error('Unit delete error:', err);

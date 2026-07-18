@@ -460,18 +460,14 @@ const Reports = () => {
                 <div className="bg-white border rounded-xl p-4">
                   <p className="text-sm font-semibold text-gray-700 mb-3">Output Tax (Sales)</p>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.output?.cgst || 0)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.output?.sgst || 0)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.output?.igst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">GST</span><span className="font-medium">{formatINR((data.output?.cgst || 0) + (data.output?.sgst || 0) + (data.output?.igst || 0))}</span></div>
                     <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.output?.totalOutput || 0)}</span></div>
                   </div>
                 </div>
                 <div className="bg-white border rounded-xl p-4">
                   <p className="text-sm font-semibold text-gray-700 mb-3">Input Tax (Purchases)</p>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-gray-500">CGST</span><span className="font-medium">{formatINR(data.input?.cgst || 0)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">SGST</span><span className="font-medium">{formatINR(data.input?.sgst || 0)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">IGST</span><span className="font-medium">{formatINR(data.input?.igst || 0)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">GST</span><span className="font-medium">{formatINR((data.input?.cgst || 0) + (data.input?.sgst || 0) + (data.input?.igst || 0))}</span></div>
                     <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span>{formatINR(data.input?.totalInput || 0)}</span></div>
                   </div>
                 </div>

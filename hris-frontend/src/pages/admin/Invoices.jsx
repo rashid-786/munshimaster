@@ -10,6 +10,7 @@ import DraftBanner from '../../components/DraftBanner';
 import UpgradeBanner from '../../components/UpgradeBanner';
 import Loading from '../../components/Loading';
 import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
+import InvoiceTemplateView from '../../components/InvoiceTemplateView';
 
 const emptyItem = { description: '', quantity: 1, unit_price: '', hsn_code: '' };
 const emptyForm = { customer_id: '', invoice_date: '', due_date: '', items: [{ ...emptyItem }], notes: '', gst_type: 'intra', place_of_supply: '' };
@@ -522,6 +523,8 @@ const Invoices = () => {
               <button onClick={() => setDetail(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
             </div>
             <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2">
+              <button onClick={() => window.print()}
+                className="btn-secondary text-xs px-3 py-1.5">Print</button>
               <button onClick={() => hrService.downloadInvoicePDF(detail.id)}
                 className="btn-secondary text-xs px-3 py-1.5">Download PDF</button>
               <button
@@ -586,36 +589,48 @@ const Invoices = () => {
                 <button onClick={() => handleStatus(detail.id, 'cancelled')} className="btn-danger text-xs px-3 py-1.5">Cancel</button>
               )}
             </div>
-            <div className="p-6 space-y-4">
+            <InvoiceTemplateView templateConfig={detail.templateConfig} className="p-6 space-y-4">
+              {detail.templateConfig?.logoUrl && (
+                <div className={`flex items-center gap-4 mb-2 ${
+                  (detail.templateConfig.logoAlignment || 'left') === 'center' ? 'justify-center' :
+                  (detail.templateConfig.logoAlignment || 'left') === 'right' ? 'justify-end' : 'justify-start'
+                }`}>
+                  {detail.templateConfig.companyName && (
+                    <span className="text-lg font-bold" style={{ color: detail.templateConfig.primaryColor || '#0F172A' }}>
+                      {detail.templateConfig.companyName}
+                    </span>
+                  )}
+                </div>
+              )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <p className="text-xs text-gray-500 font-medium">Customer</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Customer</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.customer_name}</p>
                 {detail.customer_gstin && <p className="text-xs text-gray-400 mt-0.5">GST: {detail.customer_gstin}</p>}
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Invoice Date</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Invoice Date</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.invoice_date?.split('T')[0]}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Due Date</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Due Date</p>
                 <p className="text-sm text-gray-900 mt-0.5">{detail.due_date?.split('T')[0] || '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Customer Contact</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Customer Contact</p>
                 {detail.customer_email && <p className="text-sm text-gray-900 mt-0.5">{detail.customer_email}</p>}
                 {detail.customer_phone && <p className="text-xs text-gray-500">{detail.customer_phone}</p>}
               </div>
               {detail.irn && (
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">IRN</p>
+                  <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>IRN</p>
                   <p className="text-xs font-mono text-gray-900 mt-0.5 break-all">{detail.irn}</p>
                   {detail.ack_no && <p className="text-[10px] text-gray-400">Ack: {detail.ack_no}</p>}
                 </div>
               )}
               {detail.ewaybill_number && (
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">E-Way Bill</p>
+                  <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>E-Way Bill</p>
                   <p className="text-xs font-mono text-gray-900 mt-0.5">{detail.ewaybill_number}</p>
                   {detail.ewaybill_valid_upto && <p className="text-[10px] text-gray-400">Valid till: {detail.ewaybill_valid_upto?.split('T')[0]}</p>}
                   <button onClick={() => handleCancelEwaybill(detail.id)} className="text-[10px] text-red-500 hover:text-red-700 mt-1">Cancel EWB</button>
@@ -623,7 +638,7 @@ const Invoices = () => {
               )}
               {detail.payment_link_url && detail.payment_link_status !== 'cancelled' && (
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">Payment Link</p>
+                  <p className="text-xs font-medium" style={{ color: 'var(--template-primary, #6b7280)' }}>Payment Link</p>
                   <a href={detail.payment_link_url} target="_blank" rel="noopener noreferrer"
                     className="text-xs text-emerald-600 hover:text-emerald-700 font-medium mt-0.5 block truncate">
                     {detail.payment_link_url}
@@ -726,7 +741,7 @@ const Invoices = () => {
                 </div>
               </div>
             )}
-          </div>
+          </InvoiceTemplateView>
         </div>
       </div>
       )}
@@ -951,8 +966,8 @@ const Invoices = () => {
                     <span className="text-sm text-gray-500">GST Type:</span>
                     <select value={form.gst_type} onChange={e => setForm({ ...form, gst_type: e.target.value })}
                       className="input-field text-sm w-32">
-                      <option value="intra">Intra-state (CGST+SGST)</option>
-                      <option value="inter">Inter-state (IGST)</option>
+                      <option value="intra">Intra-state</option>
+                      <option value="inter">Inter-state</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1015,10 +1030,7 @@ const Invoices = () => {
                   <div className="w-64 space-y-1">
                     <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
                     {form.gst_type === 'intra' ? (
-                      <>
-                        <div className="flex justify-between text-sm text-green-600"><span>CGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                        <div className="flex justify-between text-sm text-green-600"><span>SGST @ {taxRate / 2}%</span><span>{formatINR(Math.round(tax / 2))}</span></div>
-                      </>
+                      <div className="flex justify-between text-sm text-green-600"><span>GST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : form.gst_type === 'inter' ? (
                       <div className="flex justify-between text-sm text-blue-600"><span>IGST @ {taxRate}%</span><span>{formatINR(tax)}</span></div>
                     ) : (

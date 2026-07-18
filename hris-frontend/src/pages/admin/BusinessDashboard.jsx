@@ -180,7 +180,7 @@ const BusinessDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard title="Revenue" value={`₹${(s.totalRevenue || 0).toLocaleString()}`}
             trend={s.revenueGrowth} trendLabel="vs prev period" color="text-gray-900" icon="💰"
-            onClick={() => navigate('/admin/invoices')} />
+            onClick={() => navigate('/admin/sales-transactions')} />
           <KpiCard title="Net Profit" value={`₹${(s.netProfit || 0).toLocaleString()}`}
             subtitle={`${s.profitMargin || 0}% margin`}
             color={(s.netProfit || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} icon="📊"
@@ -353,14 +353,14 @@ const BusinessDashboard = () => {
         <div className="card">
           <div className="card-header flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Recent Invoices</h3>
-            <button onClick={() => navigate('/admin/invoices')} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View All</button>
+            <button onClick={() => navigate('/admin/sales-transactions')} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View All</button>
           </div>
           <div className="p-4">
             {data?.recentInvoices?.length > 0 ? (
               <div className="space-y-2">
                 {data.recentInvoices.map(inv => (
                   <div key={inv.id} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => navigate('/admin/invoices')}>
+                    onClick={() => navigate('/admin/sales-transactions')}>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900 truncate">{inv.documentNumber}</p>
                       <p className="text-xs text-gray-400 truncate">{inv.partyName || '—'}</p>
@@ -386,14 +386,14 @@ const BusinessDashboard = () => {
         <div className="card">
           <div className="card-header flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Pending Purchase Orders</h3>
-            <button onClick={() => navigate('/admin/purchase-orders')} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View All</button>
+            <button onClick={() => navigate('/admin/purchase-transactions')} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View All</button>
           </div>
           <div className="p-4">
             {data?.pendingPOs?.length > 0 ? (
               <div className="space-y-2">
                 {data.pendingPOs.map(po => (
                   <div key={po.id} className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => navigate('/admin/purchase-orders')}>
+                    onClick={() => navigate('/admin/purchase-transactions')}>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900 truncate">{po.documentNumber}</p>
                       <p className="text-xs text-gray-400">{po.createdAt?.split('T')[0]}</p>
@@ -418,11 +418,11 @@ const BusinessDashboard = () => {
       {/* Quick Actions / Subscription Info */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={`${globalConfig.hideSubscriptionLabels ? 'lg:col-span-3' : 'lg:col-span-2'} flex flex-wrap gap-3`}>
-          <button onClick={() => navigate('/admin/invoices')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+          <button onClick={() => navigate('/admin/sales-transactions')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
             <p className="text-xl">💰</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Invoices</p>
           </button>
-          <button onClick={() => navigate('/admin/purchase-orders')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
+          <button onClick={() => navigate('/admin/purchase-transactions')} className="card flex-1 p-4 hover:shadow-md transition-shadow text-center min-w-[80px]">
             <p className="text-xl">📦</p>
             <p className="text-xs font-medium text-gray-900 mt-1">Purchase Orders</p>
           </button>

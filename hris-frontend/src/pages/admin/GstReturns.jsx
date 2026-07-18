@@ -102,9 +102,7 @@ const GstReturns = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard label="Taxable Value" value={`₹${(gstr3b.taxableValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} sub={`${gstr3b.invoiceCount || 0} invoices`} />
-            <StatCard label="CGST" value={`₹${(gstr3b.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
-            <StatCard label="SGST" value={`₹${(gstr3b.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
-            <StatCard label="IGST" value={`₹${(gstr3b.igst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
+            <StatCard label="GST" value={`₹${((gstr3b.cgst || 0) + (gstr3b.sgst || 0) + (gstr3b.igst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <StatCard label="Total Tax Liability" value={`₹${(gstr3b.totalTaxLiability || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
@@ -200,9 +198,7 @@ const GstReturns = () => {
                     <tr>
                       <th className="text-left px-3 py-2">Place of Supply</th>
                       <th className="text-right px-3 py-2">Taxable Value</th>
-                      <th className="text-right px-3 py-2">CGST</th>
-                      <th className="text-right px-3 py-2">SGST</th>
-                      <th className="text-right px-3 py-2">IGST</th>
+                      <th className="text-right px-3 py-2">GST</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -210,9 +206,7 @@ const GstReturns = () => {
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-3 py-2">{b.pos || '-'}</td>
                         <td className="px-3 py-2 text-right">₹{(b.txval || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        <td className="px-3 py-2 text-right">₹{(b.camt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        <td className="px-3 py-2 text-right">₹{(b.samt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        <td className="px-3 py-2 text-right">₹{(b.iamt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-3 py-2 text-right">₹{((b.camt || 0) + (b.samt || 0) + (b.iamt || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -318,8 +318,6 @@ export default function AdminLayout() {
     '/admin/business': 'my_business',
     '/admin/suppliers': 'suppliers',
     '/admin/customers': 'customers',
-    '/admin/purchase-orders': 'purchase_orders',
-    '/admin/invoices': 'invoices',
     '/admin/sales-transactions': 'invoices',
     '/admin/purchase-transactions': 'invoices',
     '/admin/recurring-invoices': 'recurring_invoices',

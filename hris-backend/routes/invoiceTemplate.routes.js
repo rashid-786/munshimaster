@@ -30,6 +30,8 @@ router.get('/', authenticateToken, ctrl.getTemplates);
 router.get('/default', authenticateToken, ctrl.getDefaultSettings);
 router.put('/settings', authenticateToken, ctrl.updateSettings);
 router.post('/logo', authenticateToken, upload.single('logo'), ctrl.uploadLogo);
+router.post('/signature', authenticateToken, upload.single('signature'), ctrl.uploadSignature);
+router.delete('/signature', authenticateToken, ctrl.removeSignature);
 
 // ========== Phase 4: Multi-template engine ==========
 

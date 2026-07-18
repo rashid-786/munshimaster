@@ -1,47 +1,11 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const path = require('path');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../utils/email');
 const { logEmail } = require('../utils/emailLogger');
 const { log } = require('../utils/audit');
 const stockCtrl = require('./stock.controller');
-
-async function resolveInvoiceSettings(tenantId, documentType = 'invoice') {
-  // Fetch legacy settings as base (provides logoUrl, companyName, gstNumber etc.)
-  const [tenant] = await db.query(
-    `SELECT invoice_settings FROM hris_saas.tenants WHERE id = $1`,
-    [tenantId]
-  );
-  const raw = tenant[0]?.invoice_settings;
-  const base = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-
-  // 1. Find template assigned to this document type
-  const [assigned] = await db.query(
-    `SELECT * FROM hris_saas.tenant_templates
-     WHERE tenant_id = $1 AND $2 = ANY(document_types) AND is_active = true
-     ORDER BY is_default DESC, created_at DESC LIMIT 1`,
-    [tenantId, documentType]
-  );
-  if (assigned.length > 0) {
-    const config = typeof assigned[0].config === 'string' ? JSON.parse(assigned[0].config) : (assigned[0].config || {});
-    return { ...base, ...config };
-  }
-
-  // 2. Fall back to default template
-  const [def] = await db.query(
-    `SELECT * FROM hris_saas.tenant_templates
-     WHERE tenant_id = $1 AND is_default = true AND is_active = true LIMIT 1`,
-    [tenantId]
-  );
-  if (def.length > 0) {
-    const config = typeof def[0].config === 'string' ? JSON.parse(def[0].config) : (def[0].config || {});
-    return { ...base, ...config };
-  }
-
-  // 3. Fall back to tenant invoice_settings only
-  return base;
-}
+const { resolveInvoiceSettings, resolveLogoUrl } = require('../utils/invoiceRenderer');
 
 // Compute per-item tax amounts from stored rates and total prices
 function computeTaxSplit(items) {
@@ -81,18 +45,18 @@ function generateInvoicePDF(doc, inv, items, invTaxRate, invoiceSettings) {
 
   if (s.logoUrl) {
     try {
-      const logoPath = s.logoUrl.startsWith('http')
-        ? s.logoUrl
-        : path.join(__dirname, '..', s.logoUrl.replace(/^\/api\/v1\/uploads\//, 'uploads/').replace(/^\//, ''));
-      let logoX;
-      if (logoAlign === 'right') {
-        logoX = margin + tableWidth - logoWidth;
-      } else if (logoAlign === 'center') {
-        logoX = margin + (tableWidth - logoWidth) / 2;
-      } else {
-        logoX = margin;
+      const logoPath = resolveLogoUrl(s.logoUrl);
+      if (logoPath) {
+        let logoX;
+        if (logoAlign === 'right') {
+          logoX = margin + tableWidth - logoWidth;
+        } else if (logoAlign === 'center') {
+          logoX = margin + (tableWidth - logoWidth) / 2;
+        } else {
+          logoX = margin;
+        }
+        doc.image(logoPath, logoX, headerY, { width: logoWidth });
       }
-      doc.image(logoPath, logoX, headerY, { width: logoWidth });
     } catch (e) { /* logo failed to load */ }
   }
 
@@ -354,11 +318,10 @@ function generateInvoicePDF(doc, inv, items, invTaxRate, invoiceSettings) {
 
   if (showGstBreakdown) {
     if (hasGst && inv.gst_type === 'intra') {
-      doc.text(`CGST @ ${taxSplit.totalCGST > 0 ? (taxSplit.totalCGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, labelX, y, { width: 130, align: 'right' });
-      doc.text(`Rs.${(taxSplit.totalCGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
-      y += 12;
-      doc.text(`SGST @ ${taxSplit.totalSGST > 0 ? (taxSplit.totalSGST / inv.subtotal * 100).toFixed(1) : invTaxRate / 2}%:`, labelX, y, { width: 130, align: 'right' });
-      doc.text(`Rs.${(taxSplit.totalSGST / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
+      const gstAmt = taxSplit.totalCGST + taxSplit.totalSGST;
+      const gstRate = gstAmt > 0 ? (gstAmt / inv.subtotal * 100).toFixed(1) : invTaxRate;
+      doc.text(`GST @ ${gstRate}%:`, labelX, y, { width: 130, align: 'right' });
+      doc.text(`Rs.${(gstAmt / 100).toFixed(2)}`, valueX, y, { width: 70, align: 'right' });
       y += 14;
     } else if (hasGst && inv.gst_type === 'inter') {
       doc.text(`IGST @ ${taxSplit.totalIGST > 0 ? (taxSplit.totalIGST / inv.subtotal * 100).toFixed(1) : invTaxRate}%:`, labelX, y, { width: 130, align: 'right' });
@@ -530,12 +493,14 @@ exports.get = async (req, res) => {
     const inv = invs[0];
     const amountPaid = Number(inv.amount_paid || 0);
     const totalAmount = Number(inv.total_amount);
+    const templateConfig = await resolveInvoiceSettings(req.tenantId, 'invoice');
     res.json({
       ...inv,
       items,
       payments: payments || [],
       amountPaid,
       balanceDue: Math.max(0, totalAmount - amountPaid),
+      templateConfig,
     });
   } catch (error) {
     console.error(error);
@@ -753,13 +718,12 @@ exports.downloadPDF = async (req, res) => {
     );
     if (invs.length === 0) return res.status(404).json({ error: 'Invoice not found.' });
     const inv = invs[0];
-    const invSettings = typeof inv.settings === 'string' ? JSON.parse(inv.settings) : (inv.settings || {});
-    const invTaxRate = invSettings.taxRate || 18;
     const [items] = await db.query(
       'SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY id', [req.params.id]
     );
 
     const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'invoice');
+    const invTaxRate = invoiceSettings.taxRate || 18;
 
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
@@ -895,13 +859,12 @@ exports.sendEmail = async (req, res) => {
       return res.status(400).json({ error: 'Customer has no email address.' });
     }
 
-    const invSettings = typeof inv.settings === 'string' ? JSON.parse(inv.settings) : (inv.settings || {});
-    const invTaxRate = invSettings.taxRate || 18;
     const [items] = await db.query(
       'SELECT * FROM hris_saas.invoice_items WHERE invoice_id = $1 ORDER BY id', [req.params.id]
     );
 
     const invoiceSettings = await resolveInvoiceSettings(req.tenantId, 'invoice');
+    const invTaxRate = invoiceSettings.taxRate || 18;
 
     const chunks = [];
     const doc = new PDFDocument({ margin: 50, bufferPages: true });

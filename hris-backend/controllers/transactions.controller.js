@@ -178,7 +178,9 @@ exports.list = async (req, res) => {
       `SELECT t.* FROM hris_saas.transactions t WHERE ${where} ORDER BY t.document_date DESC, t.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
-    res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+    const NUM = ['subtotal', 'taxable_amount', 'discount_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'round_off', 'grand_total', 'amount_paid', 'balance_due'];
+    const converted = rows.map(r => { const o = { ...r }; NUM.forEach(k => { if (o[k] !== undefined && o[k] !== null) o[k] = Number(o[k]); }); return o; });
+    res.json({ data: converted, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     console.error('Transaction list error:', err);
     res.status(500).json({ error: 'Failed to list transactions.' });
@@ -194,10 +196,17 @@ exports.get = async (req, res) => {
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Transaction not found.' });
     const txn = rows[0];
+    const NUM = ['subtotal', 'taxable_amount', 'discount_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'round_off', 'grand_total', 'amount_paid', 'balance_due'];
+    NUM.forEach(k => { if (txn[k] !== undefined && txn[k] !== null) txn[k] = Number(txn[k]); });
     const [items] = await db.execute(
       'SELECT * FROM hris_saas.transaction_items WHERE transaction_id = ? ORDER BY sort_order',
       [txn.id]
     );
+    items.forEach(item => {
+      ['rate', 'quantity', 'discount_percent', 'discount_amount', 'taxable_value', 'gst_rate', 'cgst_amount', 'sgst_amount', 'igst_amount', 'total_amount'].forEach(k => {
+        if (item[k] !== undefined && item[k] !== null) item[k] = Number(item[k]);
+      });
+    });
     const [payments] = await db.execute(
       `SELECT tp.*, t.document_number AS allocated_to_number
        FROM hris_saas.transaction_payments tp
@@ -374,8 +383,11 @@ exports.update = async (req, res) => {
       }
     }
 
+    await db.execute('UPDATE hris_saas.transactions SET balance_due = grand_total - COALESCE(amount_paid, 0) WHERE id = ?', [id]);
     await log(req, 'updated', `Updated ${DOC_LABELS[txn.transaction_type]} ${txn.document_number}`, 'transactions', id);
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [id]);
+    const NUM = ['subtotal', 'taxable_amount', 'discount_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'round_off', 'grand_total', 'amount_paid', 'balance_due'];
+    if (result[0]) NUM.forEach(k => { if (result[0][k] !== undefined && result[0][k] !== null) result[0][k] = Number(result[0][k]); });
     res.json(result[0]);
   } catch (err) {
     console.error('Transaction update error:', err);
