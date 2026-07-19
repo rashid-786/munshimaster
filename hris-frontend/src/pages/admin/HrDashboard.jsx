@@ -76,11 +76,21 @@ const HrDashboard = () => {
     return map;
   }, [payroll, currentMonth, currentYear]);
 
+  const calendarPayrollByEmployee = useMemo(() => {
+    const map = {};
+    if (!calendarData) return map;
+    for (const emp of calendarData.employees) {
+      const empId = emp.employee.id;
+      const hours = emp.days.reduce((sum, d) => sum + (d.paid ? 0 : parseFloat(d.hours || 0)), 0);
+      const payPerHour = Number(emp.employee.payPerHour || 0);
+      map[empId] = { hours, payPerHour, due: hours * payPerHour };
+    }
+    return map;
+  }, [calendarData]);
+
   const totalDue = useMemo(() => {
-    return payroll
-      .filter(p => p.status === 'due' || p.status === 'draft')
-      .reduce((s, p) => s + parseFloat(p.net_salary || 0), 0);
-  }, [payroll]);
+    return Object.values(calendarPayrollByEmployee).reduce((s, v) => s + v.due, 0);
+  }, [calendarPayrollByEmployee]);
 
   const totalPaid = useMemo(() => {
     return payroll
@@ -93,15 +103,8 @@ const HrDashboard = () => {
   }, [monthHoursByEmployee]);
 
   const totalDueHours = useMemo(() => {
-    let hours = 0;
-    for (const empId in monthHoursByEmployee) {
-      const calHrs = monthHoursByEmployee[empId];
-      const payRec = monthPayrollByEmployee[empId];
-      const paidHrs = payRec?.status === 'paid' ? payRec.hours : 0;
-      hours += Math.max(0, calHrs - paidHrs);
-    }
-    return hours;
-  }, [monthPayrollByEmployee, monthHoursByEmployee]);
+    return Object.values(calendarPayrollByEmployee).reduce((s, v) => s + v.hours, 0);
+  }, [calendarPayrollByEmployee]);
 
   const totalPaidHours = useMemo(() => {
     let hours = 0;
@@ -169,8 +172,9 @@ const HrDashboard = () => {
                   const payRec = monthPayrollByEmployee[empId];
                   const paidHours = payRec?.status === 'paid' ? payRec.hours : 0;
                   const paidAmount = payRec?.status === 'paid' ? payRec.amount : 0;
-                  const dueHours = Math.max(0, calHours - paidHours);
-                  const dueAmount = payRec?.status === 'due' ? payRec.amount : 0;
+                  const cal = calendarPayrollByEmployee[empId];
+                  const dueHours = cal?.hours || 0;
+                  const dueAmount = cal?.due || 0;
                   return (
                     <tr
                       key={emp.id}

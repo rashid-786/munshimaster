@@ -95,8 +95,19 @@ export const hrService = {
     const response = await api.post('/core/payroll/calculate', payrollParameters);
     return response.data;
   },
+  previewPayroll: async (payrollParameters) => {
+    const response = await api.post('/core/payroll/preview', payrollParameters);
+    return response.data;
+  },
   getPayrollHistory: async () => {
     const response = await api.get('/core/payroll/history');
+    return response.data;
+  },
+  getDueSummary: async (start, end) => {
+    const params = {};
+    if (start) params.start = start;
+    if (end) params.end = end;
+    const response = await api.get('/core/payroll/due-summary', { params });
     return response.data;
   },
   markPayrollPaid: async (payrollId) => {

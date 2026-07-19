@@ -25,6 +25,7 @@ import Employees from './pages/admin/Employees';
 import EmployeeCalendar from './pages/admin/EmployeeCalendar';
 import LeaveApprovals from './pages/admin/LeaveApprovals';
 import PayrollConsole from './pages/admin/PayrollConsole';
+import RunPayroll from './pages/admin/RunPayroll';
 import AdvancePayments from './pages/admin/AdvancePayments';
 import Replacements from './pages/admin/Replacements';
 import StaffReports from './pages/admin/StaffReports';
@@ -157,6 +158,7 @@ function App() {
             <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
             <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
             <Route path="payroll" element={<PlanRoute minPlan="pro"><PayrollConsole /></PlanRoute>} />
+            <Route path="payroll/run" element={<PlanRoute minPlan="pro"><RunPayroll /></PlanRoute>} />
             <Route path="advances" element={<PlanRoute minPlan="pro"><AdvancePayments /></PlanRoute>} />
             <Route path="replacements" element={<PlanRoute minPlan="pro"><Replacements /></PlanRoute>} />
             <Route path="staff-reports" element={<PlanRoute minPlan="pro"><StaffReports /></PlanRoute>} />

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { useAuth } from '../../context/AuthContext';
 import SearchableSelect from '../../components/SearchableSelect';
 import Loading from '../../components/Loading';
+import { formatINR } from '../../utils/currency';
 
 const COLORS = {
   present: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
@@ -39,6 +41,7 @@ const Tooltip = ({ day, rect }) => {
 
 const EmployeeCalendar = () => {
   const { tenant } = useAuth();
+  const navigate = useNavigate();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -205,23 +208,56 @@ const EmployeeCalendar = () => {
 
   const handleMouseLeave = () => setTooltip(null);
 
-  const totalHoursLogged = useMemo(() => {
-    if (!calendarData) return null;
-    if (selectedEmployee) {
-      const emp = calendarData.employees.find(e => e.employee.id === selectedEmployee);
-      if (!emp) return null;
-      return emp.days.reduce((sum, day) => sum + (day.hours || 0), 0);
-    }
-    return calendarData.employees.reduce((total, emp) =>
-      total + emp.days.reduce((sum, day) => sum + (day.hours || 0), 0), 0
-    );
-  }, [calendarData, selectedEmployee]);
+  const payrollBreakdown = useMemo(() => {
+    if (!calendarData) return [];
+    return calendarData.employees.map(emp => {
+      let dueHours = 0, paidHours = 0;
+      for (const day of emp.days) {
+        const h = day.hours || 0;
+        if (day.paid) paidHours += h; else dueHours += h;
+      }
+      const payPerHour = Number(emp.employee.payPerHour || 0);
+      return {
+        id: emp.employee.id,
+        dueHours,
+        paidHours,
+        payPerHour,
+        due: dueHours * payPerHour,
+        paid: paidHours * payPerHour,
+      };
+    });
+  }, [calendarData]);
 
-  const totalEmployees = useMemo(() => {
-    if (!calendarData) return 0;
-    if (selectedEmployee) return 1;
-    return calendarData.employees.length;
-  }, [calendarData, selectedEmployee]);
+  const visibleBreakdown = useMemo(() => (
+    selectedEmployee
+      ? payrollBreakdown.filter(b => b.id === selectedEmployee)
+      : payrollBreakdown
+  ), [payrollBreakdown, selectedEmployee]);
+
+  const totalDueAmount = useMemo(() => visibleBreakdown.reduce((s, b) => s + b.due, 0), [visibleBreakdown]);
+  const totalDueHours = useMemo(() => visibleBreakdown.reduce((s, b) => s + b.dueHours, 0), [visibleBreakdown]);
+  const totalPaidAmount = useMemo(() => visibleBreakdown.reduce((s, b) => s + b.paid, 0), [visibleBreakdown]);
+  const totalPaidHours = useMemo(() => visibleBreakdown.reduce((s, b) => s + b.paidHours, 0), [visibleBreakdown]);
+  const totalLoggedHours = useMemo(() => totalDueHours + totalPaidHours, [totalDueHours, totalPaidHours]);
+
+  const todayLocalStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const presentToday = useMemo(() => {
+    if (!calendarData) return { present: 0, absent: 0, leave: 0 };
+    let present = 0, absent = 0, leave = 0;
+    for (const emp of calendarData.employees) {
+      const day = emp.days.find(d => d.date === todayLocalStr);
+      if (!day) continue;
+      if (day.type === 'present') present++;
+      else if (day.type === 'absent') absent++;
+      else if (['sick', 'annual', 'casual', 'unpaid'].includes(day.type)) leave++;
+    }
+    return { present, absent, leave };
+  }, [calendarData, todayLocalStr]);
+
+  const totalStaff = employees.length;
+  const activeStaff = employees.length;
+
+  const missingPayCount = useMemo(() => visibleBreakdown.filter(b => b.payPerHour <= 0).length, [visibleBreakdown]);
 
   return (
     <div className="space-y-5">
@@ -253,16 +289,43 @@ const EmployeeCalendar = () => {
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Absent</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>Sick</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Annual</div>
+        <div className="flex items-center gap-1.5"><span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1.5 py-0.5">Paid</span>Paid hours</div>
         {weekendDays.map(d => (
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>Weekend ({DAY_SHORT[d]})</div>
         ))}
-        {totalHoursLogged != null && (
-          <div className="flex items-center gap-1.5 ml-auto text-gray-600">
-            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Total Hours Logged: <span className="font-semibold text-gray-900">{totalHoursLogged.toFixed(1)}</span> Hours
-            <span className="text-gray-400">({totalEmployees} employee{totalEmployees !== 1 ? 's' : ''})</span>
+        {missingPayCount > 0 && (
+          <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5" title={`${missingPayCount} employee(s) have no Pay Per Hour configured — due amount defaults to ₹0.`}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+            <span className="font-medium">{missingPayCount} without pay/hr</span>
           </div>
         )}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/employees')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Staff</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{totalStaff}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{activeStaff} active</p>
+        </div>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Present Today</p>
+          <p className="text-2xl font-bold text-emerald-600 mt-1">{presentToday.present}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{presentToday.absent} absent, {presentToday.leave} on leave</p>
+        </div>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/payroll')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Due Amount</p>
+          <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(Math.round(totalDueAmount))}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{formatINR(Math.round(totalPaidAmount))} paid</p>
+        </div>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Due Hours</p>
+          <p className="text-2xl font-bold text-amber-600 mt-1">{totalDueHours.toFixed(1)}h</p>
+          <p className="text-xs text-gray-400 mt-0.5">{totalPaidHours.toFixed(1)}h paid</p>
+        </div>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Hours Logged</p>
+          <p className="text-2xl font-bold text-indigo-600 mt-1">{totalLoggedHours.toFixed(1)}h</p>
+        </div>
       </div>
 
       <div className="relative">
@@ -296,12 +359,32 @@ const EmployeeCalendar = () => {
             <tbody className="divide-y divide-gray-100">
               {calendarData.employees.map(emp => {
                 const empDays = emp.days || [];
+                const empHours = empDays.reduce((sum, day) => sum + (day.paid ? 0 : (day.hours || 0)), 0);
+                const empPay = Number(emp.employee.payPerHour || 0);
+                const empDue = empHours * empPay;
+                const empMissingPay = empHours > 0 && empPay <= 0;
                 return (
                   <tr key={emp.employee.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[130px] truncate">
-                      <span className="text-xs font-medium text-gray-800">
-                        {emp.employee.firstName} {emp.employee.lastName}
-                      </span>
+                    <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[140px]">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium text-gray-800">
+                          {emp.employee.firstName} {emp.employee.lastName}
+                        </span>
+                        {empHours > 0 ? (
+                          empMissingPay ? (
+                            <span className="text-[10px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — due amount defaults to ₹0">
+                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                              {empHours.toFixed(1)}h · no pay/hr
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              {empHours.toFixed(1)}h · {formatINR(empDue)}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-[10px] text-gray-300">—</span>
+                        )}
+                      </div>
                     </td>
                     {empDays.map((day, idx) => {
                       const isIdle = day.type === 'idle';
@@ -335,6 +418,9 @@ const EmployeeCalendar = () => {
                             )}
                             {day.type === 'present' && day.hours != null && day.hours > 0 && (
                               <span className="text-[10px] text-gray-400 font-medium">{day.hours}h</span>
+                            )}
+                            {day.paid && (
+                              <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1 py-0.5 leading-none">Paid</span>
                             )}
                           </div>
                         </td>

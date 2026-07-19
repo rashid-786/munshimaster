@@ -486,7 +486,10 @@ export const MENU_SECTIONS = [
       { feature: 'staff_directory', requiredPlan: 'MANAGE', label: 'Staff Directory', route: '/admin/employees' },
       { feature: 'attendance',      requiredPlan: 'MANAGE', label: 'Attendance',      route: '/admin/calendar' },
       { feature: 'leaves',          requiredPlan: 'MANAGE', label: 'Leaves',           route: '/admin/leaves' },
-      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Payroll',          route: '/admin/payroll' },
+      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Payroll', type: 'subheader', items: [
+        { feature: 'payroll', requiredPlan: 'MANAGE', label: 'Payroll History', route: '/admin/payroll' },
+        { feature: 'payroll', requiredPlan: 'MANAGE', label: 'Run Payroll',     route: '/admin/payroll/run' },
+      ] },
       { feature: 'advances',        requiredPlan: 'MANAGE', label: 'Advances',         route: '/admin/advances' },
       { feature: 'replacements',    requiredPlan: 'MANAGE', label: 'Replacements',     route: '/admin/replacements' },
       { feature: null,              requiredPlan: 'MANAGE', label: 'Reports',          route: '/admin/staff-reports' },

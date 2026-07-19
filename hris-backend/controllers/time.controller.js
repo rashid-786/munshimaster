@@ -516,12 +516,25 @@ exports.getEmployeeCalendar = async (req, res) => {
     );
 
     const [employees] = await db.execute(
-      `SELECT id, first_name, last_name, role
+      `SELECT id, first_name, last_name, role, pay_per_hour
        FROM employees WHERE tenant_id = ? AND status = 'active'
        ${employeeId ? 'AND id = ?' : ''}
        ORDER BY first_name`,
       employeeId ? [tenantId, employeeId] : [tenantId]
     );
+
+    const [paidPeriods] = await db.execute(
+      `SELECT employee_id,
+              to_char(pay_period_start, 'YYYY-MM-DD') as ps,
+              to_char(pay_period_end, 'YYYY-MM-DD') as pe
+       FROM payroll WHERE tenant_id = ? AND status = 'paid' AND total_hours_worked > 0`,
+      [tenantId]
+    );
+    const paidMap = {};
+    paidPeriods.forEach(p => {
+      if (!paidMap[p.employee_id]) paidMap[p.employee_id] = [];
+      paidMap[p.employee_id].push({ start: p.ps, end: p.pe });
+    });
 
     const daysInMonth = new Date(y, m, 0).getDate();
 
@@ -592,9 +605,11 @@ exports.getEmployeeCalendar = async (req, res) => {
           label = `${leave} Leave`;
         }
 
-        days.push({ date: dateStr, day: d, type, label, hours, isWeekend, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
+        const periods = paidMap[emp.id] || [];
+        const isPaid = hours != null && hours > 0 && periods.some(pp => dateStr >= pp.start && dateStr <= pp.end);
+        days.push({ date: dateStr, day: d, type, label, hours, isWeekend, paid: isPaid, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
       }
-      return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role }, days };
+      return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role, payPerHour: emp.pay_per_hour }, paidPeriods: paidMap[emp.id] || [], days };
     });
 
     res.json({ month: m, year: y, employees: result, weekendDays });

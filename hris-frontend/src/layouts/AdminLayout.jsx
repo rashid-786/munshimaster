@@ -337,6 +337,7 @@ export default function AdminLayout() {
     '/admin/calendar': 'attendance',
     '/admin/leaves': 'leaves',
     '/admin/payroll': 'payroll',
+    '/admin/payroll/run': 'payroll',
     '/admin/advances': 'advances',
     '/admin/replacements': 'replacements',
     '/admin/expenses': 'expenses',
