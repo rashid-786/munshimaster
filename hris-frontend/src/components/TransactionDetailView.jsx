@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import InvoiceTemplateView from './InvoiceTemplateView';
-import { STATUS_STYLES } from '../config/documentConfig';
+import { STATUS_STYLES, DOC_LABELS } from '../config/documentConfig';
 
 const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -31,7 +31,10 @@ export default function TransactionDetailView({ transaction, templateConfig, dir
     if (s.showInvoiceNo !== false) lines.push({ label: lbl('invoiceNumber', 'Document No'), value: t.document_number || '—' });
     if (s.showInvoiceDate !== false) lines.push({ label: lbl('invoiceDate', 'Date'), value: t.document_date ? new Date(t.document_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' });
     if (s.showDueDate !== false && t.due_date) lines.push({ label: lbl('dueDate', 'Due Date'), value: new Date(t.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) });
-    if (t.reference_number) lines.push({ label: lbl('referenceNumber', 'Reference'), value: t.reference_number });
+    if (t.reference_number) {
+      const refLabel = t.reference_type ? `From ${DOC_LABELS[t.reference_type] || t.reference_type}` : 'Reference';
+      lines.push({ label: lbl('referenceNumber', refLabel), value: t.reference_number });
+    }
     if (s.showPaymentTerms !== false && t.payment_terms) lines.push({ label: lbl('paymentTerms', 'Payment Terms'), value: t.payment_terms });
     return lines;
   }, [t, s, lbl]);

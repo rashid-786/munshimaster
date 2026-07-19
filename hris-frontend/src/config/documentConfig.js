@@ -29,14 +29,14 @@ export const PARTY_TYPE = {
 
 export const STATUS_OPTIONS = {
   sales_invoice: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
-  payment_in: ['draft', 'completed', 'cancelled'],
+  payment_in: ['draft', 'unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   sales_return: ['draft', 'issued', 'cancelled'],
   credit_note: ['draft', 'issued', 'cancelled'],
   delivery_challan: ['draft', 'sent', 'delivered', 'cancelled'],
   quotation: ['draft', 'sent', 'accepted', 'rejected', 'expired', 'cancelled'],
   proforma_invoice: ['draft', 'sent', 'converted', 'cancelled'],
   purchase_invoice: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
-  payment_out: ['draft', 'completed', 'cancelled'],
+  payment_out: ['draft', 'unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   purchase_return: ['draft', 'issued', 'cancelled'],
   debit_note: ['draft', 'issued', 'cancelled'],
   purchase_order: ['draft', 'sent', 'approved', 'received', 'cancelled'],

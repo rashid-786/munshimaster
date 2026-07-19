@@ -34,7 +34,6 @@ function Checkbox({ checked, onChange }) {
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -45,6 +44,8 @@ export default function Products() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [keyword, setKeyword] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [lowStockAlerts, setLowStockAlerts] = useState([]);
   const [showMovement, setShowMovement] = useState(null);
   const [movements, setMovements] = useState([]);
@@ -66,15 +67,13 @@ export default function Products() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (search) params.search = search;
-      const res = await hrService.getProducts(params);
+      const res = await hrService.getProducts({ limit: 500 });
       setProducts(res.data || []);
       setTotal(res.total || 0);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load products.');
     } finally { setLoading(false); }
-  }, [search]);
+  }, []);
 
   const fetchLowStockAlerts = useCallback(async () => {
     try { const res = await hrService.getLowStockAlerts(); setLowStockAlerts(res.data || []); } catch {}
@@ -126,6 +125,13 @@ export default function Products() {
   const efPurchasePrice = computeEffectivePrice(form.purchase_price, form.purchase_price_type, form.tax_rate, 0);
   const saleTaxAmt = getTaxAmount(form.selling_price, form.sale_price_type, form.tax_rate);
   const purchaseTaxAmt = getTaxAmount(form.purchase_price, form.purchase_price_type, form.tax_rate);
+
+  const categories = [...new Set(products.filter(p => p.category).map(p => p.category))].sort();
+  const filteredProducts = products.filter(p => {
+    if (keyword && !p.name.toLowerCase().includes(keyword.toLowerCase()) && !p.sku?.toLowerCase().includes(keyword.toLowerCase())) return false;
+    if (categoryFilter && p.category !== categoryFilter) return false;
+    return true;
+  });
 
   const openCreate = () => {
     setEditing(null);
@@ -343,6 +349,22 @@ export default function Products() {
         <button onClick={openCreate} className="btn-primary">+ New Product</button>
       </div>
 
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input type="text" value={keyword} onChange={e => setKeyword(e.target.value)}
+          placeholder="Search by name or SKU..." className="input-field text-sm w-full sm:w-64" />
+        <SearchableSelect
+          options={categories.map(c => ({ value: c, label: c }))}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          placeholder="All Categories"
+          className="w-full sm:w-56"
+        />
+        {(keyword || categoryFilter) && (
+          <button onClick={() => { setKeyword(''); setCategoryFilter(''); }}
+            className="text-xs text-gray-500 hover:text-gray-700 underline self-center">Clear</button>
+        )}
+      </div>
+
       {selectedIds.size > 0 && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-sm text-indigo-700 font-medium">{selectedIds.size} selected</span>
@@ -355,7 +377,7 @@ export default function Products() {
 
       <ResponsiveTable
         columns={columns}
-        data={products}
+        data={filteredProducts}
         keyField="id"
         searchable
         searchKeys={['name', 'sku', 'barcode', 'hsn_code', 'category']}
@@ -686,6 +708,7 @@ export default function Products() {
                   )}
                 </div>
               )}
+
             </div>
 
             {/* Footer */}
@@ -740,7 +763,7 @@ export default function Products() {
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">Stock History — {showMovement.name}</h3>
-              <button type="button" onClick={() => setShowMovement(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+              <button type="button" onClick={() => setShowMovement(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
             <div className="p-5">
               {movementsLoading ? <Loading text="Loading movements..." /> : movements.length === 0 ? (
@@ -750,21 +773,42 @@ export default function Products() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-500 border-b border-gray-100">
-                        <th className="pb-2 font-medium">Date</th>
-                        <th className="pb-2 font-medium">Type</th>
-                        <th className="pb-2 font-medium">Qty</th>
-                        <th className="pb-2 font-medium">Reference</th>
+                        <th className="pb-2 pr-3 font-medium">Date</th>
+                        <th className="pb-2 pr-3 font-medium">Type</th>
+                        <th className="pb-2 pr-3 font-medium text-right">Qty</th>
+                        <th className="pb-2 pr-3 font-medium">Reference</th>
                         <th className="pb-2 font-medium">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {movements.map((m) => (
                         <tr key={m.id} className="border-b border-gray-50">
-                          <td className="py-2 text-gray-500">{m.created_at?.split('T')[0] || '—'}</td>
-                          <td className="py-2"><span className={`${m.type === 'in' ? 'text-green-600' : m.type === 'out' ? 'text-red-600' : 'text-amber-600'} font-medium`}>{m.type}</span></td>
-                          <td className="py-2 font-medium">{m.quantity}</td>
-                          <td className="py-2 text-gray-500">{m.reference_type || '—'}{m.reference_id ? ` #${m.reference_id}` : ''}</td>
-                          <td className="py-2 text-gray-500 max-w-[200px] truncate">{m.notes || '—'}</td>
+                          <td className="py-2.5 pr-3 text-gray-500 whitespace-nowrap">{m.created_at?.split('T')[0] || '—'}</td>
+                          <td className="py-2.5 pr-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                              m.type === 'in' ? 'bg-green-50 text-green-700' : m.type === 'out' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                              {m.type === 'in' ? '▲' : m.type === 'out' ? '▼' : '◆'} {m.type}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{m.quantity}</td>
+                          <td className="py-2.5 pr-3">
+                            {m.ref_doc_number ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-gray-700 font-medium text-xs bg-gray-100 px-2 py-0.5 rounded">{m.ref_doc_number}</span>
+                                {m.ref_doc_type && (
+                                  <span className="text-gray-400 text-[10px] uppercase tracking-wide">{m.ref_doc_type.replace(/_/g, ' ')}</span>
+                                )}
+                              </div>
+                            ) : m.reference_type === 'opening' ? (
+                              <span className="text-gray-400 text-xs">Opening Balance</span>
+                            ) : m.reference_type === 'manual' ? (
+                              <span className="text-gray-400 text-xs">Manual</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">{m.reference_type || '—'}</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 text-gray-500 max-w-[180px] truncate text-xs">{m.notes || '—'}</td>
                         </tr>
                       ))}
                     </tbody>

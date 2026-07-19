@@ -65,6 +65,7 @@ const { startLifecycleCron } = require('./cron/subscriptionLifecycle');
 const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
 const { startWhatsAppCron } = require('./cron/whatsappReminders');
 const { startAuditCleanupCron } = require('./cron/auditCleanup');
+const { startOverdueCron } = require('./cron/overdueCheck');
 const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
@@ -303,5 +304,6 @@ app.listen(PORT, () => {
     startRecurringInvoiceCron(86400000);
     startWhatsAppCron(86400000);
     startAuditCleanupCron(86400000);
+   startOverdueCron(3600000);
   }
 });

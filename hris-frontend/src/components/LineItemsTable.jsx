@@ -135,7 +135,7 @@ export default function LineItemsTable({ items, onChange, gstType = 'intra', rea
                   <td className="py-1.5 px-2">
                     {readOnly ? <span className="text-gray-900 text-right block">{fmt(item.rate)}</span>
                       : <input type="number" value={item.rate} onChange={e => update(i, 'rate', e.target.value)}
-                        className="w-full text-right border-0 border-b border-transparent focus:border-indigo-400 focus:ring-0 outline-none bg-transparent text-sm py-1" min="0" />}
+                        className="w-full text-right border-0 border-b border-transparent focus:border-indigo-400 focus:ring-0 outline-none bg-transparent text-sm py-1" min="0" step="any" />}
                   </td>
                   <td className="py-1.5 px-2">
                     {readOnly ? <span className="text-gray-600 text-right block">{item.discount_percent || 0}%</span>

@@ -321,7 +321,7 @@ export default function PurchaseTransactions() {
                   </button>
                 </>
               )}
-              {detail.status !== 'draft' && cfg?.conversions?.length > 0 && cfg.conversions.map(ct => (
+              {detail.status !== 'converted' && cfg?.conversions?.length > 0 && cfg.conversions.map(ct => (
                 <button key={ct} onClick={async () => {
                   setGenerateMsg(`Generating ${DOC_LABELS[ct] || ct}...`);
                   try {

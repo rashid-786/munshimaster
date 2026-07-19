@@ -5,8 +5,7 @@ import { formatINR, formatPhone } from '../../utils/currency';
 import PhoneField from '../../components/PhoneInput';
 import StateSelect from '../../components/StateSelect';
 import ResponsiveTable from '../../components/ResponsiveTable';
-import BottomSheet from '../../components/BottomSheet';
-import useIsMobile from '../../hooks/useIsMobile';
+import Drawer from '../../components/Drawer';
 import UpgradeBanner from '../../components/UpgradeBanner';
 import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 import TransactionsTab from '../../components/TransactionsTab';
@@ -35,7 +34,6 @@ function validatePan(v) {
 }
 
 const Suppliers = () => {
-  const isMobile = useIsMobile();
   const [suppliers, setSuppliers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -135,7 +133,7 @@ const Suppliers = () => {
   };
 
   const handleSave = async (e) => {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
     if (hasFormErrors()) return;
     setSaving(true);
     try {
@@ -273,212 +271,203 @@ const Suppliers = () => {
         onNextPage={() => setPage(p => p + 1)}
       />
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30" />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <form onSubmit={handleSave}>
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">{editing ? 'Edit Supplier' : 'Add Supplier'}</h3>
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="text-gray-400 hover:text-gray-600">&times;</button>
+      <Drawer
+        open={showForm}
+        onClose={() => { setShowForm(false); setEditing(null); }}
+        title={editing ? 'Edit Supplier' : 'Add Supplier'}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="btn-secondary">Cancel</button>
+            <button type="button" disabled={saving} onClick={handleSave} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Create'}</button>
+          </div>
+        }>
+        <form>
+          <div className="flex border-b border-gray-200 mb-4">
+            {TABS.map((t, i) => (
+              <button key={t} type="button"
+                onClick={() => setFormTab(i)}
+                className={`py-3 px-4 text-sm font-medium border-b-2 -mb-px transition-colors ${formTab === i ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-4">
+            {formTab === 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Party Name *</label>
+                  <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                  <PhoneField value={form.phone} onChange={v => setForm({ ...form, phone: v || '' })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
+                  <input value={form.gstin} onChange={e => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
+                    className="input-field" placeholder="22AAAAA0000A1Z5" maxLength={15} />
+                  {form.gstin && validateGstin(form.gstin) && <p className="text-xs text-red-500 mt-1">{validateGstin(form.gstin)}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                  <input value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase() })}
+                    className="input-field" placeholder="AAAAA0000A" maxLength={10} />
+                  {form.pan && validatePan(form.pan) && <p className="text-xs text-red-500 mt-1">{validatePan(form.pan)}</p>}
+                </div>
               </div>
+            )}
 
-              {/* Tabs */}
-              <div className="flex border-b border-gray-200 px-6">
-                {TABS.map((t, i) => (
-                  <button key={t} type="button"
-                    onClick={() => setFormTab(i)}
-                    className={`py-3 px-4 text-sm font-medium border-b-2 -mb-px transition-colors ${formTab === i ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                    {t}
+            {formTab === 1 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Opening Balance (₹)</label>
+                  <div className="flex gap-2">
+                    <input type="number" step="0.01" value={form.opening_balance}
+                      onChange={e => setForm({ ...form, opening_balance: e.target.value })}
+                      className="input-field flex-1" placeholder="0.00" />
+                    <select value={form.opening_balance_type}
+                      onChange={e => setForm({ ...form, opening_balance_type: e.target.value })}
+                      className="input-field max-w-[130px] text-sm">
+                      <option value="payable">Payable</option>
+                      <option value="receivable">Receivable</option>
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Payable = you owe, Receivable = they owe</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Credit Period (days)</label>
+                  <input type="number" min="0" value={form.credit_period}
+                    onChange={e => setForm({ ...form, credit_period: e.target.value })}
+                    className="input-field" placeholder="e.g. 30" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit (₹)</label>
+                  <input type="number" step="0.01" min="0" value={form.credit_limit}
+                    onChange={e => setForm({ ...form, credit_limit: e.target.value })}
+                    className="input-field" placeholder="0.00" />
+                </div>
+              </div>
+            )}
+
+            {formTab === 2 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 border-b border-gray-200 pb-2">
+                  <button type="button"
+                    onClick={() => setAddressTab('billing')}
+                    className={`text-sm font-medium pb-2 -mb-[9px] border-b-2 transition-colors ${addressTab === 'billing' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
+                    Billing Address
                   </button>
-                ))}
-              </div>
+                  <button type="button"
+                    onClick={() => setAddressTab('shipping')}
+                    className={`text-sm font-medium pb-2 -mb-[9px] border-b-2 transition-colors ${addressTab === 'shipping' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
+                    Shipping Address
+                  </button>
+                </div>
 
-              <div className="p-6 space-y-4">
-                {formTab === 0 && (
+                {addressTab === 'billing' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Party Name *</label>
-                      <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" required />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                      <textarea value={form.billing_address} onChange={e => setBillingField('billing_address', e.target.value)}
+                        className="input-field" rows={2} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                      <input value={form.billing_address_line2} onChange={e => setBillingField('billing_address_line2', e.target.value)}
+                        className="input-field" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
-                      <PhoneField value={form.phone} onChange={v => setForm({ ...form, phone: v || '' })} />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                      <input value={form.billing_city} onChange={e => setBillingField('billing_city', e.target.value)}
+                        className="input-field" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                      <StateSelect value={form.billing_state} onChange={v => setBillingField('billing_state', v)} />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
-                      <input value={form.gstin} onChange={e => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-                        className="input-field" placeholder="22AAAAA0000A1Z5" maxLength={15} />
-                      {form.gstin && validateGstin(form.gstin) && <p className="text-xs text-red-500 mt-1">{validateGstin(form.gstin)}</p>}
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                      <input value={form.billing_country} onChange={e => setBillingField('billing_country', e.target.value)}
+                        className="input-field" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
-                      <input value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase() })}
-                        className="input-field" placeholder="AAAAA0000A" maxLength={10} />
-                      {form.pan && validatePan(form.pan) && <p className="text-xs text-red-500 mt-1">{validatePan(form.pan)}</p>}
-                    </div>
-
-                  </div>
-                )}
-
-                {formTab === 1 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Balance (₹)</label>
-                      <div className="flex gap-2">
-                        <input type="number" step="0.01" value={form.opening_balance}
-                          onChange={e => setForm({ ...form, opening_balance: e.target.value })}
-                          className="input-field flex-1" placeholder="0.00" />
-                        <select value={form.opening_balance_type}
-                          onChange={e => setForm({ ...form, opening_balance_type: e.target.value })}
-                          className="input-field max-w-[130px] text-sm">
-                          <option value="payable">Payable</option>
-                          <option value="receivable">Receivable</option>
-                        </select>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">Payable = you owe, Receivable = they owe</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Credit Period (days)</label>
-                      <input type="number" min="0" value={form.credit_period}
-                        onChange={e => setForm({ ...form, credit_period: e.target.value })}
-                        className="input-field" placeholder="e.g. 30" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit (₹)</label>
-                      <input type="number" step="0.01" min="0" value={form.credit_limit}
-                        onChange={e => setForm({ ...form, credit_limit: e.target.value })}
-                        className="input-field" placeholder="0.00" />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                      <input value={form.billing_postal_code} onChange={e => setBillingField('billing_postal_code', e.target.value)}
+                        className="input-field" />
                     </div>
                   </div>
                 )}
 
-                {formTab === 2 && (
+                {addressTab === 'shipping' && (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-4 border-b border-gray-200 pb-2">
-                      <button type="button"
-                        onClick={() => setAddressTab('billing')}
-                        className={`text-sm font-medium pb-2 -mb-[9px] border-b-2 transition-colors ${addressTab === 'billing' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
-                        Billing Address
-                      </button>
-                      <button type="button"
-                        onClick={() => setAddressTab('shipping')}
-                        className={`text-sm font-medium pb-2 -mb-[9px] border-b-2 transition-colors ${addressTab === 'shipping' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
-                        Shipping Address
-                      </button>
-                    </div>
-
-                    {addressTab === 'billing' && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={form.sameAsBilling} onChange={e => handleSameAsBilling(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                      <span className="text-sm text-gray-700">Same as Billing Address</span>
+                    </label>
+                    {!form.sameAsBilling && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
-                          <textarea value={form.billing_address} onChange={e => setBillingField('billing_address', e.target.value)}
+                          <textarea value={form.shipping_address} onChange={e => setForm({ ...form, shipping_address: e.target.value })}
                             className="input-field" rows={2} />
                         </div>
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
-                          <input value={form.billing_address_line2} onChange={e => setBillingField('billing_address_line2', e.target.value)}
+                          <input value={form.shipping_address_line2} onChange={e => setForm({ ...form, shipping_address_line2: e.target.value })}
                             className="input-field" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                          <input value={form.billing_city} onChange={e => setBillingField('billing_city', e.target.value)}
+                          <input value={form.shipping_city} onChange={e => setForm({ ...form, shipping_city: e.target.value })}
                             className="input-field" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                          <StateSelect value={form.billing_state} onChange={v => setBillingField('billing_state', v)} />
+                          <StateSelect value={form.shipping_state} onChange={v => setForm({ ...form, shipping_state: v })} />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                          <input value={form.billing_country} onChange={e => setBillingField('billing_country', e.target.value)}
+                          <input value={form.shipping_country} onChange={e => setForm({ ...form, shipping_country: e.target.value })}
                             className="input-field" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
-                          <input value={form.billing_postal_code} onChange={e => setBillingField('billing_postal_code', e.target.value)}
+                          <input value={form.shipping_postal_code} onChange={e => setForm({ ...form, shipping_postal_code: e.target.value })}
                             className="input-field" />
                         </div>
                       </div>
                     )}
-
-                    {addressTab === 'shipping' && (
-                      <div className="space-y-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={form.sameAsBilling} onChange={e => handleSameAsBilling(e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-                          <span className="text-sm text-gray-700">Same as Billing Address</span>
-                        </label>
-                        {!form.sameAsBilling && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="sm:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
-                              <textarea value={form.shipping_address} onChange={e => setForm({ ...form, shipping_address: e.target.value })}
-                                className="input-field" rows={2} />
-                            </div>
-                            <div className="sm:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
-                              <input value={form.shipping_address_line2} onChange={e => setForm({ ...form, shipping_address_line2: e.target.value })}
-                                className="input-field" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                              <input value={form.shipping_city} onChange={e => setForm({ ...form, shipping_city: e.target.value })}
-                                className="input-field" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                              <StateSelect value={form.shipping_state} onChange={v => setForm({ ...form, shipping_state: v })} />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                              <input value={form.shipping_country} onChange={e => setForm({ ...form, shipping_country: e.target.value })}
-                                className="input-field" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
-                              <input value={form.shipping_postal_code} onChange={e => setForm({ ...form, shipping_postal_code: e.target.value })}
-                                className="input-field" />
-                            </div>
-                          </div>
-                        )}
-                        {form.sameAsBilling && (
-                          <p className="text-sm text-gray-400 italic">Shipping address will use the same details as billing address.</p>
-                        )}
-                      </div>
+                    {form.sameAsBilling && (
+                      <p className="text-sm text-gray-400 italic">Shipping address will use the same details as billing address.</p>
                     )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {editing && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                          <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="input-field">
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                          </select>
-                        </div>
-                      )}
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="input-field" rows={2} />
-                      </div>
-                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Create'}</button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {editing && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                      <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="input-field">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                  )}
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="input-field" rows={2} />
+                  </div>
+                </div>
               </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+        </form>
+      </Drawer>
 
       <ConfirmModal
         open={!!modal}
@@ -491,69 +480,33 @@ const Suppliers = () => {
         onCancel={() => setModal(null)}
       />
 
-      {selectedRecord && (isMobile ? (
-          <BottomSheet
-            open={!!selectedRecord}
-            onClose={() => setSelectedRecord(null)}
-            title={selectedRecord?.name || 'Supplier Details'}
-            actions={
-              <>
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
-                  className="flex-1 btn-primary justify-center">Edit</button>
-                {selectedRecord?.status === 'active' ? (
-                  <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, r.name); }}
-                    className="flex-1 btn-warning justify-center">Deactivate</button>
-                ) : (
-                  <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }}
-                    className="flex-1 btn-success justify-center">Activate</button>
-                )}
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, r.name); }}
-                  className="flex-1 btn-danger justify-center">Delete</button>
-              </>
-            }>
-            <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-3">
-              <button type="button" onClick={() => setDetailTab('details')}
-                className={`text-sm font-medium pb-1 ${detailTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Details</button>
-              <button type="button" onClick={() => setDetailTab('transactions')}
-                className={`text-sm font-medium pb-1 ${detailTab === 'transactions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Transactions</button>
-            </div>
-            {detailTab === 'details' ? <SupplierDetailContent supplier={selectedRecord} /> : <TransactionsTab partyType="supplier" partyId={selectedRecord.id} partyName={selectedRecord.name} />}
-          </BottomSheet>
-      ) : (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 animate-scale-in max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.name || 'Supplier Details'}</h3>
-                <p className="text-sm text-gray-500 mt-0.5">Supplier Details</p>
-              </div>
-              <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
-            </div>
-            <div className="flex items-center gap-3 px-6 pt-4 border-b border-gray-100 shrink-0">
-              <button type="button" onClick={() => setDetailTab('details')}
-                className={`text-sm font-medium pb-3 ${detailTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Details</button>
-              <button type="button" onClick={() => setDetailTab('transactions')}
-                className={`text-sm font-medium pb-3 ${detailTab === 'transactions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Transactions</button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-              {detailTab === 'details' ? <SupplierDetailContent supplier={selectedRecord} /> : <TransactionsTab partyType="supplier" partyId={selectedRecord.id} partyName={selectedRecord.name} />}
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end shrink-0">
-              <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
-                className="btn-primary text-sm">Edit</button>
-              {selectedRecord?.status === 'active' ? (
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, r.name); }}
-                  className="btn-warning text-sm">Deactivate</button>
-              ) : (
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }}
-                  className="btn-success text-sm">Activate</button>
-              )}
-              <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, r.name); }}
-                className="btn-danger text-sm">Delete</button>
-            </div>
+      <Drawer
+        open={!!selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+        title={selectedRecord?.name || 'Supplier Details'}
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); openEdit(r); }}
+              className="btn-primary text-sm">Edit</button>
+            {selectedRecord?.status === 'active' ? (
+              <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, r.name); }}
+                className="btn-warning text-sm">Deactivate</button>
+            ) : (
+              <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }}
+                className="btn-success text-sm">Activate</button>
+            )}
+            <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDelete(r.id, r.name); }}
+              className="btn-danger text-sm">Delete</button>
           </div>
+        }>
+        <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-3">
+          <button type="button" onClick={() => setDetailTab('details')}
+            className={`text-sm font-medium pb-1 ${detailTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Details</button>
+          <button type="button" onClick={() => setDetailTab('transactions')}
+            className={`text-sm font-medium pb-1 ${detailTab === 'transactions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Transactions</button>
         </div>
-      ))}
+        {selectedRecord && (detailTab === 'details' ? <SupplierDetailContent supplier={selectedRecord} /> : <TransactionsTab partyType="supplier" partyId={selectedRecord.id} partyName={selectedRecord.name} />)}
+      </Drawer>
     </div>
   );
 };

@@ -23,8 +23,11 @@ exports.listMovements = async (req, res) => {
       `SELECT COUNT(*) as total FROM stock_movements sm ${where}`, params
     );
     const [rows] = await db.query(
-      `SELECT sm.*, p.name as product_name, p.sku as product_sku
-       FROM stock_movements sm JOIN products p ON sm.product_id = p.id
+      `SELECT sm.*, p.name as product_name, p.sku as product_sku,
+              t.document_number as ref_doc_number, t.transaction_type as ref_doc_type
+       FROM stock_movements sm
+       JOIN products p ON sm.product_id = p.id
+       LEFT JOIN hris_saas.transactions t ON sm.reference_id = t.id AND sm.tenant_id = t.tenant_id
        ${where} ORDER BY sm.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
@@ -164,6 +167,88 @@ exports.getLowStockAlerts = async (req, res) => {
   } catch (error) {
     console.error('getLowStockAlerts error:', error);
     res.status(500).json({ error: 'Failed to fetch low stock alerts.' });
+  }
+};
+
+// Stock out from a transaction (sales_invoice, delivery_challan, purchase_return, debit_note)
+exports.transactionStockOut = async (tenantId, transactionId, createdBy) => {
+  const [items] = await db.query(
+    'SELECT product_id, quantity FROM hris_saas.transaction_items WHERE transaction_id = ? AND product_id IS NOT NULL',
+    [transactionId]
+  );
+  if (items.length === 0) return;
+
+  for (const item of items) {
+    const qty = parseInt(item.quantity);
+    if (qty <= 0) continue;
+
+    const movId = uuidv4();
+    await db.query(
+      `INSERT INTO stock_movements (id, tenant_id, product_id, type, quantity, reference_type, reference_id, notes, created_by)
+       VALUES (?, ?, ?, 'out', ?, 'transaction', ?, 'Stock out via transaction', ?)`,
+      [movId, tenantId, item.product_id, qty, transactionId, createdBy]
+    );
+
+    await db.query(
+      `UPDATE hris_saas.products SET current_stock = GREATEST(0, current_stock - ?), updated_at = NOW()
+       WHERE id = ? AND tenant_id = ?`,
+      [qty, item.product_id, tenantId]
+    );
+  }
+};
+
+// Stock in from a transaction (purchase_invoice, sales_return, credit_note)
+exports.transactionStockIn = async (tenantId, transactionId, createdBy) => {
+  const [items] = await db.query(
+    'SELECT product_id, quantity FROM hris_saas.transaction_items WHERE transaction_id = ? AND product_id IS NOT NULL',
+    [transactionId]
+  );
+  if (items.length === 0) return;
+
+  for (const item of items) {
+    const qty = parseInt(item.quantity);
+    if (qty <= 0) continue;
+
+    const movId = uuidv4();
+    await db.query(
+      `INSERT INTO stock_movements (id, tenant_id, product_id, type, quantity, reference_type, reference_id, notes, created_by)
+       VALUES (?, ?, ?, 'in', ?, 'transaction', ?, 'Stock in via transaction', ?)`,
+      [movId, tenantId, item.product_id, qty, transactionId, createdBy]
+    );
+
+    await db.query(
+      `UPDATE hris_saas.products SET current_stock = current_stock + ?, updated_at = NOW()
+       WHERE id = ? AND tenant_id = ?`,
+      [qty, item.product_id, tenantId]
+    );
+  }
+};
+
+// Reversal — cancel stock movements (e.g. when cancelling an invoice)
+exports.transactionStockReverse = async (tenantId, transactionId, createdBy) => {
+  const [movements] = await db.query(
+    "SELECT * FROM stock_movements WHERE reference_type = 'transaction' AND reference_id = ? AND tenant_id = ?",
+    [transactionId, tenantId]
+  );
+  if (movements.length === 0) return;
+
+  for (const mov of movements) {
+    const reverseType = mov.type === 'out' ? 'in' : 'out';
+    const qty = parseInt(mov.quantity);
+
+    const movId = uuidv4();
+    await db.query(
+      `INSERT INTO stock_movements (id, tenant_id, product_id, type, quantity, reference_type, reference_id, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, 'transaction', ?, 'Stock reversal via cancellation', ?)`,
+      [movId, tenantId, mov.product_id, reverseType, qty, transactionId, createdBy]
+    );
+
+    const delta = reverseType === 'in' ? qty : -qty;
+    await db.query(
+      `UPDATE hris_saas.products SET current_stock = GREATEST(0, current_stock + ?), updated_at = NOW()
+       WHERE id = ? AND tenant_id = ?`,
+      [delta, mov.product_id, tenantId]
+    );
   }
 };
 

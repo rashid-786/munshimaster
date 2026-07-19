@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../utils/audit');
+const stockCtrl = require('./stock.controller');
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
@@ -17,14 +18,14 @@ const DOC_LABELS = { sales_invoice: 'Sales Invoice', payment_in: 'Payment Receiv
 
 const STATUS_FLOW = {
   sales_invoice: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
-  payment_in: ['draft', 'completed', 'cancelled'],
+  payment_in: ['draft', 'unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   sales_return: ['draft', 'issued', 'cancelled'],
   credit_note: ['draft', 'issued', 'cancelled'],
-  delivery_challan: ['draft', 'sent', 'delivered', 'cancelled'],
+  delivery_challan: ['draft', 'sent', 'delivered', 'converted', 'cancelled'],
   quotation: ['draft', 'sent', 'accepted', 'rejected', 'expired', 'cancelled'],
   proforma_invoice: ['draft', 'sent', 'converted', 'cancelled'],
   purchase_invoice: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
-  payment_out: ['draft', 'completed', 'cancelled'],
+  payment_out: ['draft', 'unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   purchase_return: ['draft', 'issued', 'cancelled'],
   debit_note: ['draft', 'issued', 'cancelled'],
   purchase_order: ['draft', 'sent', 'approved', 'received', 'cancelled'],
@@ -130,18 +131,42 @@ async function syncBalanceDue(tenantId, txnId) {
   const gt = parseInt(rows[0].grand_total || 0);
   const paid = parseInt(rows[0].total_paid || 0);
   const balance = gt - paid;
-  const status = paid >= gt ? 'paid' : paid > 0 ? 'partial' : undefined;
+  const status = paid >= gt ? 'paid' : paid > 0 ? 'partial' : 'sent';
   await db.execute(
     'UPDATE hris_saas.transactions SET amount_paid = ?, balance_due = ? WHERE id = ? AND tenant_id = ?',
     [paid, balance < 0 ? 0 : balance, txnId, tenantId]
   );
-  if (status) {
-    await db.execute(
-      'UPDATE hris_saas.transactions SET status = ? WHERE id = ? AND tenant_id = ? AND status IN (\'sent\',\'partial\',\'overdue\')',
-      [status, txnId, tenantId]
-    );
-  }
+  await db.execute(
+    'UPDATE hris_saas.transactions SET status = ? WHERE id = ? AND tenant_id = ? AND status IN (\'sent\',\'partial\',\'overdue\')',
+    [status, txnId, tenantId]
+  );
   return { amount_paid: paid, balance_due: balance < 0 ? 0 : balance };
+}
+
+// Transaction types that affect stock OUT (deduct)
+const STOCK_OUT_TYPES = { sales_invoice: ['sent', 'paid'], delivery_challan: 'delivered', purchase_return: 'issued', debit_note: 'issued' };
+// Transaction types that affect stock IN (add)
+const STOCK_IN_TYPES = { purchase_invoice: ['sent', 'paid'], sales_return: 'issued', credit_note: 'issued' };
+
+async function updateStockOnStatusChange(tenantId, txn, newStatus, userId) {
+  if (newStatus === 'cancelled') {
+    await stockCtrl.transactionStockReverse(tenantId, txn.id, userId);
+    return;
+  }
+
+  const stockOutTriggerStatus = STOCK_OUT_TYPES[txn.transaction_type];
+  const outTriggers = Array.isArray(stockOutTriggerStatus) ? stockOutTriggerStatus : [stockOutTriggerStatus];
+  if (stockOutTriggerStatus && outTriggers.includes(newStatus) && !outTriggers.includes(txn.status)) {
+    await stockCtrl.transactionStockOut(tenantId, txn.id, userId);
+    return;
+  }
+
+  const stockInTriggerStatus = STOCK_IN_TYPES[txn.transaction_type];
+  const inTriggers = Array.isArray(stockInTriggerStatus) ? stockInTriggerStatus : [stockInTriggerStatus];
+  if (stockInTriggerStatus && inTriggers.includes(newStatus) && !inTriggers.includes(txn.status)) {
+    await stockCtrl.transactionStockIn(tenantId, txn.id, userId);
+    return;
+  }
 }
 
 exports.seed = async (req, res) => {
@@ -236,6 +261,7 @@ exports.create = async (req, res) => {
     const tenantId = req.tenant?.id || req.headers['x-tenant-id'];
     const userId = req.user?.id;
     const { transaction_type, items = [], payments = [], ...body } = req.body;
+    Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
 
     if (!transaction_type || !DOC_TYPES.includes(transaction_type)) {
       return res.status(400).json({ error: 'Invalid or missing transaction_type.' });
@@ -296,7 +322,7 @@ exports.create = async (req, res) => {
     await db.execute(sql, vals);
 
     if (items.length > 0) {
-      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order, product_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const c = item.total_amount !== undefined ? item : computeItemTotals(item, gstType);
@@ -305,19 +331,44 @@ exports.create = async (req, res) => {
           parseFloat(item.quantity || 1), item.unit || null, Math.round(item.rate || 0),
           parseFloat(item.discount_percent || 0), c.discount_amount, c.taxable_value,
           parseFloat(item.gst_rate || 0), c.cgst_amount, c.sgst_amount, c.igst_amount, c.total_amount, i,
+          item.product_id || null,
         ]);
       }
     }
 
-    if ((transaction_type === 'payment_in' || transaction_type === 'payment_out') && payments.length > 0) {
-      const paySql = `INSERT INTO hris_saas.transaction_payments (id, tenant_id, payment_transaction_id, allocated_to_id, allocated_to_type, amount_allocated) VALUES (?,?,?,?,?,?)`;
-      for (const p of payments) {
-        await db.execute(paySql, [uuidv4(), tenantId, id, p.allocated_to_id, p.allocated_to_type, Math.round(p.amount_allocated || 0)]);
-        await syncBalanceDue(tenantId, p.allocated_to_id);
+    if (transaction_type === 'payment_in' || transaction_type === 'payment_out') {
+      if (payments.length > 0) {
+        const paySql = `INSERT INTO hris_saas.transaction_payments (id, tenant_id, payment_transaction_id, allocated_to_id, allocated_to_type, amount_allocated) VALUES (?,?,?,?,?,?)`;
+        let totalAllocated = 0;
+        for (const p of payments) {
+          const amt = Math.round(p.amount_allocated || 0);
+          totalAllocated += amt;
+          await db.execute(paySql, [uuidv4(), tenantId, id, p.allocated_to_id, p.allocated_to_type, amt]);
+          await syncBalanceDue(tenantId, p.allocated_to_id);
+        }
+        await db.execute(
+          'UPDATE hris_saas.transactions SET grand_total = ?, amount_paid = ?, balance_due = 0 WHERE id = ?',
+          [totalAllocated, totalAllocated, id]
+        );
+      } else if (body.amount) {
+        const amt = Math.round(body.amount * 100);
+        await db.execute(
+          'UPDATE hris_saas.transactions SET grand_total = ?, amount_paid = ?, balance_due = 0 WHERE id = ?',
+          [amt, amt, id]
+        );
       }
     }
 
-    await log(req, 'created', `Created ${DOC_LABELS[transaction_type]} ${docNumber}`, 'transactions', id);
+    log({ tenantId, actorId: userId, actorName: req.user?.name, action: 'transaction.created', entityType: 'transactions', entityId: id, changes: { transaction_type, docNumber }, req });
+
+    const createdStatus = body.status || 'draft';
+    if (createdStatus !== 'draft') {
+      const dummyTxn = { id, transaction_type, status: 'draft' };
+      await updateStockOnStatusChange(tenantId, dummyTxn, createdStatus, userId).catch(e =>
+        console.error('Stock update error (create):', e)
+      );
+    }
+
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [id]);
     res.status(201).json(result[0]);
   } catch (err) {
@@ -332,6 +383,7 @@ exports.update = async (req, res) => {
     const userId = req.user?.id;
     const { id } = req.params;
     const { items = [], payments = [], ...body } = req.body;
+    Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
 
     const [existing] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ? AND tenant_id = ?', [id, tenantId]);
     if (existing.length === 0) return res.status(404).json({ error: 'Transaction not found.' });
@@ -373,7 +425,7 @@ exports.update = async (req, res) => {
 
     if (items.length > 0) {
       await db.execute('DELETE FROM hris_saas.transaction_items WHERE transaction_id = ?', [id]);
-      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order, product_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const c = computeItemTotals(item, gstType);
@@ -382,12 +434,21 @@ exports.update = async (req, res) => {
           parseFloat(item.quantity || 1), item.unit || null, Math.round(item.rate || 0),
           parseFloat(item.discount_percent || 0), c.discount_amount, c.taxable_value,
           parseFloat(item.gst_rate || 0), c.cgst_amount, c.sgst_amount, c.igst_amount, c.total_amount, i,
+          item.product_id || null,
         ]);
       }
     }
 
     await db.execute('UPDATE hris_saas.transactions SET balance_due = grand_total - COALESCE(amount_paid, 0) WHERE id = ?', [id]);
-    await log(req, 'updated', `Updated ${DOC_LABELS[txn.transaction_type]} ${txn.document_number}`, 'transactions', id);
+
+    const newStatus = body.status || txn.status;
+    if (newStatus !== txn.status) {
+      await updateStockOnStatusChange(tenantId, { ...txn, status: txn.status }, newStatus, userId).catch(e =>
+        console.error('Stock update error (update):', e)
+      );
+    }
+
+    log({ tenantId, actorId: userId, actorName: req.user?.name, action: 'transaction.updated', entityType: 'transactions', entityId: id, changes: { body }, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [id]);
     const NUM = ['subtotal', 'taxable_amount', 'discount_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'round_off', 'grand_total', 'amount_paid', 'balance_due'];
     if (result[0]) NUM.forEach(k => { if (result[0][k] !== undefined && result[0][k] !== null) result[0][k] = Number(result[0][k]); });
@@ -420,7 +481,13 @@ exports.updateStatus = async (req, res) => {
         [status, req.user?.id || null, id, tenantId]);
     }
 
-    await log(req, 'status_changed', `Changed ${DOC_LABELS[txn.transaction_type]} ${txn.document_number} to ${status}`, 'transactions', id);
+    if (status !== txn.status) {
+      await updateStockOnStatusChange(tenantId, txn, status, req.user?.id).catch(e =>
+        console.error('Stock update error (updateStatus):', e)
+      );
+    }
+
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'transaction.status_changed', entityType: 'transactions', entityId: id, changes: { from: txn.status, to: status }, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [id]);
     res.json(result[0]);
   } catch (err) {
@@ -480,13 +547,14 @@ exports.convert = async (req, res) => {
     await db.execute(insertSQL, vals);
 
     if (sourceItems.length > 0) {
-      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      const itemSql = `INSERT INTO hris_saas.transaction_items (id, transaction_id, item_name, hsn_sac, quantity, unit, rate, discount_percent, discount_amount, taxable_value, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, sort_order, product_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       for (let i = 0; i < sourceItems.length; i++) {
         const si = sourceItems[i];
         await db.execute(itemSql, [
           uuidv4(), targetId, si.item_name, si.hsn_sac, si.quantity, si.unit, si.rate,
           si.discount_percent, si.discount_amount, si.taxable_value, si.gst_rate,
           si.cgst_amount, si.sgst_amount, si.igst_amount, si.total_amount, i,
+          si.product_id || null,
         ]);
       }
     }
@@ -496,11 +564,11 @@ exports.convert = async (req, res) => {
       [refId, tenantId, id, targetId, `${source.transaction_type}_to_${target_type}`]
     );
 
-    if (source.transaction_type === 'quotation' || source.transaction_type === 'proforma_invoice') {
+    if (['quotation', 'proforma_invoice', 'delivery_challan'].includes(source.transaction_type)) {
       await db.execute('UPDATE hris_saas.transactions SET status = \'converted\' WHERE id = ?', [id]);
     }
 
-    await log(req, 'converted', `Converted ${DOC_LABELS[source.transaction_type]} ${source.document_number} to ${DOC_LABELS[target_type]} ${targetDocNumber}`, 'transactions', targetId);
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'transaction.converted', entityType: 'transactions', entityId: targetId, changes: { from: source.transaction_type, to: target_type }, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [targetId]);
     res.status(201).json(result[0]);
   } catch (err) {
@@ -525,7 +593,7 @@ exports.cancel = async (req, res) => {
       'UPDATE hris_saas.transactions SET status=?, cancelled_at=NOW(), cancelled_by=?, cancel_reason=? WHERE id=? AND tenant_id=?',
       ['cancelled', req.user?.id || null, reason || null, id, tenantId]
     );
-    await log(req, 'cancelled', `Cancelled ${DOC_LABELS[txn.transaction_type]} ${txn.document_number}`, 'transactions', id);
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'transaction.cancelled', entityType: 'transactions', entityId: id, changes: { reason }, req });
     const [result] = await db.execute('SELECT * FROM hris_saas.transactions WHERE id = ?', [id]);
     res.json(result[0]);
   } catch (err) {
@@ -581,7 +649,7 @@ exports.getOutstanding = async (req, res) => {
       `SELECT id, document_number AS doc_number, document_date AS doc_date, grand_total, amount_paid, balance_due
        FROM hris_saas.transactions
        WHERE tenant_id = ? AND party_id = ? AND transaction_type IN (${placeholders})
-         AND status IN ('sent','partial','overdue') AND cancelled_at IS NULL
+         AND balance_due > 0 AND cancelled_at IS NULL
        ORDER BY document_date ASC`,
       [tenantId, party_id, ...docTypes]
     );
@@ -608,7 +676,7 @@ exports.delete = async (req, res) => {
     await db.execute('DELETE FROM hris_saas.transaction_references WHERE source_id = ? OR target_id = ?', [id, id]);
     await db.execute('DELETE FROM hris_saas.transactions WHERE id = ? AND tenant_id = ?', [id, tenantId]);
 
-    await log(req, 'deleted', `Deleted draft ${DOC_LABELS[txn.transaction_type]} ${txn.document_number}`, 'transactions', id);
+    log({ tenantId, actorId: req.user?.id, actorName: req.user?.name, action: 'transaction.deleted', entityType: 'transactions', entityId: id, changes: { document_number: txn.document_number }, req });
     res.json({ success: true });
   } catch (err) {
     console.error('Transaction delete error:', err);

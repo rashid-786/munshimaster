@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { hrService } from '../services/hr.service';
-import { DIRECTION, DOCUMENT_CONFIG, DOC_LABELS, DOC_PREFIXES } from '../config/documentConfig';
+import { DIRECTION, DOCUMENT_CONFIG, DOC_LABELS, DOC_PREFIXES, STATUS_OPTIONS } from '../config/documentConfig';
 import LineItemsTable from './LineItemsTable';
 import SearchableSelect from './SearchableSelect';
 import { getStates } from '../services/auth.service';
@@ -48,8 +48,8 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
   const [originalDocs, setOriginalDocs] = useState([]);
   const editing = !!initial?.id;
 
-  const isReturnDoc = ['sales_return', 'credit_note', 'purchase_return', 'debit_note'].includes(transactionType);
-  const refDocType = isReturnDoc ? (cfg.direction === 'sales' ? 'sales_invoice' : 'purchase_invoice') : null;
+  const isRefDoc = ['sales_return', 'credit_note', 'purchase_return', 'debit_note'].includes(transactionType);
+  const refDocType = isRefDoc ? (cfg.direction === 'sales' ? 'sales_invoice' : 'purchase_invoice') : null;
 
   const partyOptions = useMemo(() =>
     parties.map(p => ({ value: p.id, label: p.name })),
@@ -96,19 +96,24 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
   }, []);
 
   useEffect(() => {
-    if (!isReturnDoc || !partyData?.id) { setOriginalDocs([]); return; }
-    hrService.listTransactions({ transaction_type: refDocType, party_id: partyData.id, limit: 200 })
+    if (!isRefDoc || !partyData?.id) { setOriginalDocs([]); return; }
+    hrService.listTransactions({ transactionType: refDocType, partyId: partyData.id, limit: 200 })
       .then(r => setOriginalDocs(r?.data || []))
       .catch(() => setOriginalDocs([]));
   }, [partyData?.id, transactionType]);
 
-  const loadOutstanding = async () => {
-    if (!partyData?.id) return;
+  const loadOutstanding = useCallback(async (overridePartyId) => {
+    const pid = overridePartyId || partyData?.id;
+    if (!pid) return;
     try {
-      const data = await hrService.getOutstandingTransactions({ party_id: partyData.id, direction: cfg.direction });
+      const data = await hrService.getOutstandingTransactions({ party_id: pid, direction: cfg.direction });
       setOutstanding(data || []);
     } catch { setOutstanding([]); }
-  };
+  }, [partyData?.id, cfg.direction]);
+
+  useEffect(() => {
+    if (cfg.fields.outstandingList && partyData?.id) loadOutstanding();
+  }, [partyData?.id, cfg.fields.outstandingList, loadOutstanding]);
 
   const handlePartyChange = (id) => {
     const p = partyMap[id] || null;
@@ -125,7 +130,6 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
       set('party_postal_code', p.billing_postal_code || p.postal_code || '');
       set('place_of_supply', p.billing_state || p.state || '');
     }
-    if (cfg.fields.outstandingList) loadOutstanding();
   };
 
   const handleSubmit = async (e) => {
@@ -163,7 +167,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
       <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
         <h3 className="text-lg font-semibold text-gray-900">{editing ? 'Edit' : 'New'} {DOC_LABELS[transactionType]}</h3>
         <select value={form.status} onChange={e => set('status', e.target.value)} className="text-sm border border-gray-300 rounded-lg px-2 py-1">
-          {['draft', 'sent', 'paid', 'completed', 'issued'].filter(s => s !== 'cancelled').map(s => (
+          {(STATUS_OPTIONS[transactionType] || ['draft']).filter(s => s !== 'cancelled').map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
@@ -263,7 +267,7 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
               {!isSalesInvoice && fields('referenceNumber') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{cfg.fields.referenceNumber.label}</label>
-                  {isReturnDoc ? (
+                  {isRefDoc ? (
                     <SearchableSelect
                       options={originalDocs.map(d => ({ value: d.document_number, label: `${d.document_number} — ${new Date(d.document_date).toLocaleDateString('en-IN')}` }))}
                       value={f('reference_number')}

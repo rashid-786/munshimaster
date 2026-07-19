@@ -2,6 +2,13 @@ const db = require('../config/db');
 
 const PARTY_TYPES = { customer: 'customer', supplier: 'supplier' };
 
+const DIRECTION = { sales_invoice: 'sales', payment_in: 'sales', sales_return: 'sales', credit_note: 'sales', delivery_challan: 'sales', quotation: 'sales', proforma_invoice: 'sales', purchase_invoice: 'purchase', payment_out: 'purchase', purchase_return: 'purchase', debit_note: 'purchase', purchase_order: 'purchase' };
+
+const DOC_LABELS = { sales_invoice: 'Sales Invoice', payment_in: 'Payment Received', sales_return: 'Sales Return', credit_note: 'Credit Note', delivery_challan: 'Delivery Challan', quotation: 'Quotation', proforma_invoice: 'Proforma Invoice', purchase_invoice: 'Purchase Invoice', payment_out: 'Payment Made', purchase_return: 'Purchase Return', debit_note: 'Debit Note', purchase_order: 'Purchase Order' };
+
+const CUSTOMER_TYPES = ['sales_invoice', 'payment_in', 'sales_return', 'credit_note', 'delivery_challan', 'quotation', 'proforma_invoice'];
+const SUPPLIER_TYPES = ['purchase_invoice', 'payment_out', 'purchase_return', 'debit_note', 'purchase_order'];
+
 exports.getTransactions = async (req, res) => {
   try {
     const { type, id } = req.params;
@@ -11,144 +18,105 @@ exports.getTransactions = async (req, res) => {
     const { transactionType, status, startDate, endDate, page = 1, limit = 35 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const dateFilter = (col) => {
-      const clauses = [];
-      const vals = [];
-      if (startDate) { clauses.push(`${col} >= ?`); vals.push(startDate); }
-      if (endDate) { clauses.push(`${col} <= ?`); vals.push(endDate); }
-      return { clause: clauses.length ? clauses.join(' AND ') : '1=1', vals };
-    };
+    const direction = type === 'customer' ? 'sales' : 'purchase';
 
-    const statusFilter = (col, asText) => {
-      if (!status || status === 'all') return { clause: '1=1', vals: [] };
-      const colRef = asText ? `${col}::text` : col;
-      return { clause: `${colRef} = ?`, vals: [status] };
-    };
+    const conditions = ['t.party_id = ?', 't.tenant_id = ?'];
+    const params = [id, tenantId];
 
-    const unionQueries = [];
-    const allParams = [];
-
-    if (type === 'customer') {
-      const df = dateFilter('i.invoice_date');
-      const sf = statusFilter('i.status');
-      if (!transactionType || transactionType === 'all' || transactionType === 'sales_invoice') {
-        unionQueries.push(`
-          SELECT i.id, 'sales_invoice' AS transaction_type, 'Sales Invoice' AS type_label,
-            i.invoice_number AS reference, i.invoice_date AS "date",
-            i.total_amount AS amount, COALESCE(i.amount_paid, 0) AS amount_paid,
-            i.status::text, i.notes AS description, i.created_at
-          FROM invoices i WHERE i.customer_id = ? AND i.tenant_id = ?
-            AND ${df.clause} AND ${sf.clause}`);
-        allParams.push(id, tenantId, ...df.vals, ...sf.vals);
-      }
-
-      const pdf = dateFilter('ip.payment_date');
-      if (!transactionType || transactionType === 'all' || transactionType === 'payment_in') {
-        unionQueries.push(`
-          SELECT ip.id, 'payment_in' AS transaction_type, 'Payment Received' AS type_label,
-            i.invoice_number AS reference, ip.payment_date AS "date",
-            ip.amount AS amount, ip.amount AS amount_paid,
-            'completed' AS status, CONCAT('Payment for ', i.invoice_number) AS description, ip.created_at
-          FROM invoice_payments ip
-          JOIN invoices i ON i.id = ip.invoice_id
-          WHERE i.customer_id = ? AND i.tenant_id = ? AND ${pdf.clause}`);
-        allParams.push(id, tenantId, ...pdf.vals);
-      }
-
-      const cdf = dateFilter('cn.cn_date');
-      const csf = statusFilter('cn.status');
-      if (!transactionType || transactionType === 'all' || transactionType === 'credit_note') {
-        unionQueries.push(`
-          SELECT cn.id, 'credit_note' AS transaction_type, 'Credit Note' AS type_label,
-            cn.credit_note_number AS reference, cn.cn_date AS "date",
-            cn.total_amount AS amount, 0 AS amount_paid,
-            cn.status::text, cn.reason AS description, cn.created_at
-          FROM credit_notes cn
-          JOIN invoices i ON i.id = cn.invoice_id
-          WHERE i.customer_id = ? AND i.tenant_id = ? AND ${cdf.clause} AND ${csf.clause}`);
-        allParams.push(id, tenantId, ...cdf.vals, ...csf.vals);
-      }
-    } else {
-      const df = dateFilter('po.order_date');
-      const sf = statusFilter('po.status', true);
-      if (!transactionType || transactionType === 'all' || transactionType === 'purchase_order') {
-        unionQueries.push(`
-          SELECT po.id, 'purchase_order' AS transaction_type, 'Purchase Order' AS type_label,
-            po.po_number AS reference, po.order_date AS "date",
-            po.total_amount AS amount, 0 AS amount_paid,
-            po.status::text, po.notes AS description, po.created_at
-          FROM purchase_orders po WHERE po.supplier_id = ? AND po.tenant_id = ?
-            AND ${df.clause} AND ${sf.clause}`);
-        allParams.push(id, tenantId, ...df.vals, ...sf.vals);
-      }
-
-      const ddf = dateFilter('dn.dn_date');
-      const dsf = statusFilter('dn.status', true);
-      if (!transactionType || transactionType === 'all' || transactionType === 'debit_note') {
-        unionQueries.push(`
-          SELECT dn.id, 'debit_note' AS transaction_type, 'Debit Note' AS type_label,
-            dn.debit_note_number AS reference, dn.dn_date AS "date",
-            dn.total_amount AS amount, 0 AS amount_paid,
-            dn.status::text, dn.reason AS description, dn.created_at
-          FROM debit_notes dn
-          JOIN invoices i ON i.id = dn.invoice_id
-          WHERE i.customer_id = ? AND i.tenant_id = ? AND ${ddf.clause} AND ${dsf.clause}`);
-        allParams.push(id, tenantId, ...ddf.vals, ...dsf.vals);
-      }
+    if (transactionType && transactionType !== 'all') {
+      conditions.push('t.transaction_type = ?');
+      params.push(transactionType);
+    }
+    if (status && status !== 'all') {
+      conditions.push('t.status = ?');
+      params.push(status);
+    }
+    if (startDate) {
+      conditions.push('t.document_date >= ?');
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push('t.document_date <= ?');
+      params.push(endDate);
     }
 
-    if (unionQueries.length === 0) {
-      return res.json({ transactions: [], summary: {}, total: 0, page: 1, limit: 35 });
-    }
+    const whereClause = conditions.join(' AND ');
 
-    const unionSQL = unionQueries.join(' UNION ALL ');
-    const countSQL = `SELECT COUNT(*) AS total FROM (${unionSQL}) AS combined`;
-    const dataSQL = `SELECT * FROM (${unionSQL}) AS combined ORDER BY "date" DESC, created_at DESC LIMIT ? OFFSET ?`;
+    const countSQL = `SELECT COUNT(*) AS total FROM hris_saas.transactions t WHERE ${whereClause}`;
+    const dataSQL = `SELECT t.* FROM hris_saas.transactions t WHERE ${whereClause} ORDER BY t.document_date DESC, t.created_at DESC LIMIT ? OFFSET ?`;
 
-    const [countRows] = await db.execute(countSQL, allParams);
+    const [countRows] = await db.execute(countSQL, params);
     const total = countRows[0].total;
-    const [transactions] = await db.execute(dataSQL, [...allParams, parseInt(limit), offset]);
+    const [transactions] = await db.execute(dataSQL, [...params, parseInt(limit), offset]);
 
-    const summaryParams = [];
+    const mapped = transactions.map(t => ({
+      id: t.id,
+      transaction_type: t.transaction_type,
+      type_label: DOC_LABELS[t.transaction_type] || t.transaction_type,
+      reference: t.document_number,
+      date: t.document_date,
+      amount: Number(t.grand_total || 0),
+      amount_paid: Number(t.amount_paid || 0),
+      balance_due: Number(t.balance_due || 0),
+      status: t.status,
+      description: t.notes || t.reason || '',
+      created_at: t.created_at,
+    }));
+
+    let summary = {};
     if (type === 'customer') {
-      const sdf = dateFilter('i2.invoice_date');
+      const saleTypes = ['sales_invoice', 'sales_return', 'delivery_challan', 'quotation', 'proforma_invoice'];
+      const salePl = saleTypes.map(() => '?').join(',');
       const [invRows] = await db.execute(
-        `SELECT COALESCE(SUM(i2.total_amount), 0) AS "totalSales",
-                COALESCE(SUM(CASE WHEN i2.status IN ('sent','partial','overdue') THEN i2.total_amount - COALESCE(i2.amount_paid, 0) ELSE 0 END), 0) AS "outstanding",
-                MAX(i2.invoice_date) AS "lastInvoiceDate"
-         FROM invoices i2 WHERE i2.customer_id = ? AND i2.tenant_id = ? AND i2.status NOT IN ('draft','cancelled') AND ${sdf.clause}`,
-        [id, tenantId, ...sdf.vals]
+        `SELECT COALESCE(SUM(t.grand_total), 0) AS "totalSales",
+                COALESCE(SUM(CASE WHEN t.status NOT IN ('draft','cancelled') THEN t.balance_due ELSE 0 END), 0) AS "outstanding",
+                MAX(t.document_date) AS "lastInvoiceDate"
+         FROM hris_saas.transactions t
+         WHERE t.party_id = ? AND t.tenant_id = ? AND t.direction = 'sales'
+           AND t.transaction_type IN (${salePl})`,
+        [id, tenantId, ...saleTypes]
       );
       const [payRows] = await db.execute(
-        `SELECT COALESCE(SUM(ip2.amount), 0) AS "totalPayments"
-         FROM invoice_payments ip2 JOIN invoices i2 ON i2.id = ip2.invoice_id
-         WHERE i2.customer_id = ? AND i2.tenant_id = ?`,
+        `SELECT COALESCE(SUM(t.grand_total), 0) AS "totalPayments"
+         FROM hris_saas.transactions t
+         WHERE t.party_id = ? AND t.tenant_id = ? AND t.direction = 'sales'
+           AND t.transaction_type = 'payment_in'`,
         [id, tenantId]
       );
-      const summary = {
-        totalSales: invRows[0].totalSales,
-        totalPaymentsReceived: payRows[0].totalPayments,
-        outstanding: invRows[0].outstanding,
+      summary = {
+        totalSales: Number(invRows[0].totalSales),
+        totalPaymentsReceived: Number(payRows[0].totalPayments),
+        outstanding: Number(invRows[0].outstanding),
         lastTransactionDate: invRows[0].lastInvoiceDate,
       };
-      res.json({ transactions, summary, total, page: parseInt(page), limit: parseInt(limit) });
     } else {
-      const sdf = dateFilter('po2.order_date');
+      const purchaseTypes = ['purchase_invoice', 'purchase_order', 'purchase_return', 'debit_note'];
+      const purchPl = purchaseTypes.map(() => '?').join(',');
       const [poRows] = await db.execute(
-        `SELECT COALESCE(SUM(po2.total_amount), 0) AS "totalPurchases",
-                COALESCE(SUM(CASE WHEN po2.status IN ('sent','approved','received') THEN po2.total_amount ELSE 0 END), 0) AS "outstanding",
-                MAX(po2.order_date) AS "lastOrderDate"
-         FROM purchase_orders po2 WHERE po2.supplier_id = ? AND po2.tenant_id = ? AND po2.status NOT IN ('draft','cancelled') AND ${sdf.clause}`,
-        [id, tenantId, ...sdf.vals]
+        `SELECT COALESCE(SUM(t.grand_total), 0) AS "totalPurchases",
+                COALESCE(SUM(CASE WHEN t.status NOT IN ('draft','cancelled') THEN t.balance_due ELSE 0 END), 0) AS "outstanding",
+                MAX(t.document_date) AS "lastOrderDate"
+         FROM hris_saas.transactions t
+         WHERE t.party_id = ? AND t.tenant_id = ? AND t.direction = 'purchase'
+           AND t.transaction_type IN (${purchPl})`,
+        [id, tenantId, ...purchaseTypes]
       );
-      const summary = {
-        totalPurchases: poRows[0].totalPurchases,
-        totalPaymentsMade: 0,
-        outstanding: poRows[0].outstanding,
+      const [payRows] = await db.execute(
+        `SELECT COALESCE(SUM(t.grand_total), 0) AS "totalPayments"
+         FROM hris_saas.transactions t
+         WHERE t.party_id = ? AND t.tenant_id = ? AND t.direction = 'purchase'
+           AND t.transaction_type = 'payment_out'`,
+        [id, tenantId]
+      );
+      summary = {
+        totalPurchases: Number(poRows[0].totalPurchases),
+        totalPaymentsMade: Number(payRows[0].totalPayments),
+        outstanding: Number(poRows[0].outstanding),
         lastTransactionDate: poRows[0].lastOrderDate,
       };
-      res.json({ transactions, summary, total, page: parseInt(page), limit: parseInt(limit) });
     }
+
+    res.json({ transactions: mapped, summary, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     console.error('Party transactions error:', err);
     res.status(500).json({ error: 'Failed to fetch transactions.' });
