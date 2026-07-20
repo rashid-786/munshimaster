@@ -354,3 +354,47 @@ exports.downloadReportExcel = async (req, res) => {
     if (!res.headersSent) res.status(500).json({ error: 'Failed to generate Excel.' });
   }
 };
+
+exports.getCashflow = async (req, res) => {
+  const tenantId = req.tenantId;
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const [rows] = await db.execute(
+      `SELECT TO_CHAR(entry_date, 'YYYY-MM') as month,
+              COALESCE(SUM(CASE WHEN type = 'IN' THEN amount ELSE 0 END), 0) as income,
+              COALESCE(SUM(CASE WHEN type = 'OUT' THEN amount ELSE 0 END), 0) as expense
+       FROM kirana_cashbook
+       WHERE tenant_id = ? AND entry_date >= ?
+       GROUP BY TO_CHAR(entry_date, 'YYYY-MM')
+       ORDER BY month ASC`,
+      [tenantId, startStr]
+    );
+
+    const map = {};
+    for (const r of rows) {
+      map[r.month] = { income: Number(r.income), expense: Number(r.expense) };
+    }
+
+    const result = [];
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const entry = map[key] || { income: 0, expense: 0 };
+      result.push({
+        month: key,
+        label: d.toLocaleDateString('en-IN', { month: 'short' }),
+        income: entry.income,
+        expense: entry.expense,
+        net: entry.income - entry.expense,
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to load cash flow.' });
+  }
+};

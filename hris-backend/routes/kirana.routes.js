@@ -17,6 +17,9 @@ router.delete('/transactions/:id', authenticateToken, ctrl.deleteTransaction);
 // Summary
 router.get('/summary', authenticateToken, ctrl.getSummary);
 
+// Cash flow (monthly trend)
+router.get('/cashflow', authenticateToken, ctrl.getCashflow);
+
 // Cashbook
 router.post('/cashbook', authenticateToken, ctrl.createCashEntry);
 router.get('/cashbook', authenticateToken, ctrl.getCashbook);

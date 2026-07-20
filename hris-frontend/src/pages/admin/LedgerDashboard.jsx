@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import PhoneField from '../../components/PhoneInput';
 import Loading from '../../components/Loading';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const LedgerDashboard = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [kiranaSummary, setKiranaSummary] = useState(null);
+  const [buyers, setBuyers] = useState([]);
+  const [sellers, setSellers] = useState([]);
+  const [cashflow, setCashflow] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showPartyForm, setShowPartyForm] = useState(false);
@@ -20,16 +24,50 @@ const LedgerDashboard = () => {
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
 
   useEffect(() => {
     Promise.all([
       hrService.getDashboard(),
-      hrService.kirana.getSummary({})
+      hrService.kirana.getSummary({}),
+      hrService.kirana.getParties({ type: 'buyer' }),
+      hrService.kirana.getParties({ type: 'seller' }),
+      hrService.kirana.getCashflow(),
     ])
-      .then(([d, s]) => { setData(d); setKiranaSummary(s); })
+      .then(([d, s, b, se, cf]) => {
+        setData(d);
+        setKiranaSummary(s);
+        setBuyers(b || []);
+        setSellers(se || []);
+        setCashflow(cf || []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const topReceivables = useMemo(() => {
+    return buyers
+      .filter(p => p.balance < 0)
+      .sort((a, b) => a.balance - b.balance)
+      .slice(0, 5)
+      .map(p => ({ ...p, outstanding: Math.abs(p.balance) }));
+  }, [buyers]);
+
+  const topPayables = useMemo(() => {
+    return sellers
+      .filter(p => p.balance > 0)
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 5)
+      .map(p => ({ ...p, outstanding: p.balance }));
+  }, [sellers]);
+
+  const cashflowChart = useMemo(() => {
+    return cashflow.map(c => ({
+      label: c.label,
+      income: Math.round(c.income / 100),
+      expense: Math.round(c.expense / 100),
+    }));
+  }, [cashflow]);
 
   const openPartyForm = (type) => {
     setPartyType(type);
@@ -78,88 +116,148 @@ const LedgerDashboard = () => {
   const cashBalance = parseInt(data.income || 0) - parseInt(data.expense || 0);
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-[90rem]">
 
       {message && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{message}</div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <button onClick={() => navigate('/admin/ledger/buyers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Receivables</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatINR(receivables)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">What buyers owe you</p>
-        </button>
-        <button onClick={() => navigate('/admin/ledger/sellers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Payables</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(payables)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">What you owe sellers</p>
-        </button>
-        <button onClick={() => navigate('/admin/ledger/cashbook')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Cash Balance</p>
-          <p className={`text-2xl font-bold mt-1 ${cashBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            {formatINR(cashBalance)}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">Income − Expenses</p>
-        </button>
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
 
-      {/* Recent Transactions */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Recent Transactions</h3>
-          <button onClick={() => navigate('/admin/ledger/cashbook')} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {(data.recentTransactions || []).slice(0, 5).map(t => (
-            <div key={t.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50/50">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-800 truncate">{t.party_name || 'Cash Entry'}</p>
-                <p className="text-xs text-gray-400">{new Date(t.entry_date).toLocaleDateString()} · {t.note || t.type}</p>
-              </div>
-              <p className={`text-sm font-semibold shrink-0 ml-3 ${t.type === 'received' ? 'text-emerald-600' : 'text-red-600'}`}>
-                {t.type === 'received' ? '+' : '−'}₹{parseInt(t.amount).toLocaleString('en-IN')}
+        {/* Left column */}
+        <div className="lg:col-span-3 space-y-5">
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <button onClick={() => navigate('/admin/ledger/buyers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Receivables</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatINR(receivables)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">What buyers owe you</p>
+            </button>
+            <button onClick={() => navigate('/admin/ledger/sellers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Payables</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(payables)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">What you owe sellers</p>
+            </button>
+            <button onClick={() => navigate('/admin/ledger/cashbook')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Cash Balance</p>
+              <p className={`text-2xl font-bold mt-1 ${cashBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatINR(cashBalance)}
               </p>
-            </div>
-          ))}
-          {(!data.recentTransactions || data.recentTransactions.length === 0) && (
-            <div className="text-center py-10 text-sm text-gray-400">
-              No entries yet. Record your first transaction in the cashbook.
-            </div>
-          )}
-        </div>
-      </div>
+              <p className="text-xs text-gray-400 mt-0.5">Income − Expenses</p>
+            </button>
+          </div>
 
-      {/* Quick Actions */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-3 gap-3">
-          <button onClick={() => openPartyForm('buyer')} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mx-auto mb-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
+          {/* Recent Transactions */}
+          <div className="bg-white rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Recent Transactions</h3>
+              <button onClick={() => navigate('/admin/ledger/cashbook')} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
             </div>
-            <p className="text-sm font-medium text-gray-800">Add Buyer</p>
-          </button>
-          <button onClick={() => openPartyForm('seller')} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 mx-auto mb-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+            <div className="divide-y divide-gray-50">
+              {(data.recentTransactions || []).slice(0, 5).map(t => (
+                <div key={t.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50/50">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800 truncate">{t.party_name || 'Cash Entry'}</p>
+                    <p className="text-xs text-gray-400">{new Date(t.entry_date).toLocaleDateString()} · {t.note || t.type}</p>
+                  </div>
+                  <p className={`text-sm font-semibold shrink-0 ml-3 ${t.type === 'received' ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {t.type === 'received' ? '+' : '−'}{formatINR(t.amount)}
+                  </p>
+                </div>
+              ))}
+              {(!data.recentTransactions || data.recentTransactions.length === 0) && (
+                <div className="text-center py-10 text-sm text-gray-400">
+                  No entries yet. Record your first transaction in the cashbook.
+                </div>
+              )}
             </div>
-            <p className="text-sm font-medium text-gray-800">Add Seller</p>
-          </button>
-          <button onClick={() => openCashForm()} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 mx-auto mb-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 8.25H9m6 3H9m3.75-3.75h3.375a1.5 1.5 0 010 3h-3.375m0 0a1.5 1.5 0 01-1.5 1.5H9l3.75 5.25M12 3a9 9 0 100 18 9 9 0 000-18z" />
-              </svg>
+          </div>
+
+          {/* Quick Actions */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Quick Actions</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <button onClick={() => openPartyForm('buyer')} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mx-auto mb-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-800">Add Buyer</p>
+              </button>
+              <button onClick={() => openPartyForm('seller')} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 mx-auto mb-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-800">Add Seller</p>
+              </button>
+              <button onClick={() => openCashForm()} className="bg-white rounded-xl border border-gray-200 p-4 text-center hover:shadow-md hover:border-indigo-300 transition-all">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 mx-auto mb-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 8.25H9m6 3H9m3.75-3.75h3.375a1.5 1.5 0 010 3h-3.375m0 0a1.5 1.5 0 01-1.5 1.5H9l3.75 5.25M12 3a9 9 0 100 18 9 9 0 000-18z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-800">Add Entry</p>
+              </button>
             </div>
-            <p className="text-sm font-medium text-gray-800">Add Entry</p>
-          </button>
+          </div>
+
         </div>
+
+        {/* Right column */}
+        <div className="lg:col-span-2 space-y-5">
+
+          {/* Outstanding Balances */}
+          <div className="bg-white rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Outstanding Balances</h3>
+              <span className="text-xs text-gray-400">Top 5 each</span>
+            </div>
+            <div className="p-2">
+              <p className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-emerald-600">To Receive</p>
+              {topReceivables.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No receivables.</p>}
+              {topReceivables.map(p => (
+                <button key={p.id} onClick={() => navigate('/admin/ledger/buyers')}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left">
+                  <span className="text-sm text-gray-800 truncate">{p.name}</span>
+                  <span className="text-sm font-semibold text-emerald-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
+                </button>
+              ))}
+              <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-amber-600">To Give</p>
+              {topPayables.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No payables.</p>}
+              {topPayables.map(p => (
+                <button key={p.id} onClick={() => navigate('/admin/ledger/sellers')}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left">
+                  <span className="text-sm text-gray-800 truncate">{p.name}</span>
+                  <span className="text-sm font-semibold text-amber-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cash Flow Trend */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Cash Flow (6 months)</h3>
+            <p className="text-xs text-gray-400 mb-3">Income vs Expense</p>
+            {cashflowChart.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={cashflowChart}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => '₹' + (v / 1000).toFixed(1) + 'K'} />
+                  <Tooltip formatter={(v) => formatINR(v * 100)} />
+                  <Bar dataKey="income" name="Income" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <p className="text-sm text-gray-400 text-center py-8">No cash flow data</p>}
+          </div>
+
+        </div>
+
       </div>
 
       {/* Add Buyer / Add Seller Modal */}
@@ -177,7 +275,7 @@ const LedgerDashboard = () => {
                   <input type="text" value={partyForm.name} onChange={e => setPartyForm({ ...partyForm, name: e.target.value })} className="input-field" required />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount ({currencySymbol})</label>
                   <input type="number" min="0" step="0.01" value={partyForm.amount} onChange={e => setPartyForm({ ...partyForm, amount: e.target.value })} className="input-field" />
                 </div>
                 <div>
@@ -221,7 +319,7 @@ const LedgerDashboard = () => {
             <form onSubmit={handleAddCash} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label><select value={cashForm.type} onChange={e => setCashForm({ ...cashForm, type: e.target.value })} className="input-field"><option value="IN">IN</option><option value="OUT">OUT</option></select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Amount</label><input type="number" min="0.01" step="0.01" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} className="input-field" required /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Amount ({currencySymbol})</label><input type="number" min="0.01" step="0.01" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} className="input-field" required /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Date</label><input type="date" value={cashForm.entryDate} onChange={e => setCashForm({ ...cashForm, entryDate: e.target.value })} className="input-field" required /></div>
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Note</label><textarea value={cashForm.note} onChange={e => setCashForm({ ...cashForm, note: e.target.value })} className="input-field" rows={2} /></div>

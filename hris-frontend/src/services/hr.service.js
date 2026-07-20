@@ -472,6 +472,7 @@ export const hrService = {
     createTransaction: async (data) => { const r = await api.post('/core/kirana/transactions', data); return r.data; },
     deleteTransaction: async (id) => { const r = await api.delete(`/core/kirana/transactions/${id}`); return r.data; },
     getSummary: async (params) => { const r = await api.get('/core/kirana/summary', { params }); return r.data; },
+    getCashflow: async () => { const r = await api.get('/core/kirana/cashflow'); return r.data; },
     getCashbook: async (params) => { const r = await api.get('/core/kirana/cashbook', { params }); return r.data; },
     createCashEntry: async (data) => { const r = await api.post('/core/kirana/cashbook', data); return r.data; },
     updateCashEntry: async (id, data) => { const r = await api.put(`/core/kirana/cashbook/${id}`, data); return r.data; },

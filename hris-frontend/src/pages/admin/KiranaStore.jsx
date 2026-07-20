@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR, formatPhone } from '../../utils/currency';
@@ -41,6 +41,7 @@ const KiranaStore = () => {
   const [message, setMessage] = useState('');
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
+  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
 
   // Cashbook
   const [cashEntries, setCashEntries] = useState([]);
@@ -449,7 +450,7 @@ const KiranaStore = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (Rs.)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount ({currencySymbol})</label>
                     <input type="number" min="0.01" step="0.01" value={txForm.amount} onChange={e => setTxForm({ ...txForm, amount: e.target.value })} className="input-field" required />
                   </div>
                   <div>
@@ -589,7 +590,7 @@ const KiranaStore = () => {
                 {!editingParty && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount ({currencySymbol})</label>
                       <input type="number" min="0" step="0.01" value={partyForm.amount} onChange={e => setPartyForm({ ...partyForm, amount: e.target.value })} className="input-field" />
                     </div>
                     <div>
@@ -806,6 +807,24 @@ const KiranaStore = () => {
     setReportDownloading('');
   };
 
+  const reportTotals = useMemo(() => {
+    const data = reportData || [];
+    if (reportTab === 'parties') {
+      let received = 0, given = 0;
+      for (const r of data) {
+        received += Number(r.totalReceived || 0);
+        given += Number(r.totalGiven || 0);
+      }
+      return { received, given };
+    }
+    let received = 0, given = 0;
+    for (const r of data) {
+      if (r.type === 'IN') received += Number(r.amount || 0);
+      else if (r.type === 'OUT') given += Number(r.amount || 0);
+    }
+    return { received, given };
+  }, [reportData, reportTab]);
+
   const renderReports = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -861,6 +880,16 @@ const KiranaStore = () => {
               </select>
             </div>
           )}
+          <div className="ml-auto flex items-center gap-4 shrink-0 pl-2">
+            <span className="flex items-center gap-1.5 text-green-600">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              Received: <span className="font-semibold">{formatINR(reportTotals.received)}</span>
+            </span>
+            <span className="flex items-center gap-1.5 text-orange-600">
+              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+              Given: <span className="font-semibold">{formatINR(reportTotals.given)}</span>
+            </span>
+          </div>
         </div>
       </div>
 

@@ -112,7 +112,7 @@ export default function Entities() {
   const currentTenantId = localStorage.getItem('tenant_id');
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">{entityLabel}</h2>
