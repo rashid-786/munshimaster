@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
-import { applyTheme } from '../../utils/currency';
+import { applyTheme, applySidebarTheme } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import UpgradeModal from '../../components/UpgradeModal';
 import InvoiceTemplates from './InvoiceTemplates';
@@ -62,6 +62,8 @@ const Settings = () => {
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
+  const [sidebarMode, setSidebarMode] = useState('light');
+  const [sidebarColor, setSidebarColor] = useState('#0B3C5D');
   const [weekendDays, setWeekendDays] = useState([0]);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState('10');
   const [hiddenGroups, setHiddenGroups] = useState({});
@@ -103,6 +105,8 @@ const Settings = () => {
     hrService.getTenantSettings().then(res => {
       setCompanyName(res.companyName || '');
       if (res.settings?.primaryColor) setPrimaryColor(res.settings.primaryColor);
+      if (res.settings?.sidebarMode) setSidebarMode(res.settings.sidebarMode);
+      if (res.settings?.sidebarColor) setSidebarColor(res.settings.sidebarColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
       if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(String(res.settings.advanceDeductionPct));
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
@@ -153,7 +157,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -168,6 +172,7 @@ const Settings = () => {
       }
       setMessage(res.message || 'Settings saved.');
       applyTheme(primaryColor);
+      applySidebarTheme(sidebarMode, sidebarColor);
       localStorage.setItem('tenant_name', companyName);
       window.dispatchEvent(new CustomEvent('currency-changed'));
     } catch (err) {
@@ -224,6 +229,39 @@ const Settings = () => {
                 <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-12 h-10 rounded border border-gray-300 cursor-pointer" />
                 <code className="text-sm text-gray-500">{primaryColor}</code>
               </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-5">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">Sidebar Appearance</h4>
+              <div className="flex items-center gap-2 mb-4">
+                {['light', 'dark', 'custom'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => { setSidebarMode(m); applySidebarTheme(m, sidebarColor); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium capitalize border transition-colors ${
+                      sidebarMode === m
+                        ? 'border-primary-600 text-white bg-primary-600'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              {sidebarMode === 'custom' && (
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={sidebarColor}
+                    onChange={e => { setSidebarColor(e.target.value); applySidebarTheme('custom', e.target.value); }}
+                    className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
+                  />
+                  <code className="text-sm text-gray-500">{sidebarColor}</code>
+                  <span className="text-xs text-gray-400">Text color adapts automatically (light/dark) to your selection.</span>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-2">Applies to the left navigation panel. Saved with this form.</p>
             </div>
 
             <div className="border-b border-gray-200 pb-4">

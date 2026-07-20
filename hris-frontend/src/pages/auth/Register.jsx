@@ -92,7 +92,7 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
+    <div className="min-h-[calc(100vh-8rem)] bg-gradient-brand-soft flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />

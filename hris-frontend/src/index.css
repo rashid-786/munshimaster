@@ -20,6 +20,19 @@
   --secondary-hover: #25a05e;
   --secondary-light: #e8fbf0;
   --sidebar-width: 260px;
+
+  /* Sidebar theme variables (overridden at runtime by applySidebarTheme) */
+  --sb-bg: #ffffff;
+  --sb-text: #374151;
+  --sb-text-muted: #6b7280;
+  --sb-text-faint: #9ca3af;
+  --sb-hover: rgba(17, 24, 39, 0.04);
+  --sb-active-bg: rgba(11, 60, 93, 0.06);
+  --sb-active-text: #0B3C5D;
+  --sb-accent: #2FBF71;
+  --sb-accent-border: rgba(47, 191, 113, 0.45);
+  --sb-border: rgba(15, 23, 42, 0.08);
+  --sb-header-bg: linear-gradient(135deg, #f5f8fb 0%, #eef4f8 100%);
 }
 
 body {
@@ -77,8 +90,10 @@ body {
   .border-indigo-200 { border-color: var(--primary-200); }
   .border-indigo-600 { border-color: var(--primary-600); }
 
-  .bg-gradient-primary { background: linear-gradient(135deg, var(--primary-600), var(--primary-800)); }
-  .bg-gradient-subtle { background: linear-gradient(135deg, var(--primary-50), #fff); }
+  .bg-gradient-primary { background-color: var(--primary-600, #0B3C5D); }
+  .bg-gradient-brand { background: linear-gradient(135deg, #0B3C5D 0%, #2FBF71 100%); }
+  .bg-gradient-subtle { background: linear-gradient(135deg, #f5f8fb 0%, #eef4f8 100%); }
+  .bg-gradient-brand-soft { background: linear-gradient(135deg, #f5f8fb 0%, #eef4f8 100%); }
 
   .animate-fade-in { animation: fadeIn 0.3s ease-out; }
   .animate-slide-up { animation: slideUp 0.3s ease-out; }
@@ -101,7 +116,7 @@ body {
   }
   .btn-primary:hover:not(:disabled) {
     background-color: var(--primary-700);
-    box-shadow: 0 4px 12px rgba(11, 60, 93, 0.3);
+    box-shadow: 0 2px 8px rgba(11, 60, 93, 0.22);
     transform: translateY(-1px);
   }
   .btn-primary:active:not(:disabled) {
@@ -204,3 +219,31 @@ body {
   .badge-primary { @apply badge; background-color: var(--primary-50); color: var(--primary-700); }
   .badge-green { @apply badge bg-emerald-100 text-emerald-700; }
 }
+
+/* ===== Sidebar theming (driven by --sb-* variables) ===== */
+.app-sidebar {
+  background-color: var(--sb-bg);
+  color: var(--sb-text);
+}
+.app-sidebar-header { background: var(--sb-header-bg); }
+
+.app-sidebar .text-gray-300 { color: var(--sb-text-faint); }
+.app-sidebar .text-gray-400 { color: var(--sb-text-faint); }
+.app-sidebar .text-gray-500 { color: var(--sb-text-muted); }
+.app-sidebar .text-gray-600 { color: var(--sb-text); }
+.app-sidebar .text-gray-700 { color: var(--sb-text); }
+.app-sidebar .text-indigo-700 { color: var(--sb-active-text); }
+.app-sidebar .text-indigo-600 { color: var(--sb-accent); }
+.app-sidebar .hover\:text-gray-600:hover { color: var(--sb-text); }
+.app-sidebar .hover\:text-gray-700:hover { color: var(--sb-text); }
+.app-sidebar .hover\:text-indigo-700:hover { color: var(--sb-accent); }
+.app-sidebar .hover\:bg-gray-50:hover { background-color: var(--sb-hover); }
+.app-sidebar .hover\:bg-gray-100:hover { background-color: var(--sb-hover); }
+.app-sidebar .bg-gray-100 { background-color: var(--sb-hover); }
+.app-sidebar .bg-indigo-50,
+.app-sidebar .bg-indigo-50\/60 { background-color: var(--sb-active-bg); }
+.app-sidebar .border-gray-100 { border-color: var(--sb-border); }
+.app-sidebar .border-gray-200 { border-color: var(--sb-border); }
+.app-sidebar .border-indigo-200 { border-color: var(--sb-accent-border); }
+.app-sidebar.theme-dark .bg-gradient-primary { background-color: var(--sb-accent); }
+.app-sidebar.theme-dark .sb-plan-badge { background: rgba(255, 255, 255, 0.10); color: #e5e7eb; }

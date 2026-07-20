@@ -12,6 +12,7 @@ import OnboardingWizard from '../components/OnboardingWizard';
 
 import { buildMenu, getFirstDashboardRoute, getRouteAccessInfo } from '../config/subscriptionMenuBuilder.jsx';
 import { resolvePlan, getRank, PLAN_LABELS, PLAN_COLORS } from '../config/subscriptionPlans';
+import { applySidebarTheme, getSidebarTheme } from '../utils/currency';
 
 const Icons = {
   chevron: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>,
@@ -45,6 +46,17 @@ export default function AdminLayout() {
   const [switching, setSwitching] = useState(false);
   const menuRef = useRef(null);
   const entityRef = useRef(null);
+
+  const [sbDark, setSbDark] = useState(getSidebarTheme().isDark);
+  useEffect(() => {
+    const mode = localStorage.getItem('sidebar_mode') || 'light';
+    const color = localStorage.getItem('sidebar_color') || '#0B3C5D';
+    applySidebarTheme(mode, color);
+    setSbDark(getSidebarTheme().isDark);
+    const onUpdate = () => setSbDark(getSidebarTheme().isDark);
+    window.addEventListener('sidebar-theme-updated', onUpdate);
+    return () => window.removeEventListener('sidebar-theme-updated', onUpdate);
+  }, []);
 
   const { globalConfig } = useGlobalConfig();
   const rawPlan = tenant?.subscriptionPlan || 'free';
@@ -399,21 +411,25 @@ export default function AdminLayout() {
     }
   }, [hiddenGroups, hiddenItems, location.pathname, firstVisibleDashboard, navigate, menuItems, disabledFeatures, isReadOnlySection]);
 
+  const sbLogoBahi = sbDark ? '#ffffff' : '#0B3C5D';
+  const sbLogoThree60 = sbDark ? '#4ade80' : '#2FBF71';
+  const sbTenantName = sbDark ? '#e5e7eb' : 'var(--primary-600)';
+
   const sidebar = (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
-      <div className="h-16 flex items-center px-5 border-b border-gray-200 bg-gradient-subtle">
+    <aside className={`w-64 border-r border-gray-200 flex flex-col h-full app-sidebar ${sbDark ? 'theme-dark' : ''}`}>
+      <div className="h-16 flex items-center px-5 border-b border-gray-200 app-sidebar-header">
         <button onClick={() => navigate(firstVisibleDashboard)} className="flex flex-col items-start justify-center leading-tight">
           <span className="text-xl font-bold tracking-tight leading-none">
-            <span style={{ color: '#0B3C5D' }}>bahi</span>
-            <span style={{ color: '#2FBF71' }}>360</span>
+            <span style={{ color: sbLogoBahi }}>bahi</span>
+            <span style={{ color: sbLogoThree60 }}>360</span>
           </span>
-          <span className="text-sm font-semibold" style={{ color: 'var(--primary-600)' }}>{tenant?.name || ''}</span>
+          <span className="text-sm font-semibold" style={{ color: sbTenantName }}>{tenant?.name || ''}</span>
         </button>
       </div>
 
       {!globalConfig.hideSubscriptionLabels && (
         <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full sb-plan-badge ${PLAN_COLORS[currentPlan] || 'bg-gray-100 text-gray-600'}`}>
             {PLAN_LABELS[currentPlan] || currentPlan} Plan
           </span>
           <div className="flex items-center gap-2">

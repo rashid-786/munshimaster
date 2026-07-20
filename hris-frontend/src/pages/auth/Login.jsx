@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/auth.service';
-import { applyTheme } from '../../utils/currency';
+import { applyTheme, applySidebarTheme } from '../../utils/currency';
 import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 import { resolvePlan } from '../../config/subscriptionPlans';
 import { getFirstDashboardRoute } from '../../config/subscriptionMenuBuilder';
@@ -79,6 +79,7 @@ const Login = () => {
       login(data.user, data.token, data.tenant);
 
       applyTheme(data.tenant?.settings?.primaryColor || '#4f46e5');
+      applySidebarTheme(data.tenant?.settings?.sidebarMode || 'light', data.tenant?.settings?.sidebarColor || '#0B3C5D');
 
       if (data.user.role === 'tenant_admin') {
         const rawPlan = data.tenant?.subscriptionPlan || 'free';
@@ -142,7 +143,7 @@ const Login = () => {
 
   if (showForgot) {
     return (
-      <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
+      <div className="min-h-[calc(100vh-8rem)] bg-gradient-brand-soft flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />
@@ -243,7 +244,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-gradient-to-br from-indigo-50 via-white to-indigo-50 flex items-center justify-center p-4">
+    <div className="min-h-[calc(100vh-8rem)] bg-gradient-brand-soft flex items-center justify-center p-4">
       <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <img src="/icon_logo.png" alt="bahi360" className="w-20 h-auto mx-auto mb-1" />

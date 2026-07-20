@@ -66,3 +66,74 @@ export function applyTheme(hexColor) {
   root.style.setProperty('--primary-light', palette[50]);
   localStorage.setItem('primary_color', hexColor);
 }
+
+function getLuminance(hex) {
+  const c = (hex || '#ffffff').replace('#', '');
+  const full = c.length === 3 ? c.split('').map(x => x + x).join('') : c;
+  const ch = (i) => parseInt(full.substr(i, 2), 16) / 255;
+  const lin = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(ch(0)) + 0.7152 * lin(ch(2)) + 0.0722 * lin(ch(4));
+}
+
+function sidebarPalette(mode, color) {
+  if (mode === 'dark') {
+    return {
+      isDark: true, bg: '#0f1b2d', text: '#e5e7eb', textMuted: '#94a3b8', textFaint: '#64748b',
+      hover: 'rgba(255,255,255,0.06)', activeBg: 'rgba(47,191,113,0.16)', activeText: '#4ade80',
+      accent: '#2FBF71', accentBorder: 'rgba(47,191,113,0.5)', border: 'rgba(255,255,255,0.08)',
+      headerBg: 'rgba(255,255,255,0.04)',
+    };
+  }
+  if (mode === 'custom') {
+    const isDark = getLuminance(color) < 0.5;
+    if (isDark) {
+      return {
+        isDark: true, bg: color, text: '#f1f5f9', textMuted: '#cbd5e1', textFaint: '#94a3b8',
+        hover: 'rgba(255,255,255,0.10)', activeBg: 'rgba(255,255,255,0.16)', activeText: '#ffffff',
+        accent: '#ffffff', accentBorder: 'rgba(255,255,255,0.35)', border: 'rgba(255,255,255,0.12)',
+        headerBg: 'rgba(255,255,255,0.06)',
+      };
+    }
+    return {
+      isDark: false, bg: color, text: '#374151', textMuted: '#6b7280', textFaint: '#9ca3af',
+      hover: 'rgba(0,0,0,0.05)', activeBg: 'rgba(0,0,0,0.06)', activeText: '#0B3C5D',
+      accent: '#2FBF71', accentBorder: 'rgba(47,191,113,0.45)', border: 'rgba(0,0,0,0.10)',
+      headerBg: 'rgba(0,0,0,0.04)',
+    };
+  }
+  return {
+    isDark: false, bg: '#ffffff', text: '#374151', textMuted: '#6b7280', textFaint: '#9ca3af',
+    hover: 'rgba(17,24,39,0.04)', activeBg: 'rgba(11,60,93,0.06)', activeText: '#0B3C5D',
+    accent: '#2FBF71', accentBorder: 'rgba(47,191,113,0.45)', border: 'rgba(15,23,42,0.08)',
+    headerBg: 'linear-gradient(135deg, #f5f8fb 0%, #eef4f8 100%)',
+  };
+}
+
+export function applySidebarTheme(mode = 'light', color = '#0B3C5D') {
+  const theme = sidebarPalette(mode, color);
+  const root = document.documentElement;
+  const set = (k, v) => root.style.setProperty(k, v);
+  set('--sb-bg', theme.bg);
+  set('--sb-text', theme.text);
+  set('--sb-text-muted', theme.textMuted);
+  set('--sb-text-faint', theme.textFaint);
+  set('--sb-hover', theme.hover);
+  set('--sb-active-bg', theme.activeBg);
+  set('--sb-active-text', theme.activeText);
+  set('--sb-accent', theme.accent);
+  set('--sb-accent-border', theme.accentBorder);
+  set('--sb-border', theme.border);
+  set('--sb-header-bg', theme.headerBg);
+  localStorage.setItem('sidebar_mode', mode);
+  localStorage.setItem('sidebar_color', color);
+  localStorage.setItem('sidebar_theme', JSON.stringify({ isDark: theme.isDark }));
+  window.dispatchEvent(new Event('sidebar-theme-updated'));
+}
+
+export function getSidebarTheme() {
+  try {
+    const raw = localStorage.getItem('sidebar_theme');
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return { isDark: (localStorage.getItem('sidebar_mode') || 'light') === 'dark' };
+}
