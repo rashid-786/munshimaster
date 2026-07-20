@@ -9,7 +9,7 @@ import SearchableSelect from '../../components/SearchableSelect';
 import useIsMobile from '../../hooks/useIsMobile';
 import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 import UpgradeBanner from '../../components/UpgradeBanner';
-import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
+import { ActionEdit, ActionDelete, ActionDeactivate, DeactivateIcon } from '../../components/ActionIcons';
 
 const PROFESSIONS = [
   'Accountant', 'Administrator', 'Architect', 'Business Analyst', 'Chef',
@@ -264,7 +264,7 @@ const Employees = () => {
       <div className="flex gap-1.5 justify-end">
         <ActionEdit onClick={(e) => { e.stopPropagation(); mobileEdit(emp); }} />
         {isAdmin && emp.status === 'active' && (
-          <button onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
+          <ActionDeactivate onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} />
         )}
         {isAdmin && emp.status === 'deactivated' && (
           <button onClick={(e) => { e.stopPropagation(); handleActivate(emp.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
@@ -430,7 +430,7 @@ const Employees = () => {
                         <div className="flex gap-1.5 justify-end">
                           <button onClick={(e) => { e.stopPropagation(); mobileEdit(emp); }} className="btn-ghost !py-1.5 !px-2.5 text-xs" title="Edit">{Icons.edit}</button>
                           {isAdmin && emp.status === 'active' && (
-                            <button onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-warning !py-1.5 !px-2.5 text-xs">Deactivate</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`); }} className="btn-ghost !py-1.5 !px-2.5 text-xs !text-amber-500 hover:!bg-amber-50" title="Deactivate"><DeactivateIcon /></button>
                           )}
                           {isAdmin && emp.status === 'deactivated' && (
                             <button onClick={(e) => { e.stopPropagation(); handleActivate(emp.id); }} className="btn-success !py-1.5 !px-2.5 text-xs">Activate</button>
@@ -585,7 +585,7 @@ const Employees = () => {
             <>
               <button onClick={() => mobileEdit(selectedRecord)} className="flex-1 btn-primary justify-center">Edit</button>
               {isAdmin && selectedRecord?.status === 'active' && (
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="flex-1 btn-warning justify-center">Deactivate</button>
+                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="flex-1 btn-warning justify-center"><DeactivateIcon className="w-4 h-4" />Deactivate</button>
               )}
               {isAdmin && selectedRecord?.status === 'deactivated' && (
                 <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }} className="flex-1 btn-success justify-center">Activate</button>
@@ -640,7 +640,7 @@ const Employees = () => {
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => mobileEdit(selectedRecord)} className="btn-primary">{Icons.edit} Edit</button>
               {isAdmin && selectedRecord.status === 'active' && (
-                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="btn-warning">Deactivate</button>
+                <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="btn-warning"><DeactivateIcon className="w-4 h-4" /> Deactivate</button>
               )}
               {isAdmin && selectedRecord.status === 'deactivated' && (
                 <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleActivate(r.id); }} className="btn-success">Activate</button>

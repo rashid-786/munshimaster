@@ -1,6 +1,7 @@
 const base = 'w-4 h-4';
 const btn = 'btn-ghost !py-1.5 !px-2.5';
 const redBtn = `${btn} !text-red-500 hover:!bg-red-50`;
+const warnBtn = `${btn} !text-amber-500 hover:!bg-amber-50`;
 
 export const EditIcon = () => (
   <svg className={base} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -21,6 +22,14 @@ export const ViewIcon = () => (
   </svg>
 );
 
+export const DeactivateIcon = ({ className = base }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12a4 4 0 100-8 4 4 0 000 8z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20a8 8 0 0116 0" />
+    <line x1="3" y1="3" x2="21" y2="21" strokeWidth={2} />
+  </svg>
+);
+
 export function ActionEdit({ onClick }) {
   return <button className={btn} title="Edit" onClick={onClick}><EditIcon /></button>;
 }
@@ -31,4 +40,8 @@ export function ActionDelete({ onClick }) {
 
 export function ActionView({ onClick }) {
   return <button className={btn} title="View" onClick={onClick}><ViewIcon /></button>;
+}
+
+export function ActionDeactivate({ onClick }) {
+  return <button className={warnBtn} title="Deactivate" onClick={onClick}><DeactivateIcon /></button>;
 }
