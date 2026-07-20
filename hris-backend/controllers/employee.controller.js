@@ -141,13 +141,16 @@ exports.updateEmployee = async (req, res) => {
 
 exports.getEmployees = async (req, res) => {
   const tenantId = req.tenantId;
-  const { includeDeactivated } = req.query;
+  const { includeDeactivated, status } = req.query;
 
   try {
     let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, pay_per_hour, profession, other_profession, status, created_at FROM employees WHERE tenant_id = ?';
     const params = [tenantId];
 
-    if (includeDeactivated !== 'true') {
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    } else if (includeDeactivated !== 'true') {
       query += ' AND status = ?';
       params.push('active');
     }

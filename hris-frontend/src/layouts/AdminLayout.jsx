@@ -92,11 +92,13 @@ export default function AdminLayout() {
   }, [currentPlan, disabledFeatures, HIDDEN_ROUTES]);
 
   const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'Store', MANAGE: 'Store', BUSINESS: 'Store', BUSINESS_PRO: 'Store' } };
+  const DEFAULT_LABELS = { 'My Business': 'Billing' };
   const labelOf = (key) => {
     const custom = groupLabels[key];
     if (custom) return custom;
     const planOverride = DEFAULT_LABEL_OVERRIDES[key]?.[currentPlan];
-    return planOverride || key;
+    if (planOverride) return planOverride;
+    return DEFAULT_LABELS[key] || key;
   };
 
   const pageTitles = useMemo(() => {
@@ -135,6 +137,7 @@ export default function AdminLayout() {
     if (menuItems.length > 0 && menuItems[0].type === 'group') {
       obj[menuItems[0].label] = true;
     }
+    if (obj['My Business'] !== undefined) obj['My Business'] = true;
     return obj;
   }, [menuItems]);
 
@@ -322,7 +325,6 @@ export default function AdminLayout() {
     '/admin/purchase-transactions': 'invoices',
     '/admin/recurring-invoices': 'recurring_invoices',
     '/admin/bank': 'bank_import',
-    '/admin/notes': 'credit_debit_notes',
     '/admin/balance': 'balance_sheet',
     '/admin/pl': 'pl_statement',
     '/admin/cash-flow': 'cash_flow',
@@ -353,7 +355,7 @@ export default function AdminLayout() {
     expenses: 'my_business', campaigns: 'my_business',
     suppliers: 'my_business', customers: 'my_business', purchase_orders: 'my_business',
     invoices: 'my_business', recurring_invoices: 'my_business', bank_import: 'my_business',
-    credit_debit_notes: 'my_business', balance_sheet: 'my_business', advanced_reports: 'my_business',
+    balance_sheet: 'my_business', advanced_reports: 'my_business',
     pl_statement: 'my_business', cash_flow: 'my_business', gst_returns: 'my_business',
     gstr2b_reco: 'my_business', tds_management: 'my_business', tally_export: 'my_business',
     bulk_import: 'my_business', products: 'my_business',

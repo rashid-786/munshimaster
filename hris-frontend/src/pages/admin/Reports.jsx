@@ -6,6 +6,8 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import PLStatement from './PLStatement';
+import CashFlowStatement from './CashFlowStatement';
 
 const PLAN_RANK = { free: 0, business: 1, business_monthly: 1, pro: 2, pro_monthly: 2 };
 
@@ -13,6 +15,8 @@ const BASIC_TABS = [
   { key: 'customers', label: 'Customers' },
   { key: 'suppliers', label: 'Suppliers' },
   { key: 'balance', label: 'Balance Sheet' },
+  { key: 'pl', label: 'P&L Statement' },
+  { key: 'cashflow', label: 'Cash Flow' },
 ];
 const ADVANCED_TABS = [
   { key: 'sales_by_customer', label: 'Sales by Customer' },
@@ -115,6 +119,7 @@ const Reports = () => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    if (tab === 'pl' || tab === 'cashflow') { setLoading(false); return; }
     try {
       const params = { type: tab };
       if (search) params.search = search;
@@ -242,7 +247,7 @@ const Reports = () => {
       <UpgradeBanner type="feature" feature="Reports" plan="business" />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h2 className="text-xl font-semibold text-gray-900">Reports</h2>
-        {!isAgingTab && (
+        {!isAgingTab && tab !== 'pl' && tab !== 'cashflow' && (
           <div className="flex gap-2">
             <button onClick={() => handleDownload('pdf')} disabled={!!downloading} className="btn-primary text-sm">
               {downloading === 'pdf' ? 'Generating...' : 'Download PDF'}
@@ -272,7 +277,7 @@ const Reports = () => {
 
       {/* Filters — visible for all tabs */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        {!['sales_by_customer', 'purchases_by_supplier'].includes(tab) && (
+        {!['sales_by_customer', 'purchases_by_supplier', 'pl', 'cashflow'].includes(tab) && (
           <div className="w-full sm:w-auto">
             <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="input-field w-full sm:max-w-[180px] text-sm" />
           </div>
@@ -429,6 +434,12 @@ const Reports = () => {
         </div>
       )}
 
+      {/* P&L Statement */}
+      {tab === 'pl' && <PLStatement />}
+
+      {/* Cash Flow */}
+      {tab === 'cashflow' && <CashFlowStatement />}
+
       {/* GST Summary */}
       {tab === 'gst_summary' && (
         <>
@@ -488,7 +499,7 @@ const Reports = () => {
       )}
 
       {/* Standard table for array-based reports */}
-      {!isAgingTab && !isStatusTab && !isGstTab && (
+      {!isAgingTab && !isStatusTab && !isGstTab && tab !== 'pl' && tab !== 'cashflow' && (
         <>
           <ResponsiveTable
             columns={columns}

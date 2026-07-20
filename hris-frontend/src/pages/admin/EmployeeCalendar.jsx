@@ -59,6 +59,8 @@ const EmployeeCalendar = () => {
   const [modalMsg, setModalMsg] = useState('');
   const [tooltip, setTooltip] = useState(null);
   const cellRefs = useRef({});
+  const hoursRef = useRef(null);
+  const statusRef = useRef(null);
   const [weekendDays, setWeekendDays] = useState([0]);
   const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [workHoursInDay, setWorkHoursInDay] = useState(8);
@@ -69,7 +71,7 @@ const EmployeeCalendar = () => {
     hrService.getEmployees().then(setEmployees).catch(() => {});
     hrService.getTenantSettings().then(res => {
       if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
-      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+      if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(res.settings.workHoursInDay);
     }).catch(() => {});
   }, [tenant?.id]);
 
@@ -136,10 +138,25 @@ const EmployeeCalendar = () => {
 
   useEffect(() => {
     if (modalMsg?.toLowerCase().includes('success')) {
-      const t = setTimeout(() => setSelectedDay(null), 1000);
-      return () => clearTimeout(t);
+      setSelectedDay(null);
     }
   }, [modalMsg]);
+
+  // Auto-focus the Hours field when the popup opens (or the Status select in clock mode),
+  // so users can start entering attendance immediately. Re-focuses Hours once a status
+  // is chosen in clock mode (where the Hours field only appears for "present").
+  useEffect(() => {
+    if (!selectedDay) return;
+    const t = setTimeout(() => {
+      if (hourBasedAttendance || selectedStatus === 'present') {
+        hoursRef.current?.focus();
+        hoursRef.current?.select?.();
+      } else {
+        statusRef.current?.focus();
+      }
+    }, 50);
+    return () => clearTimeout(t);
+  }, [selectedDay, hourBasedAttendance, selectedStatus]);
 
   const recalcClockOut = (clockIn, totalHrs) => {
     if (!clockIn || totalHrs == null) return;
@@ -158,6 +175,15 @@ const EmployeeCalendar = () => {
     const inH = Math.floor(totalMin / 60) % 24;
     const inM = Math.round(totalMin % 60);
     setClockInVal(`${String(inH).padStart(2, '0')}:${String(inM).padStart(2, '0')}`);
+  };
+
+  const handleModalKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+      e.preventDefault();
+      handleSave();
+    }
   };
 
   const handleSave = async () => {
@@ -452,7 +478,7 @@ const EmployeeCalendar = () => {
 
       {selectedDay && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()} onKeyDown={handleModalKeyDown}>
             <div className="flex items-center justify-between mb-5">
               <h4 className="text-base font-semibold text-gray-900">Manage Attendance</h4>
               <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
@@ -478,10 +504,10 @@ const EmployeeCalendar = () => {
                 {hourBasedAttendance ? (
                    <div>
                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours Worked</label>
-                     <input type="text" inputMode="decimal"
-                       value={totalHoursVal}
-                       onChange={e => handleHoursChange(e.target.value)}
-                       className="input-field text-sm text-center text-lg font-semibold py-3" />
+                      <input type="text" inputMode="decimal" ref={hoursRef}
+                        value={totalHoursVal}
+                        onChange={e => handleHoursChange(e.target.value)}
+                        className="input-field text-sm text-center text-lg font-semibold py-3" />
                      <p className="text-xs text-gray-400 mt-1">
                        {parseFloat(totalHoursVal) > 0 ? 'Marked as Present' : 'Marked as Absent/Leave'}
                      </p>
@@ -490,11 +516,12 @@ const EmployeeCalendar = () => {
                   <>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-                      <select
-                        value={selectedStatus}
-                        onChange={e => setSelectedStatus(e.target.value)}
-                        className="input-field text-sm"
-                      >
+                       <select
+                         ref={statusRef}
+                         value={selectedStatus}
+                         onChange={e => setSelectedStatus(e.target.value)}
+                         className="input-field text-sm"
+                       >
                         <option value="">Select status...</option>
                         <option value="present">Present</option>
                         <option value="absent">Absent</option>
@@ -534,9 +561,9 @@ const EmployeeCalendar = () => {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1.5">Total Hours</label>
-                          <input type="number" step="0.5" min="0.5" max="24"
-                            value={totalHoursVal}
-                            onFocus={() => setLastEdited('totalHours')}
+                           <input type="number" step="0.5" min="0.5" max="24" ref={hoursRef}
+                             value={totalHoursVal}
+                             onFocus={() => setLastEdited('totalHours')}
                             onChange={e => {
                               const v = parseFloat(e.target.value) || 0;
                               setTotalHoursVal(v);

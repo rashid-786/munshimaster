@@ -11,11 +11,18 @@ function buildDateFilter(prefix, startDate, endDate) {
   return { clause: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
 }
 
+// Resolves the employee-status filter for report queries.
+// 'deactivated' → only deactivated staff; anything else → only active staff (default).
+function empStatusValue(staffStatus) {
+  return staffStatus === 'deactivated' ? 'deactivated' : 'active';
+}
+
 exports.getSummary = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
-    const [empCount] = await db.execute('SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND status = ?', [tenantId, 'active']);
+    const [empCount] = await db.execute(`SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`, [tenantId]);
     const totalEmployees = empCount[0].c;
 
     let payrollQ = 'SELECT COALESCE(SUM(net_salary), 0) as total_net, COALESCE(SUM(total_hours_worked), 0) as total_hours FROM payroll WHERE tenant_id = ?';
@@ -26,7 +33,7 @@ exports.getSummary = async (req, res) => {
     const totalHoursWorked = parseFloat(payrollStats[0].total_hours) || 0;
 
     let paidQ = `SELECT COALESCE(SUM(p.net_salary), 0) as total FROM payroll p
-                 JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+                 JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE p.tenant_id = ? AND p.status = ?`;
     const paidP = [tenantId, 'paid'];
     if (startDate) { paidQ += ' AND p.pay_period_end >= ?'; paidP.push(startDate); }
@@ -35,14 +42,13 @@ exports.getSummary = async (req, res) => {
     const totalSalaryPaid = paidStats[0].total;
 
     // Salary Pending = unpaid worked hours × pay-per-hour (attendance not yet covered by a paid payroll).
-    // Mirrors the HR Dashboard "Total Due Amount": active employees, paid periods excluded, salary staff → 0.
     const dateParams = [];
     let pendingDateClause = '';
     if (startDate) { pendingDateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
     if (endDate) { pendingDateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
     const [pendingEmps] = await db.execute(
-      'SELECT id, pay_per_hour FROM employees WHERE tenant_id = ? AND status = ?',
-      [tenantId, 'active']
+      `SELECT id, pay_per_hour FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`,
+      [tenantId]
     );
     let totalSalaryPending = 0;
     for (const emp of pendingEmps) {
@@ -62,7 +68,7 @@ exports.getSummary = async (req, res) => {
 
     let attQ = `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
                 FROM attendance a
-                JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
+                JOIN employees e ON a.employee_id = e.id AND e.status = '${empStatus}'
                 WHERE a.tenant_id = ?`;
     const attP = [tenantId];
     if (startDate) { attQ += ' AND date >= ?'; attP.push(startDate); }
@@ -72,7 +78,7 @@ exports.getSummary = async (req, res) => {
 
     let payrollHoursQ = `SELECT COALESCE(SUM(p.total_hours_worked), 0) as paid_hours
                 FROM payroll p
-                JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+                JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
                 WHERE p.tenant_id = ? AND p.status = 'paid'`;
     const payrollHoursP = [tenantId];
     if (startDate) { payrollHoursQ += ' AND pay_period_end >= ?'; payrollHoursP.push(startDate); }
@@ -80,25 +86,28 @@ exports.getSummary = async (req, res) => {
     const [payrollHoursStats] = await db.execute(payrollHoursQ, payrollHoursP);
     const totalPaidHours = parseFloat(payrollHoursStats[0].paid_hours) || 0;
 
-    let leaveQ = `SELECT COALESCE(SUM(
-      LEAST((end_date AT TIME ZONE 'UTC')::date, ?::date) - GREATEST((start_date AT TIME ZONE 'UTC')::date, ?::date) + 1
-    ), 0) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'
-      AND (start_date AT TIME ZONE 'UTC')::date <= ? AND (end_date AT TIME ZONE 'UTC')::date >= ?`;
-    const leaveP = [tenantId];
+    let leaveQ, leaveP;
     if (startDate && endDate) {
-      leaveP.unshift(endDate, startDate);
-      leaveP.push(endDate, startDate);
+      leaveQ = `SELECT COALESCE(SUM(
+        LEAST((l.end_date AT TIME ZONE 'UTC')::date, ?::date) - GREATEST((l.start_date AT TIME ZONE 'UTC')::date, ?::date) + 1
+      ), 0) as total_leaves
+      FROM leaves l JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}'
+      WHERE l.tenant_id = ? AND l.status = 'approved'
+        AND (l.start_date AT TIME ZONE 'UTC')::date <= ? AND (l.end_date AT TIME ZONE 'UTC')::date >= ?`;
+      leaveP = [endDate, startDate, tenantId, endDate, startDate];
     } else {
-      leaveQ = "SELECT COUNT(*) as total_leaves FROM leaves WHERE tenant_id = ? AND status = 'approved'";
+      leaveQ = `SELECT COUNT(*) as total_leaves FROM leaves l JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}' WHERE l.tenant_id = ? AND l.status = 'approved'`;
+      leaveP = [tenantId];
     }
     const [leaveStats] = await db.execute(leaveQ, leaveP);
     const totalLeaveDays = Number(leaveStats[0].total_leaves) || 0;
 
-    let advQ = `SELECT COALESCE(SUM(amount), 0) as total_issued, COALESCE(SUM(remaining_balance), 0) as outstanding
-                FROM employee_advances WHERE tenant_id = ? AND status IN ('approved', 'fully_paid')`;
+    let advQ = `SELECT COALESCE(SUM(ea.amount), 0) as total_issued, COALESCE(SUM(ea.remaining_balance), 0) as outstanding
+                FROM employee_advances ea JOIN employees e ON ea.employee_id = e.id AND e.status = '${empStatus}'
+                WHERE ea.tenant_id = ? AND ea.status IN ('approved', 'fully_paid')`;
     const advP = [tenantId];
-    if (startDate) { advQ += ' AND created_at >= ?'; advP.push(startDate); }
-    if (endDate) { advQ += ' AND created_at <= ?'; advP.push(endDate + ' 23:59:59'); }
+    if (startDate) { advQ += ' AND ea.created_at >= ?'; advP.push(startDate); }
+    if (endDate) { advQ += ' AND ea.created_at <= ?'; advP.push(endDate + ' 23:59:59'); }
     const [advanceStats] = await db.execute(advQ, advP);
     const totalAdvancesIssued = advanceStats[0].total_issued;
     const outstandingBalance = advanceStats[0].outstanding;
@@ -126,7 +135,8 @@ exports.getSummary = async (req, res) => {
 
 exports.getSalaryReport = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, search, status } = req.query;
+  const { startDate, endDate, search, status, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
     // Pending ("due") salaries are not stored as payroll records (processing marks them paid);
     // they are the worked hours not yet covered by a paid payroll, computed from attendance.
@@ -143,7 +153,7 @@ exports.getSalaryReport = async (req, res) => {
       }
       const [emps] = await db.execute(
         `SELECT id, first_name, last_name, email, base_salary, pay_per_hour
-         FROM employees e WHERE e.tenant_id = ? AND e.status = 'active' ${searchClause}`,
+         FROM employees e WHERE e.tenant_id = ? AND e.status = '${empStatus}' ${searchClause}`,
         [tenantId, ...searchParams]
       );
       const rows = [];
@@ -191,7 +201,7 @@ exports.getSalaryReport = async (req, res) => {
 
     let query = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour
                  FROM payroll p
-                 JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+                 JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE p.tenant_id = ?`;
     const params = [tenantId];
     if (startDate) { query += ' AND p.pay_period_end >= ?'; params.push(startDate); }
@@ -216,7 +226,8 @@ exports.getSalaryReport = async (req, res) => {
 
 exports.getWorkingHoursReport = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, search, payStatus } = req.query;
+  const { startDate, endDate, search, payStatus, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
     let query = `SELECT a.*, e.first_name, e.last_name, e.email,
                         CASE
@@ -225,7 +236,7 @@ exports.getWorkingHoursReport = async (req, res) => {
                           ELSE 'unbilled'
                         END as pay_status
                  FROM attendance a
-                 JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
+                 JOIN employees e ON a.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE a.tenant_id = ?`;
     const params = [tenantId];
     const df = buildDateFilter('a', startDate, endDate);
@@ -250,11 +261,12 @@ exports.getWorkingHoursReport = async (req, res) => {
 
 exports.getLeaveReport = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, search, leaveType, status } = req.query;
+  const { startDate, endDate, search, leaveType, status, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
     let query = `SELECT l.*, e.first_name, e.last_name
                  FROM leaves l
-                 JOIN employees e ON l.employee_id = e.id
+                 JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE l.tenant_id = ?`;
     const params = [tenantId];
     if (startDate && endDate) { query += ' AND (l.start_date AT TIME ZONE \'UTC\')::date <= ? AND (l.end_date AT TIME ZONE \'UTC\')::date >= ?'; params.push(endDate, startDate); }
@@ -275,12 +287,13 @@ exports.getLeaveReport = async (req, res) => {
 
 exports.getAdvanceReport = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, search, status } = req.query;
+  const { startDate, endDate, search, status, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
     let query = `SELECT ea.*, e.first_name, e.last_name,
                         (SELECT CONCAT(ee.first_name, ' ', ee.last_name) FROM employees ee WHERE ee.id = ea.approved_by) as approver_name
                  FROM employee_advances ea
-                 JOIN employees e ON ea.employee_id = e.id
+                 JOIN employees e ON ea.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE ea.tenant_id = ?`;
     const params = [tenantId];
     if (startDate) { query += ' AND ea.created_at >= ?'; params.push(startDate); }
@@ -298,9 +311,10 @@ exports.getAdvanceReport = async (req, res) => {
 };
 
 async function getTabData(tenantId, tab, params) {
+  const empStatus = empStatusValue(params.staffStatus);
   switch (tab) {
     case 'salary': {
-      let q = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.tenant_id = ?`;
+      let q = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour FROM payroll p JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}' WHERE p.tenant_id = ?`;
       const p = [tenantId];
       if (params.startDate) { q += ' AND p.pay_period_end >= ?'; p.push(params.startDate); }
       if (params.endDate) { q += ' AND p.pay_period_end <= ?'; p.push(params.endDate); }
@@ -316,7 +330,7 @@ async function getTabData(tenantId, tab, params) {
                         WHEN EXISTS (SELECT 1 FROM payroll p2 WHERE p2.employee_id = a.employee_id AND p2.tenant_id = a.tenant_id AND p2.status IN ('due','draft') AND a.date BETWEEN p2.pay_period_start AND p2.pay_period_end) THEN 'due'
                         ELSE 'unbilled'
                       END as pay_status
-               FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = 'active' WHERE a.tenant_id = ?`;
+               FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = '${empStatus}' WHERE a.tenant_id = ?`;
       const p = [tenantId];
       const df = buildDateFilter('a', params.startDate, params.endDate);
       q += df.clause; p.push(...df.params);
@@ -325,7 +339,7 @@ async function getTabData(tenantId, tab, params) {
       return rows;
     }
     case 'leaves': {
-      let q = `SELECT l.*, e.first_name, e.last_name FROM leaves l JOIN employees e ON l.employee_id = e.id WHERE l.tenant_id = ?`;
+      let q = `SELECT l.*, e.first_name, e.last_name FROM leaves l JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}' WHERE l.tenant_id = ?`;
       const p = [tenantId];
       if (params.startDate && params.endDate) { q += ' AND (l.start_date AT TIME ZONE \'UTC\')::date <= ? AND (l.end_date AT TIME ZONE \'UTC\')::date >= ?'; p.push(params.endDate, params.startDate); }
       else if (params.startDate) { q += ' AND l.start_date >= ?'; p.push(params.startDate); }
@@ -335,7 +349,7 @@ async function getTabData(tenantId, tab, params) {
       return rows;
     }
     case 'advances': {
-      let q = `SELECT ea.*, e.first_name, e.last_name FROM employee_advances ea JOIN employees e ON ea.employee_id = e.id WHERE ea.tenant_id = ?`;
+      let q = `SELECT ea.*, e.first_name, e.last_name FROM employee_advances ea JOIN employees e ON ea.employee_id = e.id AND e.status = '${empStatus}' WHERE ea.tenant_id = ?`;
       const p = [tenantId];
       if (params.startDate) { q += ' AND ea.created_at >= ?'; p.push(params.startDate); }
       if (params.endDate) { q += ' AND ea.created_at <= ?'; p.push(params.endDate + ' 23:59:59'); }
@@ -544,27 +558,30 @@ exports.exportReport = async (req, res) => {
 
 exports.getCharts = async (req, res) => {
   const tenantId = req.tenantId;
+  const { staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
   try {
     // Trend charts always span the full history (they are "trends"), independent of the
     // selected date preset — otherwise a single-month preset yields at most one data point.
+    // The employee-status toggle (active vs deactivated) still applies.
     const [salaryTrend] = await db.execute(
       `SELECT DATE_TRUNC('month', p.pay_period_end) as month, SUM(p.net_salary) as total, SUM(p.gross_salary) as gross
-       FROM payroll p JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+       FROM payroll p JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
        WHERE p.tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
     const [attendanceTrend] = await db.execute(
       `SELECT DATE_TRUNC('month', a.date) as month, SUM(a.total_hours) as hours, COUNT(DISTINCT a.employee_id) as employees
-       FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
+       FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = '${empStatus}'
        WHERE a.tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
     const [leaveDistribution] = await db.execute(
-      `SELECT leave_type, COUNT(*) as count FROM leaves WHERE tenant_id = ? AND status = 'approved' GROUP BY leave_type`, [tenantId]
+      `SELECT l.leave_type, COUNT(*) as count FROM leaves l JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}' WHERE l.tenant_id = ? AND l.status = 'approved' GROUP BY l.leave_type`, [tenantId]
     );
 
     const [advanceTrend] = await db.execute(
-      `SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as total FROM employee_advances WHERE tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
+      `SELECT DATE_TRUNC('month', ea.created_at) as month, SUM(ea.amount) as total FROM employee_advances ea JOIN employees e ON ea.employee_id = e.id AND e.status = '${empStatus}' WHERE ea.tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
     res.json({ salaryTrend, attendanceTrend, leaveDistribution, advanceTrend });

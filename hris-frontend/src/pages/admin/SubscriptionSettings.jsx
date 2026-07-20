@@ -28,7 +28,7 @@ const COMPARISON_FEATURES = [
   'kirana', 'reports_basic', 'entities', 'staff_directory', 'attendance', 'leaves',
   'purchase_orders', 'inventory', 'balance_sheet', 'advanced_reports',
   'payroll', 'advances', 'replacements', 'expenses',
-  'recurring_invoices', 'credit_debit_notes', 'pl_statement', 'cash_flow',
+  'recurring_invoices', 'pl_statement', 'cash_flow',
   'bank_import', 'gst_returns', 'e_invoicing', 'bulk_import',
   'tally_export', 'tds_management', 'gstr2b_reco', 'audit_logs',
   'multi_branch', 'whatsapp', 'api_access', 'white_label',

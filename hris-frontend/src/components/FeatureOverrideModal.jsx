@@ -19,7 +19,6 @@ const ALL_FEATURES = [
   { key: 'advances', label: 'Advances', type: 'boolean' },
   { key: 'replacements', label: 'Replacements', type: 'boolean' },
   { key: 'purchase_orders', label: 'Purchase Orders', type: 'boolean' },
-  { key: 'credit_debit_notes', label: 'Credit/Debit Notes', type: 'boolean' },
   { key: 'inventory', label: 'Inventory', type: 'boolean' },
   { key: 'advanced_reports', label: 'Advanced Reports', type: 'boolean' },
   { key: 'multi_branch', label: 'Multi-Branch', type: 'boolean' },

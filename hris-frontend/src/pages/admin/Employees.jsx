@@ -70,7 +70,7 @@ const Employees = () => {
         setFormFields(res.settings.employeeFormFields);
         localStorage.setItem('employee_form_fields', JSON.stringify(res.settings.employeeFormFields));
       }
-      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+      if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(res.settings.workHoursInDay);
     }).catch(() => {});
   }, []);
 

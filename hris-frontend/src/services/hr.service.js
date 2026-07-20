@@ -1,8 +1,14 @@
 import api from './api';
 
 export const hrService = {
-  getEmployees: async (includeDeactivated) => {
-    const params = includeDeactivated ? { includeDeactivated: 'true' } : {};
+  getEmployees: async (opts) => {
+    const params = {};
+    if (typeof opts === 'boolean') {
+      if (opts) params.includeDeactivated = 'true';
+    } else if (opts && typeof opts === 'object') {
+      if (opts.includeDeactivated) params.includeDeactivated = 'true';
+      if (opts.status) params.status = opts.status;
+    }
     const response = await api.get('/core/employees', { params });
     return response.data;
   },

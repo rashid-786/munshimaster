@@ -159,8 +159,10 @@ exports.getLowStockAlerts = async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT * FROM products
-       WHERE tenant_id = ? AND status = 'active' AND low_stock_threshold > 0 AND current_stock <= low_stock_threshold
-       ORDER BY (current_stock::float / NULLIF(low_stock_threshold, 0)) ASC`,
+       WHERE tenant_id = ? AND status = 'active'
+         AND (low_stock_threshold > 0 OR reorder_level > 0)
+         AND current_stock <= GREATEST(low_stock_threshold, reorder_level)
+       ORDER BY (current_stock::float / NULLIF(GREATEST(low_stock_threshold, reorder_level), 0)) ASC`,
       [tenantId]
     );
     res.json(rows || []);

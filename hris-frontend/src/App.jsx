@@ -46,7 +46,6 @@ import PaymentHistory from './pages/admin/PaymentHistory';
 import RecurringInvoices from './pages/admin/RecurringInvoices';
 import BankImport from './pages/admin/BankImport';
 import Products from './pages/admin/Products';
-import CreditDebitNotes from './pages/admin/CreditDebitNotes';
 import GstReturns from './pages/admin/GstReturns';
 import Gstr2bReconciliation from './pages/admin/Gstr2bReconciliation';
 import TDSManagement from './pages/admin/TDSManagement';
@@ -179,7 +178,6 @@ function App() {
             <Route path="purchase-transactions" element={<PlanRoute minPlan="business"><PurchaseTransactions /></PlanRoute>} />
             <Route path="recurring-invoices" element={<PlanRoute minPlan="business"><RecurringInvoices /></PlanRoute>} />
             <Route path="bank" element={<PlanRoute minPlan="business"><BankImport /></PlanRoute>} />
-            <Route path="notes" element={<PlanRoute minPlan="business"><CreditDebitNotes /></PlanRoute>} />
             <Route path="gst-returns" element={<PlanRoute minPlan="business"><GstReturns /></PlanRoute>} />
             <Route path="gstr2b" element={<PlanRoute minPlan="business"><Gstr2bReconciliation /></PlanRoute>} />
             <Route path="tds" element={<PlanRoute minPlan="business"><TDSManagement /></PlanRoute>} />

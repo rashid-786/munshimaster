@@ -9,6 +9,22 @@ import { getRank } from '../../config/subscriptionPlans';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Keep only digits and a single decimal point (mirrors the payroll decimal input UX).
+function sanitizeDecimal(v) {
+  let s = (v || '').replace(/[^0-9.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot !== -1) s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, '');
+  return s;
+}
+
+// Parse a decimal string, preserving 0 (unlike `x || fallback` which drops it).
+// Falls back only when the value is empty or not a number.
+function parseDecimal(v, fallback) {
+  if (v === '' || v === null || v === undefined) return fallback;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? fallback : n;
+}
+
 const EMPLOYEE_FIELDS = [
   { key: 'email', label: 'Work Email' },
   { key: 'role', label: 'Role' },
@@ -37,7 +53,7 @@ const Settings = () => {
   const { user, tenant, updateUser } = useAuth();
   const planRank = getRank(tenant?.subscriptionPlan);
   const visibleTabs = useMemo(() => {
-    if (planRank < 2) return ALL_TABS.filter(t => t.key !== 'einvoice' && t.key !== 'whatsapp');
+    if (planRank < 2) return ALL_TABS.filter(t => t.key !== 'einvoice' && t.key !== 'whatsapp' && t.key !== 'invoice_templates');
     return ALL_TABS;
   }, [planRank]);
 
@@ -47,7 +63,7 @@ const Settings = () => {
   const [email, setEmail] = useState(user?.email || '');
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [weekendDays, setWeekendDays] = useState([0]);
-  const [advanceDeductionPct, setAdvanceDeductionPct] = useState(10);
+  const [advanceDeductionPct, setAdvanceDeductionPct] = useState('10');
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [hiddenItems, setHiddenItems] = useState({});
   const [groupLabels, setGroupLabels] = useState({
@@ -59,7 +75,7 @@ const Settings = () => {
   });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
-  const [workHoursInDay, setWorkHoursInDay] = useState(8);
+  const [workHoursInDay, setWorkHoursInDay] = useState('8');
   const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [employeeFormFields, setEmployeeFormFields] = useState({
     email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
@@ -73,7 +89,7 @@ const Settings = () => {
   const [whatsappLoaded, setWhatsappLoaded] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   useEffect(() => {
-    if (planRank < 2 && (activeTab === 'einvoice' || activeTab === 'whatsapp')) {
+    if (planRank < 2 && (activeTab === 'einvoice' || activeTab === 'whatsapp' || activeTab === 'invoice_templates')) {
       navigate('/admin/settings/general', { replace: true });
     }
   }, [planRank, activeTab, navigate]);
@@ -88,7 +104,7 @@ const Settings = () => {
       setCompanyName(res.companyName || '');
       if (res.settings?.primaryColor) setPrimaryColor(res.settings.primaryColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
-      if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(res.settings.advanceDeductionPct);
+      if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(String(res.settings.advanceDeductionPct));
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
       if (res.settings?.groupLabels) setGroupLabels(prev => ({ ...prev, ...res.settings.groupLabels }));
@@ -100,7 +116,7 @@ const Settings = () => {
         setCountryCode(res.settings.countryCode);
         localStorage.setItem('default_country_code', res.settings.countryCode);
       }
-      if (res.settings?.workHoursInDay) setWorkHoursInDay(res.settings.workHoursInDay);
+      if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(String(res.settings.workHoursInDay));
       if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
       if (res.settings?.employeeFormFields) {
         setEmployeeFormFields(res.settings.employeeFormFields);
@@ -137,7 +153,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, weekendDays, workHoursInDay, hourBasedAttendance, advanceDeductionPct, hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -316,7 +332,7 @@ const Settings = () => {
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input type="checkbox" checked={!!hiddenGroups['My Business']} onChange={e => setHiddenGroups({ ...hiddenGroups, 'My Business': e.target.checked })}
                         className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
-                      <span className="text-sm text-gray-700">Hide {groupLabels['My Business']}</span>
+                      <span className="text-sm text-gray-700">Hide {groupLabels['My Business'] || 'Billing'}</span>
                     </label>
                   )}
                   <label className="flex items-center gap-2.5 cursor-pointer">
@@ -469,7 +485,13 @@ const Settings = () => {
         </div>
       )}
 
-      {activeTab === 'invoice_templates' && (
+      {activeTab === 'invoice_templates' && planRank < 2 && (
+        <div className="card p-6 text-center">
+          <p className="text-gray-500 text-sm">Invoice Templates are available on the <span className="font-semibold text-indigo-600">Business</span> plan and above.</p>
+          <button onClick={() => setShowUpgrade(true)} className="btn-primary mt-4">Upgrade Now</button>
+        </div>
+      )}
+      {activeTab === 'invoice_templates' && planRank >= 2 && (
         <InvoiceTemplates />
       )}
 
@@ -517,7 +539,7 @@ const Settings = () => {
             <hr className="border-gray-200" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Work Hours in a Day</label>
-              <input type="number" min="1" max="24" step="0.5" value={workHoursInDay} onChange={e => setWorkHoursInDay(parseFloat(e.target.value) || 8)} className="input-field max-w-[120px]" />
+              <input type="text" inputMode="decimal" value={workHoursInDay} onChange={e => setWorkHoursInDay(sanitizeDecimal(e.target.value))} className="input-field max-w-[120px]" />
               <p className="text-xs text-gray-400 mt-1">Used to calculate Pay Per Hour = Monthly Salary / (30 × Work Hours in a Day).</p>
             </div>
             <div className="flex items-center gap-2.5 pt-1">
@@ -530,7 +552,7 @@ const Settings = () => {
             <hr className="border-gray-200" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
-              <input type="number" min="0" max="100" step="1" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(parseFloat(e.target.value) || 0)} className="input-field max-w-[120px]" />
+              <input type="text" inputMode="decimal" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(sanitizeDecimal(e.target.value))} className="input-field max-w-[120px]" />
               <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
             </div>
             <hr className="border-gray-200" />

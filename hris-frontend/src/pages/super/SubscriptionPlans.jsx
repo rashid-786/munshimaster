@@ -19,7 +19,6 @@ const ALL_FEATURE_DEFS = [
   { key: 'max_products', label: 'Products', type: 'limit', defaultMax: 20 },
   { key: 'invoices', label: 'Invoices', type: 'boolean' },
   { key: 'purchase_orders', label: 'Purchase Orders', type: 'boolean' },
-  { key: 'credit_debit_notes', label: 'Credit/Debit Notes', type: 'boolean' },
   { key: 'attendance', label: 'Attendance', type: 'boolean' },
   { key: 'leaves', label: 'Leaves', type: 'boolean' },
   { key: 'payroll', label: 'Payroll', type: 'boolean' },

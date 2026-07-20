@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
 
 function countWeekdays(start, end) {
   let count = 0;
@@ -415,19 +417,30 @@ exports.downloadPayslip = async (req, res) => {
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
+    // Register font with ₹ support (fall back to Helvetica if unavailable)
+    const fontDir = path.join(__dirname, '..', 'fonts');
+    const fontRegular = path.join(fontDir, 'NotoSans-Regular.ttf');
+    const fontBold = path.join(fontDir, 'NotoSans-Bold.ttf');
+    const hasFont = fs.existsSync(fontRegular);
+    if (hasFont) {
+      doc.registerFont('Custom', fontRegular);
+      doc.registerFont('Custom-Bold', fontBold);
+    }
+    const RF = (bold) => hasFont ? (bold ? 'Custom-Bold' : 'Custom') : (bold ? 'Helvetica-Bold' : 'Helvetica');
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=payslip_${payrollId}.pdf`);
     doc.pipe(res);
 
-    doc.font('Helvetica-Bold').fontSize(18).text(sellerLegalName.toUpperCase(), { align: 'center' });
-    if (sellerAddress) doc.font('Helvetica').fontSize(9).text(sellerAddress, { align: 'center' });
+    doc.font(RF(true)).fontSize(18).text(sellerLegalName.toUpperCase(), { align: 'center' });
+    if (sellerAddress) doc.font(RF(false)).fontSize(9).text(sellerAddress, { align: 'center' });
     const cityLine = [sellerCity, sellerState].filter(Boolean).join(', ');
     const locLine = [cityLine, sellerPincode].filter(Boolean).join(' — ');
     if (locLine) doc.fontSize(9).text(locLine, { align: 'center' });
     if (sellerEmail) doc.fontSize(9).text(`Email: ${sellerEmail}`, { align: 'center' });
     if (sellerGstin) doc.fontSize(9).text(`GSTIN: ${sellerGstin}`, { align: 'center' });
     doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').fontSize(11).text('PAYSLIP', { align: 'center' });
+    doc.font(RF(true)).fontSize(11).text('PAYSLIP', { align: 'center' });
     doc.moveDown(1);
 
     // Horizontal rule
@@ -438,11 +451,11 @@ exports.downloadPayslip = async (req, res) => {
     // Employee info and period side-by-side
     const leftX = 50, rightX = 320;
     const infoY = doc.y;
-    doc.font('Helvetica-Bold').fontSize(10).text('EMPLOYEE DETAILS', leftX, infoY);
-    doc.font('Helvetica-Bold').fontSize(10).text('PAY PERIOD', rightX, infoY);
+    doc.font(RF(true)).fontSize(10).text('EMPLOYEE DETAILS', leftX, infoY);
+    doc.font(RF(true)).fontSize(10).text('PAY PERIOD', rightX, infoY);
     doc.moveDown(1.5);
 
-    doc.font('Helvetica').fontSize(9);
+    doc.font(RF(false)).fontSize(9);
     const empY = doc.y;
     doc.text(`Name: ${data.first_name} ${data.last_name}`, leftX, empY);
     doc.text(`From: ${fmtD(data.pay_period_start)}`, rightX, empY);
@@ -457,7 +470,7 @@ exports.downloadPayslip = async (req, res) => {
 
     const payStatus = data.status === 'paid' ? 'Paid' : 'Due';
     const statusX = rightX + doc.widthOfString(`Status: `);
-    doc.font('Helvetica-Bold').fontSize(9).text(payStatus, statusX, empY3, { continued: false });
+    doc.font(RF(true)).fontSize(9).text(payStatus, statusX, empY3, { continued: false });
 
     doc.moveDown(1.5);
 
@@ -466,13 +479,14 @@ exports.downloadPayslip = async (req, res) => {
     doc.moveTo(50, tableY).lineTo(545, tableY).stroke();
     doc.moveDown(0.3);
 
-    doc.font('Helvetica-Bold').fontSize(10);
+    doc.font(RF(true)).fontSize(10);
     const col = [50, 290, 380, 470];
     const colW = [240, 90, 90, 80];
-    doc.text('Description', col[0], doc.y, { width: colW[0] });
-    doc.text('Rate', col[1], doc.y, { width: colW[1], align: 'right' });
-    doc.text('Qty/Hours', col[2], doc.y, { width: colW[2], align: 'right' });
-    doc.text('Amount', col[3], doc.y, { width: colW[3], align: 'right' });
+    const headerY = doc.y;
+    doc.text('Description', col[0], headerY, { width: colW[0] });
+    doc.text('Rate', col[1], headerY, { width: colW[1], align: 'right' });
+    doc.text('Qty/Hours', col[2], headerY, { width: colW[2], align: 'right' });
+    doc.text('Amount', col[3], headerY, { width: colW[3], align: 'right' });
     doc.moveDown(0.3);
     const lineY = doc.y;
     doc.moveTo(50, lineY).lineTo(545, lineY).stroke();
@@ -486,7 +500,7 @@ exports.downloadPayslip = async (req, res) => {
     const advDedAmt = (data.advance_deduction / 100).toFixed(2);
     const netAmt = (data.net_salary / 100).toFixed(2);
 
-    doc.font('Helvetica').fontSize(9);
+    doc.font(RF(false)).fontSize(9);
     let yPos = doc.y;
 
     doc.text('Gross Pay (Hours Worked)', col[0], yPos, { width: colW[0] });
@@ -516,13 +530,13 @@ exports.downloadPayslip = async (req, res) => {
     // Total line
     doc.moveTo(50, yPos).lineTo(545, yPos).stroke();
     yPos += 5;
-    doc.font('Helvetica-Bold').fontSize(11);
+    doc.font(RF(true)).fontSize(11);
     doc.text('NET PAYABLE', col[0], yPos, { width: colW[0] });
     doc.text(`₹${netAmt}`, col[3], yPos, { width: colW[3], align: 'right' });
     yPos += 25;
 
     // Status badge
-    doc.font('Helvetica').fontSize(9);
+    doc.font(RF(false)).fontSize(9);
     const statusColor = data.status === 'paid' ? '#059669' : '#d97706';
     doc.fillColor(statusColor).font('Helvetica-Bold').fontSize(10);
     doc.text(`Payment Status: ${payStatus.toUpperCase()}`, col[0], yPos);
@@ -532,7 +546,7 @@ exports.downloadPayslip = async (req, res) => {
     yPos += 30;
     doc.moveTo(50, yPos).lineTo(545, yPos).stroke();
     yPos += 10;
-    doc.font('Helvetica').fontSize(8).fillColor('#6b7280');
+    doc.font(RF(false)).fontSize(8).fillColor('#6b7280');
     doc.text(`Standard Hours: ${stdHrs}h (${stdHrs / 8} days × 8 hrs) | Hourly Rate: ₹${hr}/hr`, col[0], yPos, { width: 495 });
     yPos += 12;
     doc.text(`Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, col[0], yPos, { width: 495 });

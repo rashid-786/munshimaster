@@ -68,6 +68,7 @@ export default function StaffReports() {
   const [customEnd, setCustomEnd] = useState('');
   const [extraFilter, setExtraFilter] = useState({});
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [showDeactivated, setShowDeactivated] = useState(() => localStorage.getItem('staff_reports_show_deactivated') === 'true');
 
   const search = useMemo(() => {
     if (!selectedEmployeeId) return '';
@@ -105,7 +106,7 @@ export default function StaffReports() {
     setLoading(true);
     setError('');
     try {
-      const params = { ...dateRange, search, ...extraFilter };
+      const params = { ...dateRange, search, ...extraFilter, staffStatus: showDeactivated ? 'deactivated' : 'active' };
       if (tab === 'dashboard') {
         const [s, c] = await Promise.all([
           hrService.getStaffReportSummary(params),
@@ -135,16 +136,21 @@ export default function StaffReports() {
     } finally {
       setLoading(false);
     }
-  }, [tab, dateRange, search, extraFilter]);
+  }, [tab, dateRange, search, extraFilter, showDeactivated]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    hrService.getEmployees().then(setEmployees).catch(() => {});
-  }, []);
+    localStorage.setItem('staff_reports_show_deactivated', showDeactivated ? 'true' : 'false');
+  }, [showDeactivated]);
+
+  useEffect(() => {
+    hrService.getEmployees(showDeactivated ? { status: 'deactivated' } : {})
+      .then(setEmployees).catch(() => {});
+  }, [showDeactivated]);
 
   const handleExport = (format) => {
-    const params = { ...dateRange, search, ...extraFilter };
+    const params = { ...dateRange, search, ...extraFilter, staffStatus: showDeactivated ? 'deactivated' : 'active' };
     hrService.downloadStaffReport(tab === 'hours' ? 'working-hours' : tab, format, params);
   };
 
@@ -217,7 +223,7 @@ export default function StaffReports() {
     if (!summary) return null;
     const cards = [
       { label: 'Total Employees',   value: summary.totalEmployees,      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, color: 'bg-indigo-50 text-indigo-600' },
-      { label: 'Total Salary Paid',  value: formatINR(summary.totalSalaryPaid), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-emerald-50 text-emerald-600' },
+      { label: 'Total Salary Paid',  value: formatINR(summary.totalSalaryPaid), icon: <span className="text-xl font-bold leading-none">₹</span>, color: 'bg-emerald-50 text-emerald-600' },
       { label: 'Salary Pending',     value: formatINR(summary.totalSalaryPending), icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-amber-50 text-amber-600' },
       { label: 'Hours Logged',       value: `${summary.totalHoursLogged || 0}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-blue-50 text-blue-600' },
       { label: 'Paid Hours',         value: `${summary.totalPaidHours || 0}h`, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, color: 'bg-emerald-50 text-emerald-600' },
@@ -366,6 +372,11 @@ export default function StaffReports() {
             </span>
           )}
           <span className="w-px h-5 bg-gray-200 shrink-0" />
+          <label className="flex items-center gap-2 cursor-pointer shrink-0">
+            <input type="checkbox" checked={showDeactivated} onChange={(e) => { setShowDeactivated(e.target.checked); setSelectedEmployeeId(''); }}
+              className="w-4 h-4 rounded border-gray-300 text-[var(--primary-600)] focus:ring-[var(--primary-500)]" />
+            <span className="text-sm text-gray-700 whitespace-nowrap">Show Deactivated Staff</span>
+          </label>
           {tab !== 'dashboard' && (
           <div className="min-w-[160px] max-w-[200px]">
             <SearchableSelect
@@ -428,7 +439,7 @@ export default function StaffReports() {
       {!loading && tab === 'salary' && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <KpiCard label="Total Salary Paid" value={formatINR(summary?.totalSalaryPaid)} icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} color="bg-emerald-50 text-emerald-600" />
+            <KpiCard label="Total Salary Paid" value={formatINR(summary?.totalSalaryPaid)} icon={<span className="text-xl font-bold leading-none">₹</span>} color="bg-emerald-50 text-emerald-600" />
             <KpiCard label="Salary Pending" value={formatINR(summary?.totalSalaryPending)} icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} color="bg-amber-50 text-amber-600" />
           </div>
           {renderTable(salaryData, salaryColumns)}

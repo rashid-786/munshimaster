@@ -19,7 +19,7 @@
  *           'advanced_reports'|'multi_branch'|'whatsapp'|
  *           'api_access'|'white_label'|'priority_support'|
  *           'bank_import'|'gst_returns'|'e_invoicing'|
- *           'bulk_import'|'recurring_invoices'|'credit_debit_notes'|
+ *           'bulk_import'|'recurring_invoices'|
  *           'cash_flow'|'products'|'staff_directory'|'attendance'|
  *           'leaves'|'advances'|'replacements'|'audit_logs'|
  *           'entities'|'customers'|'suppliers'|'balance_sheet'|
@@ -79,7 +79,6 @@ export const PLANS = {
       e_invoicing: false,
       bulk_import: false,
       recurring_invoices: false,
-      credit_debit_notes: false,
       cash_flow: false,
       products: false,
       staff_directory: false,
@@ -137,7 +136,6 @@ export const PLANS = {
       e_invoicing: false,
       bulk_import: false,
       recurring_invoices: false,
-      credit_debit_notes: false,
       cash_flow: false,
       products: true,
       staff_directory: true,
@@ -195,7 +193,6 @@ export const PLANS = {
       e_invoicing: false,
       bulk_import: false,
       recurring_invoices: false,
-      credit_debit_notes: false,
       cash_flow: false,
       products: true,
       staff_directory: true,
@@ -253,7 +250,6 @@ export const PLANS = {
       e_invoicing: true,
       bulk_import: true,
       recurring_invoices: true,
-      credit_debit_notes: true,
       cash_flow: true,
       products: true,
       staff_directory: true,
@@ -406,7 +402,6 @@ export const FEATURE_LABELS = {
   e_invoicing: 'E-Invoicing',
   bulk_import: 'Bulk Import',
   recurring_invoices: 'Recurring Invoices',
-  credit_debit_notes: 'Credit / Debit Notes',
   cash_flow: 'Cash Flow',
   products: 'Products / Inventory',
   staff_directory: 'Staff Directory',
@@ -486,10 +481,8 @@ export const MENU_SECTIONS = [
       { feature: 'staff_directory', requiredPlan: 'MANAGE', label: 'Staff Directory', route: '/admin/employees' },
       { feature: 'attendance',      requiredPlan: 'MANAGE', label: 'Attendance',      route: '/admin/calendar' },
       { feature: 'leaves',          requiredPlan: 'MANAGE', label: 'Leaves',           route: '/admin/leaves' },
-      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Payroll', type: 'subheader', items: [
-        { feature: 'payroll', requiredPlan: 'MANAGE', label: 'Payroll History', route: '/admin/payroll' },
-        { feature: 'payroll', requiredPlan: 'MANAGE', label: 'Run Payroll',     route: '/admin/payroll/run' },
-      ] },
+      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Payroll History', route: '/admin/payroll' },
+      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Run Payroll',     route: '/admin/payroll/run' },
       { feature: 'advances',        requiredPlan: 'MANAGE', label: 'Advances',         route: '/admin/advances' },
       { feature: 'replacements',    requiredPlan: 'MANAGE', label: 'Replacements',     route: '/admin/replacements' },
       { feature: null,              requiredPlan: 'MANAGE', label: 'Reports',          route: '/admin/staff-reports' },
@@ -503,25 +496,28 @@ export const MENU_SECTIONS = [
     route: '/admin/business',
     type: 'group',
     items: [
-      { feature: 'suppliers',           requiredPlan: 'BUSINESS', label: 'Suppliers',         route: '/admin/suppliers' },
-      { feature: 'customers',           requiredPlan: 'BUSINESS', label: 'Customers',         route: '/admin/customers' },
-      { feature: 'invoices',            requiredPlan: 'BUSINESS', label: 'Transactions', type: 'subheader', items: [
-        { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Sales', route: '/admin/sales-transactions' },
-        { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Purchase', route: '/admin/purchase-transactions' },
+      { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Sales Invoices', route: '/admin/sales-transactions' },
+      { feature: 'recurring_invoices', requiredPlan: 'BUSINESS', label: 'Recurring', route: '/admin/recurring-invoices' },
+      { feature: 'invoices', requiredPlan: 'BUSINESS', label: 'Purchase Bills', route: '/admin/purchase-transactions' },
+      { feature: 'bank_import', requiredPlan: 'BUSINESS', label: 'Bank Import', route: '/admin/bank' },
+      { feature: 'products', requiredPlan: 'BUSINESS', label: 'Products & Stock', route: '/admin/products' },
+      { feature: 'customers', requiredPlan: 'BUSINESS', label: 'Parties', type: 'subheader', items: [
+        { feature: 'customers', requiredPlan: 'BUSINESS', label: 'Customers', route: '/admin/customers' },
+        { feature: 'suppliers', requiredPlan: 'BUSINESS', label: 'Suppliers', route: '/admin/suppliers' },
       ] },
-      { feature: 'recurring_invoices',  requiredPlan: 'BUSINESS', label: 'Recurring',         route: '/admin/recurring-invoices' },
-      { feature: 'bank_import',         requiredPlan: 'BUSINESS', label: 'Bank Import',       route: '/admin/bank' },
-      { feature: 'credit_debit_notes',  requiredPlan: 'BUSINESS', label: 'Credit/Debit Notes',route: '/admin/notes' },
-      { feature: 'balance_sheet',       requiredPlan: 'BUSINESS', label: 'Balance Sheet',     route: '/admin/balance' },
-      { feature: 'advanced_reports',    requiredPlan: 'BUSINESS', label: 'Reports',           route: '/admin/reports' },
-      { feature: 'pl_statement',        requiredPlan: 'BUSINESS', label: 'P&L Statement',     route: '/admin/pl' },
-      { feature: 'cash_flow',           requiredPlan: 'BUSINESS', label: 'Cash Flow',         route: '/admin/cash-flow' },
-      { feature: 'gst_returns',         requiredPlan: 'BUSINESS', label: 'GST Returns',       route: '/admin/gst-returns' },
-      { feature: 'gstr2b_reco',         requiredPlan: 'BUSINESS', label: 'GSTR-2B Reco',      route: '/admin/gstr2b' },
-      { feature: 'tds_management',      requiredPlan: 'BUSINESS', label: 'TDS Management',    route: '/admin/tds' },
-      { feature: 'tally_export',        requiredPlan: 'BUSINESS', label: 'Tally Export',      route: '/admin/tally' },
-      { feature: 'bulk_import',         requiredPlan: 'BUSINESS', label: 'Bulk Import',       route: '/admin/bulk-import' },
-      { feature: 'products',            requiredPlan: 'BUSINESS', label: 'Inventory',         route: '/admin/products' },
+      { feature: 'balance_sheet', requiredPlan: 'BUSINESS', label: 'Accounting', type: 'subheader', items: [
+        { feature: 'balance_sheet', requiredPlan: 'BUSINESS', label: 'Balance Sheet', route: '/admin/balance' },
+        { feature: 'pl_statement', requiredPlan: 'BUSINESS', label: 'P&L Statement', route: '/admin/pl' },
+        { feature: 'cash_flow', requiredPlan: 'BUSINESS', label: 'Cash Flow', route: '/admin/cash-flow' },
+        { feature: 'advanced_reports', requiredPlan: 'BUSINESS', label: 'Reports', route: '/admin/reports' },
+      ] },
+      { feature: 'gst_returns', requiredPlan: 'BUSINESS', label: 'Compliance', type: 'subheader', items: [
+        { feature: 'gst_returns', requiredPlan: 'BUSINESS', label: 'GST Returns', route: '/admin/gst-returns' },
+        { feature: 'gstr2b_reco', requiredPlan: 'BUSINESS', label: 'GSTR-2B Reconciliation', route: '/admin/gstr2b' },
+        { feature: 'tds_management', requiredPlan: 'BUSINESS', label: 'TDS Management', route: '/admin/tds' },
+        { feature: 'tally_export', requiredPlan: 'BUSINESS', label: 'Tally Export', route: '/admin/tally' },
+        { feature: 'bulk_import', requiredPlan: 'BUSINESS', label: 'Bulk Import', route: '/admin/bulk-import' },
+      ] },
     ],
   },
   {
@@ -568,7 +564,7 @@ export const MENU_SECTIONS = [
       { feature: null,                requiredPlan: 'FREE',          label: 'Business',      route: '/admin/settings/business' },
       { feature: 'e_invoicing',       requiredPlan: 'BUSINESS',      label: 'E-Invoicing',   route: '/admin/settings/einvoice' },
       { feature: 'whatsapp',          requiredPlan: 'BUSINESS',      label: 'WhatsApp',      route: '/admin/settings/whatsapp' },
-      { feature: null,                requiredPlan: 'FREE',          label: 'Invoice Templates', route: '/admin/settings/invoice_templates' },
+      { feature: null,                requiredPlan: 'BUSINESS',      label: 'Invoice Templates', route: '/admin/settings/invoice_templates' },
       { feature: null,                requiredPlan: 'FREE',          label: 'Sidebar',       route: '/admin/settings/sidebar' },
       { feature: null,                requiredPlan: 'FREE',          label: 'Password',      route: '/admin/settings/password' },
       { feature: null,                requiredPlan: 'FREE',          label: 'My Staff',      route: '/admin/settings/staff' },

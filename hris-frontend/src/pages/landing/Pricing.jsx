@@ -14,7 +14,6 @@ const FEATURE_LABELS = {
   invoices: 'Invoicing',
   purchase_orders: 'Purchase orders',
   recurring_invoices: 'Recurring invoices',
-  credit_debit_notes: 'Credit / Debit notes',
   expenses: 'Expense tracking',
   inventory: 'Inventory management',
   products: 'Product catalog',
@@ -82,7 +81,7 @@ function getPlanFeatures(plan) {
 
   // Always show core features first
   if (f.my_bahi_book === true) bullets.push('Bahi Book ledger with khata tracking');
-  if (f.invoices === true) bullets.push('Invoicing with credit / debit notes');
+  if (f.invoices === true) bullets.push('Professional invoicing');
   if (f.purchase_orders === true) bullets.push('Purchase orders');
   if (f.recurring_invoices === true) bullets.push('Recurring billing');
   if (f.payroll === true) bullets.push('Payroll processing');

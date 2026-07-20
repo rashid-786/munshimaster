@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { DOC_LABELS, DOCUMENT_CONFIG, STATUS_STYLES } from '../../config/documentConfig';
 import TransactionForm from '../../components/TransactionForm';
@@ -98,10 +99,15 @@ export default function SalesTransactions() {
   const [templateConfig, setTemplateConfig] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [printData, setPrintData] = useState(null);
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     hrService.getInvoiceTemplateSettings().then(r => setTemplateConfig(r || {})).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setShowForm(true);
+  }, [searchParams]);
 
   useEffect(() => {
     if (printData) {

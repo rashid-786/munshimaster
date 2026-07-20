@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import EmptyState from '../../components/EmptyState';
 import { hrService } from '../../services/hr.service';
 import Loading from '../../components/Loading';
 
@@ -242,7 +243,7 @@ export default function PLStatement() {
 
       {!data.monthly?.length && !s?.totalIncome && !s?.totalExpenses && (
         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-          <p className="text-gray-400 text-sm">No data available for the selected period.</p>
+          <EmptyState icon="📊" title="No data available" message="No data available for the selected period." />
         </div>
       )}
     </div>
