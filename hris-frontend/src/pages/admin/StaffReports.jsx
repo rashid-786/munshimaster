@@ -154,6 +154,16 @@ export default function StaffReports() {
     hrService.downloadStaffReport(tab === 'hours' ? 'working-hours' : tab, format, params);
   };
 
+  const isFiltered = datePreset !== 'Current Month' || !!customStart || !!customEnd || !!selectedEmployeeId || Object.keys(extraFilter).length > 0;
+
+  const clearFilters = () => {
+    setDatePreset('Current Month');
+    setCustomStart('');
+    setCustomEnd('');
+    setSelectedEmployeeId('');
+    setExtraFilter({});
+  };
+
   const handlePresetClick = (label) => {
     setDatePreset(label);
     setCustomStart('');
@@ -420,6 +430,14 @@ export default function StaffReports() {
               <option value="rejected">Rejected</option>
               <option value="fully_paid">Fully Paid</option>
             </select>
+          )}
+          {isFiltered && (
+            <button onClick={clearFilters}
+              className="flex items-center gap-1 text-xs font-medium rounded-lg transition-colors whitespace-nowrap border px-2.5 py-1.5 shrink-0 text-gray-500 hover:text-red-600 hover:border-red-300 border-gray-300"
+              title="Clear filters">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              Clear
+            </button>
           )}
           <div className="flex gap-1 ml-auto shrink-0">
             <button onClick={() => handleExport('pdf')} className="btn-secondary !py-1.5 !px-2 text-xs" title="Export PDF">
