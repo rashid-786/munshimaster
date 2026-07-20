@@ -208,6 +208,15 @@ const EmployeeCalendar = () => {
 
   const handleMouseLeave = () => setTooltip(null);
 
+  const handleHoursChange = (valueStr) => {
+    let sanitized = valueStr.replace(/[^0-9.]/g, '');
+    const firstDot = sanitized.indexOf('.');
+    if (firstDot !== -1) {
+      sanitized = sanitized.slice(0, firstDot + 1) + sanitized.slice(firstDot + 1).replace(/\./g, '');
+    }
+    setTotalHoursVal(sanitized);
+  };
+
   const payrollBreakdown = useMemo(() => {
     if (!calendarData) return [];
     return calendarData.employees.map(emp => {
@@ -467,16 +476,16 @@ const EmployeeCalendar = () => {
             ) : (
               <div className="space-y-4">
                 {hourBasedAttendance ? (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours Worked</label>
-                    <input type="number" step="0.5" min="0" max="24"
-                      value={totalHoursVal}
-                      onChange={e => setTotalHoursVal(parseFloat(e.target.value) || 0)}
-                      className="input-field text-sm text-center text-lg font-semibold py-3" />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {parseFloat(totalHoursVal) > 0 ? 'Marked as Present' : 'Marked as Absent/Leave'}
-                    </p>
-                  </div>
+                   <div>
+                     <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours Worked</label>
+                     <input type="text" inputMode="decimal"
+                       value={totalHoursVal}
+                       onChange={e => handleHoursChange(e.target.value)}
+                       className="input-field text-sm text-center text-lg font-semibold py-3" />
+                     <p className="text-xs text-gray-400 mt-1">
+                       {parseFloat(totalHoursVal) > 0 ? 'Marked as Present' : 'Marked as Absent/Leave'}
+                     </p>
+                   </div>
                 ) : (
                   <>
                     <div>

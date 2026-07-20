@@ -58,7 +58,7 @@ const PayrollConsole = () => {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = fmtDate(now);
 
   // Header cards mirror the HR Dashboard exactly (current-month company snapshot).
   useEffect(() => {

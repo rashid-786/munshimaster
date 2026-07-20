@@ -25,19 +25,40 @@ exports.getSummary = async (req, res) => {
     const [payrollStats] = await db.execute(payrollQ, payrollP);
     const totalHoursWorked = parseFloat(payrollStats[0].total_hours) || 0;
 
-    let paidQ = 'SELECT COALESCE(SUM(net_salary), 0) as total FROM payroll WHERE tenant_id = ? AND status = ?';
+    let paidQ = `SELECT COALESCE(SUM(p.net_salary), 0) as total FROM payroll p
+                 JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+                 WHERE p.tenant_id = ? AND p.status = ?`;
     const paidP = [tenantId, 'paid'];
-    if (startDate) { paidQ += ' AND pay_period_end >= ?'; paidP.push(startDate); }
-    if (endDate) { paidQ += ' AND pay_period_end <= ?'; paidP.push(endDate); }
+    if (startDate) { paidQ += ' AND p.pay_period_end >= ?'; paidP.push(startDate); }
+    if (endDate) { paidQ += ' AND p.pay_period_end <= ?'; paidP.push(endDate); }
     const [paidStats] = await db.execute(paidQ, paidP);
     const totalSalaryPaid = paidStats[0].total;
 
-    let dueQ = 'SELECT COALESCE(SUM(net_salary), 0) as total FROM payroll WHERE tenant_id = ? AND status IN (?, ?)';
-    const dueP = [tenantId, 'due', 'draft'];
-    if (startDate) { dueQ += ' AND pay_period_end >= ?'; dueP.push(startDate); }
-    if (endDate) { dueQ += ' AND pay_period_end <= ?'; dueP.push(endDate); }
-    const [dueStats] = await db.execute(dueQ, dueP);
-    const totalSalaryPending = dueStats[0].total;
+    // Salary Pending = unpaid worked hours × pay-per-hour (attendance not yet covered by a paid payroll).
+    // Mirrors the HR Dashboard "Total Due Amount": active employees, paid periods excluded, salary staff → 0.
+    const dateParams = [];
+    let pendingDateClause = '';
+    if (startDate) { pendingDateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
+    if (endDate) { pendingDateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
+    const [pendingEmps] = await db.execute(
+      'SELECT id, pay_per_hour FROM employees WHERE tenant_id = ? AND status = ?',
+      [tenantId, 'active']
+    );
+    let totalSalaryPending = 0;
+    for (const emp of pendingEmps) {
+      const [ph] = await db.execute(
+        `SELECT COALESCE(SUM(a.total_hours), 0) as h FROM attendance a
+         WHERE a.tenant_id = ? AND a.employee_id = ? AND a.total_hours > 0 ${pendingDateClause}
+         AND NOT EXISTS (
+           SELECT 1 FROM payroll p
+           WHERE p.tenant_id = a.tenant_id AND p.employee_id = a.employee_id
+             AND p.status = 'paid' AND p.total_hours_worked > 0
+             AND a.date >= p.pay_period_start AND a.date <= p.pay_period_end
+         )`,
+        [tenantId, emp.id, ...dateParams]
+      );
+      totalSalaryPending += (parseFloat(ph[0].h) || 0) * (Number(emp.pay_per_hour) || 0);
+    }
 
     let attQ = `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
                 FROM attendance a
@@ -107,18 +128,85 @@ exports.getSalaryReport = async (req, res) => {
   const tenantId = req.tenantId;
   const { startDate, endDate, search, status } = req.query;
   try {
+    // Pending ("due") salaries are not stored as payroll records (processing marks them paid);
+    // they are the worked hours not yet covered by a paid payroll, computed from attendance.
+    const buildDueRows = async () => {
+      const dateParams = [];
+      let dateClause = '';
+      if (startDate) { dateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
+      if (endDate) { dateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
+      let searchClause = '';
+      const searchParams = [];
+      if (search) {
+        searchClause = ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ? OR e.email ILIKE ?)`;
+        searchParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+      const [emps] = await db.execute(
+        `SELECT id, first_name, last_name, email, base_salary, pay_per_hour
+         FROM employees e WHERE e.tenant_id = ? AND e.status = 'active' ${searchClause}`,
+        [tenantId, ...searchParams]
+      );
+      const rows = [];
+      for (const emp of emps) {
+        const [ph] = await db.execute(
+          `SELECT COALESCE(SUM(a.total_hours), 0) as h FROM attendance a
+           WHERE a.tenant_id = ? AND a.employee_id = ? AND a.total_hours > 0 ${dateClause}
+           AND NOT EXISTS (
+             SELECT 1 FROM payroll p
+             WHERE p.tenant_id = a.tenant_id AND p.employee_id = a.employee_id
+               AND p.status = 'paid' AND p.total_hours_worked > 0
+               AND a.date >= p.pay_period_start AND a.date <= p.pay_period_end
+           )`,
+          [tenantId, emp.id, ...dateParams]
+        );
+        const hours = parseFloat(ph[0].h) || 0;
+        if (hours <= 0) continue;
+        const due = Math.round(hours * (Number(emp.pay_per_hour) || 0));
+        rows.push({
+          id: null,
+          employee_id: emp.id,
+          first_name: emp.first_name,
+          last_name: emp.last_name,
+          email: emp.email,
+          base_salary: emp.base_salary,
+          pay_per_hour: emp.pay_per_hour,
+          hourly_rate: emp.pay_per_hour,
+          total_hours_worked: hours,
+          gross_salary: due,
+          advance_deduction: 0,
+          net_salary: due,
+          status: 'due',
+          pay_period_start: startDate || null,
+          pay_period_end: endDate || null,
+          created_at: null,
+        });
+      }
+      return rows;
+    };
+
+    if (status === 'due') {
+      res.json(await buildDueRows());
+      return;
+    }
+
     let query = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour
                  FROM payroll p
-                 JOIN employees e ON p.employee_id = e.id
+                 JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
                  WHERE p.tenant_id = ?`;
     const params = [tenantId];
     if (startDate) { query += ' AND p.pay_period_end >= ?'; params.push(startDate); }
     if (endDate) { query += ' AND p.pay_period_end <= ?'; params.push(endDate); }
     if (search) { query += ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ? OR e.email ILIKE ?)`; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
-    if (status) { query += ' AND p.status = ?'; params.push(status); }
+    if (status === 'paid') { query += ' AND p.status = ?'; params.push('paid'); }
     query += ' ORDER BY p.pay_period_end DESC';
 
     const [rows] = await db.execute(query, params);
+
+    // "All Status" (no status filter) shows both processed payroll and pending salaries.
+    if (!status) {
+      rows.push(...await buildDueRows());
+    }
+
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -137,7 +225,7 @@ exports.getWorkingHoursReport = async (req, res) => {
                           ELSE 'unbilled'
                         END as pay_status
                  FROM attendance a
-                 JOIN employees e ON a.employee_id = e.id
+                 JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
                  WHERE a.tenant_id = ?`;
     const params = [tenantId];
     const df = buildDateFilter('a', startDate, endDate);
@@ -228,7 +316,7 @@ async function getTabData(tenantId, tab, params) {
                         WHEN EXISTS (SELECT 1 FROM payroll p2 WHERE p2.employee_id = a.employee_id AND p2.tenant_id = a.tenant_id AND p2.status IN ('due','draft') AND a.date BETWEEN p2.pay_period_start AND p2.pay_period_end) THEN 'due'
                         ELSE 'unbilled'
                       END as pay_status
-               FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.tenant_id = ?`;
+               FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = 'active' WHERE a.tenant_id = ?`;
       const p = [tenantId];
       const df = buildDateFilter('a', params.startDate, params.endDate);
       q += df.clause; p.push(...df.params);
@@ -456,37 +544,27 @@ exports.exportReport = async (req, res) => {
 
 exports.getCharts = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate } = req.query;
   try {
-    function dateWhere(col) {
-      const c = []; const p = [];
-      if (startDate) { c.push(`${col} >= ?`); p.push(startDate); }
-      if (endDate) { c.push(`${col} <= ?`); p.push(endDate); }
-      return { clause: c.length ? ` AND ${c.join(' AND ')}` : '', params: p };
-    }
-
-    const sd = dateWhere('pay_period_end');
+    // Trend charts always span the full history (they are "trends"), independent of the
+    // selected date preset — otherwise a single-month preset yields at most one data point.
     const [salaryTrend] = await db.execute(
-      `SELECT DATE_TRUNC('month', pay_period_end) as month, SUM(net_salary) as total, SUM(gross_salary) as gross
-       FROM payroll WHERE tenant_id = ?${sd.clause} GROUP BY 1 ORDER BY 1`, [tenantId, ...sd.params]
+      `SELECT DATE_TRUNC('month', p.pay_period_end) as month, SUM(p.net_salary) as total, SUM(p.gross_salary) as gross
+       FROM payroll p JOIN employees e ON p.employee_id = e.id AND e.status = 'active'
+       WHERE p.tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
-    const ad = dateWhere('date');
     const [attendanceTrend] = await db.execute(
-      `SELECT DATE_TRUNC('month', date) as month, SUM(total_hours) as hours, COUNT(DISTINCT employee_id) as employees
-       FROM attendance WHERE tenant_id = ?${ad.clause} GROUP BY 1 ORDER BY 1`, [tenantId, ...ad.params]
+      `SELECT DATE_TRUNC('month', a.date) as month, SUM(a.total_hours) as hours, COUNT(DISTINCT a.employee_id) as employees
+       FROM attendance a JOIN employees e ON a.employee_id = e.id AND e.status = 'active'
+       WHERE a.tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
-    const ld = dateWhere('start_date');
     const [leaveDistribution] = await db.execute(
-      `SELECT leave_type, COUNT(*) as count FROM leaves WHERE tenant_id = ? AND status = 'approved'${ld.clause} GROUP BY leave_type`, [tenantId, ...ld.params]
+      `SELECT leave_type, COUNT(*) as count FROM leaves WHERE tenant_id = ? AND status = 'approved' GROUP BY leave_type`, [tenantId]
     );
 
-    let avdClause = ''; const avdP = [];
-    if (startDate) { avdClause += ' AND created_at >= ?'; avdP.push(startDate); }
-    if (endDate) { avdClause += ' AND created_at <= ?'; avdP.push(endDate + ' 23:59:59'); }
     const [advanceTrend] = await db.execute(
-      `SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as total FROM employee_advances WHERE tenant_id = ?${avdClause} GROUP BY 1 ORDER BY 1`, [tenantId, ...avdP]
+      `SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as total FROM employee_advances WHERE tenant_id = ? GROUP BY 1 ORDER BY 1`, [tenantId]
     );
 
     res.json({ salaryTrend, attendanceTrend, leaveDistribution, advanceTrend });

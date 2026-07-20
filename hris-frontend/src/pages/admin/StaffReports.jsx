@@ -35,6 +35,13 @@ const DATE_PRESETS = [
 
 function fmt(d) { const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 
+const formatMonth = (m) => {
+  if (!m) return '';
+  const d = new Date(m);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { month: 'short' });
+};
+
 function KpiCard({ label, value, icon, color }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3 shadow-sm">
@@ -107,8 +114,12 @@ export default function StaffReports() {
         setSummary(s);
         setCharts(c);
       } else if (tab === 'salary') {
-        const d = await hrService.getSalaryReport({ ...params, status: params.payStatus, payStatus: undefined });
+        const [d, s] = await Promise.all([
+          hrService.getSalaryReport({ ...params, status: params.payStatus, payStatus: undefined }),
+          hrService.getStaffReportSummary(params),
+        ]);
         setSalaryData(d);
+        setSummary(s);
       } else if (tab === 'hours') {
         const d = await hrService.getWorkingHoursReport(params);
         setHoursData(d);
@@ -157,8 +168,9 @@ export default function StaffReports() {
       return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Due</span>;
     } },
     { key: 'actions', label: '', className: 'text-right', render: (_, r) => (
-      <button onClick={(e) => { e.stopPropagation(); hrService.downloadPayslipFile(r.id); }}
-        className="btn-secondary !py-1 !px-2.5 text-xs" title="Download Payslip">
+      <button onClick={(e) => { e.stopPropagation(); if (r.id) hrService.downloadPayslipFile(r.id); }}
+        disabled={!r.id}
+        className="btn-secondary !py-1 !px-2.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed" title={r.id ? 'Download Payslip' : 'Payslip not yet generated'}>
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
       </button>
     ) },
@@ -226,9 +238,9 @@ export default function StaffReports() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={salaryTrend}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} tickFormatter={formatMonth} />
                     <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => '₹' + (v / 1000).toFixed(1) + 'K'} />
-                    <Tooltip formatter={(v) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })} />
+                    <Tooltip labelFormatter={formatMonth} formatter={(v) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })} />
                     <Bar dataKey="gross" fill="#4f46e5" name="Gross" />
                     <Bar dataKey="total" fill="#10b981" name="Net" />
                   </BarChart>
@@ -241,9 +253,9 @@ export default function StaffReports() {
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={charts.attendanceTrend}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} tickFormatter={formatMonth} />
                     <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip />
+                    <Tooltip labelFormatter={formatMonth} />
                     <Line type="monotone" dataKey="hours" stroke="#4f46e5" name="Hours" />
                   </LineChart>
                 </ResponsiveContainer>
@@ -268,9 +280,9 @@ export default function StaffReports() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={advanceTrend}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} tickFormatter={formatMonth} />
                     <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => '₹' + (v / 1000).toFixed(1) + 'K'} />
-                    <Tooltip formatter={(v) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })} />
+                    <Tooltip labelFormatter={formatMonth} formatter={(v) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })} />
                     <Bar dataKey="total" fill="#f59e0b" name="Advances" />
                   </BarChart>
                 </ResponsiveContainer>
@@ -413,7 +425,15 @@ export default function StaffReports() {
       {loading && <Loading />}
 
       {!loading && tab === 'dashboard' && renderDashboard()}
-      {!loading && tab === 'salary' && renderTable(salaryData, salaryColumns)}
+      {!loading && tab === 'salary' && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <KpiCard label="Total Salary Paid" value={formatINR(summary?.totalSalaryPaid)} icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} color="bg-emerald-50 text-emerald-600" />
+            <KpiCard label="Salary Pending" value={formatINR(summary?.totalSalaryPending)} icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} color="bg-amber-50 text-amber-600" />
+          </div>
+          {renderTable(salaryData, salaryColumns)}
+        </>
+      )}
       {!loading && tab === 'hours' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

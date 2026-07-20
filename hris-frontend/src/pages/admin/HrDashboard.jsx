@@ -14,7 +14,7 @@ const HrDashboard = () => {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const absentTypes = ['absent'];
   const leaveTypes = ['sick', 'annual', 'casual', 'unpaid'];
 
