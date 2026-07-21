@@ -7,12 +7,12 @@ import Loading from '../../components/Loading';
 import { formatINR } from '../../utils/currency';
 
 const COLORS = {
-  present: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  present: { bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  paid:    { dot: 'bg-emerald-500' },
   absent:  { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
-  sick:    { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
-  annual:  { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
+  unpaid:  { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-orange-500' },
   casual:  { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500' },
-  unpaid:  { bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-500' },
+  none:    { bg: 'bg-white',      text: 'text-gray-300',    dot: 'bg-gray-200' },
   weekend: { bg: 'bg-red-50',     text: 'text-red-400',     dot: 'bg-red-300' },
 };
 
@@ -27,6 +27,10 @@ const Tooltip = ({ day, rect }) => {
       <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
         {day.type === 'idle' ? (
           'Idle'
+        ) : day.type === 'present' && day.hours != null && day.hours > 0 ? (
+          <>
+            <div className="font-medium">Present ({day.hours}h) {day.paid ? 'Paid' : 'Unpaid'}</div>
+          </>
         ) : (
           <>
             <div className="font-medium">{day.label}</div>
@@ -68,7 +72,7 @@ const EmployeeCalendar = () => {
 
   useEffect(() => {
     setSelectedEmployee('');
-    hrService.getEmployees().then(setEmployees).catch(() => {});
+    hrService.getEmployees().then(data => setEmployees(data.filter(e => e.salary_type !== 'piece'))).catch(() => {});
     hrService.getTenantSettings().then(res => {
       if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
       if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(res.settings.workHoursInDay);
@@ -243,9 +247,14 @@ const EmployeeCalendar = () => {
     setTotalHoursVal(sanitized);
   };
 
+  const calendarEmployees = useMemo(() =>
+    (calendarData?.employees || []).filter(emp => emp.employee?.salaryType !== 'piece'),
+    [calendarData]
+  );
+
   const payrollBreakdown = useMemo(() => {
-    if (!calendarData) return [];
-    return calendarData.employees.map(emp => {
+    if (calendarEmployees.length === 0) return [];
+    return calendarEmployees.map(emp => {
       let dueHours = 0, paidHours = 0;
       for (const day of emp.days) {
         const h = day.hours || 0;
@@ -261,7 +270,7 @@ const EmployeeCalendar = () => {
         paid: paidHours * payPerHour,
       };
     });
-  }, [calendarData]);
+  }, [calendarEmployees]);
 
   const visibleBreakdown = useMemo(() => (
     selectedEmployee
@@ -277,17 +286,17 @@ const EmployeeCalendar = () => {
 
   const todayLocalStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const presentToday = useMemo(() => {
-    if (!calendarData) return { present: 0, absent: 0, leave: 0 };
+    if (calendarEmployees.length === 0) return { present: 0, absent: 0, leave: 0 };
     let present = 0, absent = 0, leave = 0;
-    for (const emp of calendarData.employees) {
+    for (const emp of calendarEmployees) {
       const day = emp.days.find(d => d.date === todayLocalStr);
       if (!day) continue;
       if (day.type === 'present') present++;
       else if (day.type === 'absent') absent++;
-      else if (['sick', 'annual', 'casual', 'unpaid'].includes(day.type)) leave++;
+      else if (['unpaid', 'casual'].includes(day.type)) leave++;
     }
     return { present, absent, leave };
-  }, [calendarData, todayLocalStr]);
+  }, [calendarEmployees, todayLocalStr]);
 
   const totalStaff = employees.length;
   const activeStaff = employees.length;
@@ -320,11 +329,10 @@ const EmployeeCalendar = () => {
       </div>
 
       <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap items-center">
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Present</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Paid</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Absent</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>Sick</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Annual</div>
-        <div className="flex items-center gap-1.5"><span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1.5 py-0.5">Paid</span>Paid hours</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>Unpaid</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-200"></span>No Entry</div>
         {weekendDays.map(d => (
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>Weekend ({DAY_SHORT[d]})</div>
         ))}
@@ -370,7 +378,7 @@ const EmployeeCalendar = () => {
           </div>
         )}
 
-      {calendarData && calendarData.employees.length > 0 && (
+      {calendarEmployees.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full" style={{ minWidth: 900 }}>
             <thead>
@@ -392,7 +400,7 @@ const EmployeeCalendar = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {calendarData.employees.map(emp => {
+              {calendarEmployees.map(emp => {
                 const empDays = emp.days || [];
                 const empHours = empDays.reduce((sum, day) => sum + (day.paid ? 0 : (day.hours || 0)), 0);
                 const empPay = Number(emp.employee.payPerHour || 0);
@@ -412,7 +420,7 @@ const EmployeeCalendar = () => {
                               {empHours.toFixed(1)}h · no pay/hr
                             </span>
                           ) : (
-                            <span className="text-[10px] text-gray-400 font-medium">
+                            <span className="text-[10px] text-amber-600 font-medium">
                               {empHours.toFixed(1)}h · {formatINR(empDue)}
                             </span>
                           )
@@ -436,7 +444,11 @@ const EmployeeCalendar = () => {
                           } ${
                             !isWeekend && !isFuture ? 'cursor-pointer' : ''
                           } ${
-                            hasColor ? COLORS[day.type]?.bg : ''
+                            hasColor
+                              ? day.type === 'present' && day.hours > 0 && !day.paid
+                                ? 'bg-amber-50'
+                                : COLORS[day.type]?.bg
+                              : ''
                           } ${!isWeekend && !isFuture ? 'hover:ring-1 hover:ring-inset hover:ring-indigo-300' : ''}`}
                           onClick={() => !isWeekend && !isFuture && openDay(emp.employee, day)}
                           onMouseEnter={() => !isFuture && handleMouseEnter(emp.employee.id, idx, day)}
@@ -444,18 +456,15 @@ const EmployeeCalendar = () => {
                         >
                           <div className="flex flex-col items-center gap-1">
                             <span className={`text-xs font-semibold leading-tight ${
-                              isWeekend ? 'text-red-300' : isIdle ? 'text-gray-300' : COLORS[day.type]?.text || 'text-gray-600'
+                              isWeekend ? 'text-red-300' : isIdle ? 'text-gray-300' : day.type === 'present' && day.hours > 0 && !day.paid ? 'text-amber-700' : COLORS[day.type]?.text || 'text-gray-600'
                             }`}>
                               {new Date(day.date).getDate()}
                             </span>
-                            {hasColor && (
-                              <span className={`w-2 h-2 rounded-full ${COLORS[day.type]?.dot}`} />
-                            )}
+            {(day.paid || (hasColor && day.type !== 'present') || (day.type === 'present' && day.hours > 0 && !day.paid)) && (
+              <span className={`w-2 h-2 rounded-full ${day.paid ? COLORS.paid.dot : day.type === 'present' && !day.paid ? COLORS.unpaid.dot : COLORS[day.type]?.dot}`} />
+            )}
                             {day.type === 'present' && day.hours != null && day.hours > 0 && (
-                              <span className="text-[10px] text-gray-400 font-medium">{day.hours}h</span>
-                            )}
-                            {day.paid && (
-                              <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1 py-0.5 leading-none">Paid</span>
+                              <span className={`text-[10px] font-medium ${!day.paid ? 'text-amber-600' : 'text-gray-400'}`}>{day.hours}h</span>
                             )}
                           </div>
                         </td>
@@ -469,7 +478,7 @@ const EmployeeCalendar = () => {
         </div>
       )}
 
-      {calendarData && calendarData.employees.length === 0 && (
+      {calendarEmployees.length === 0 && (
         <div className="text-center text-gray-400 py-8 text-sm">No employees found</div>
       )}
       </div>
@@ -525,8 +534,8 @@ const EmployeeCalendar = () => {
                         <option value="">Select status...</option>
                         <option value="present">Present</option>
                         <option value="absent">Absent</option>
-                        <option value="sick">Sick Leave</option>
-                        <option value="annual">Annual Leave</option>
+                        <option value="unpaid">Unpaid Leave</option>
+                        <option value="none">No Entry</option>
                       </select>
                     </div>
 

@@ -5,7 +5,7 @@ const { log } = require('../utils/audit');
 const { incrementUsage } = require('../services/usage.service');
 
 exports.createEmployee = async (req, res) => {
-  const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour } = req.body;
+  const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour, salaryType, pieceWorkType, pieceUnitLabel, pieceRate, pieceRates } = req.body;
   const tenantId = req.tenantId;
 
   try {
@@ -41,10 +41,22 @@ exports.createEmployee = async (req, res) => {
     const emailVal = email || `emp-${employeeId.slice(0,8)}@local`;
 
     await db.execute(
-      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())`,
-      [employeeId, tenantId, firstName, lastName, emailVal, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null]
+      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, salary_type, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, NOW())`,
+      [employeeId, tenantId, firstName, lastName, emailVal, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null, salaryType || 'fixed']
     );
+
+    // Insert piece rates if provided
+    if (salaryType === 'piece' && pieceRates && Array.isArray(pieceRates) && pieceRates.length > 0) {
+      for (const pr of pieceRates) {
+        if (!pr.workType) continue;
+        const prId = uuidv4();
+        await db.execute(
+          'INSERT INTO employee_piece_rates (id, tenant_id, employee_id, work_type, unit_label, rate_per_piece) VALUES (?, ?, ?, ?, ?, ?)',
+          [prId, tenantId, employeeId, pr.workType, pr.unitLabel || 'pcs', pr.ratePerPiece ? Math.round(parseFloat(pr.ratePerPiece) * 100) : 0]
+        );
+      }
+    }
 
     incrementUsage(tenantId, 'staff_count').catch(() => {});
 
@@ -60,7 +72,7 @@ exports.createEmployee = async (req, res) => {
 exports.updateEmployee = async (req, res) => {
   const { id } = req.params;
   const tenantId = req.tenantId;
-  const { firstName, lastName, email, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour } = req.body;
+  const { firstName, lastName, email, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour, salaryType, pieceWorkType, pieceUnitLabel, pieceRate, pieceRates } = req.body;
 
   if (req.user.role !== 'tenant_admin') {
     return res.status(403).json({ error: 'Administrative clearance required.' });
@@ -108,6 +120,13 @@ exports.updateEmployee = async (req, res) => {
       updates.push('pay_per_hour = ?');
       params.push(payPerHour !== '' ? Math.round(parseFloat(payPerHour) * 100) : null);
     }
+    if (salaryType !== undefined) { updates.push('salary_type = ?'); params.push(salaryType); }
+    if (pieceWorkType !== undefined) { updates.push('piece_work_type = ?'); params.push(pieceWorkType || null); }
+    if (pieceUnitLabel !== undefined) { updates.push('piece_unit_label = ?'); params.push(pieceUnitLabel || null); }
+    if (pieceRate !== undefined) {
+      updates.push('piece_rate = ?');
+      params.push(pieceRate !== '' ? Math.round(parseFloat(pieceRate) * 100) : null);
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update.' });
@@ -118,6 +137,19 @@ exports.updateEmployee = async (req, res) => {
       `UPDATE employees SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`,
       params
     );
+
+    // Replace piece rates if array provided
+    if (pieceRates && Array.isArray(pieceRates)) {
+      await db.execute('DELETE FROM employee_piece_rates WHERE tenant_id = ? AND employee_id = ?', [tenantId, id]);
+      for (const pr of pieceRates) {
+        if (!pr.workType) continue;
+        const prId = uuidv4();
+        await db.execute(
+          'INSERT INTO employee_piece_rates (id, tenant_id, employee_id, work_type, unit_label, rate_per_piece) VALUES (?, ?, ?, ?, ?, ?)',
+          [prId, tenantId, id, pr.workType, pr.unitLabel || 'pcs', pr.ratePerPiece ? Math.round(parseFloat(pr.ratePerPiece) * 100) : 0]
+        );
+      }
+    }
 
     const changes = {};
     if (firstName !== undefined) changes.firstName = firstName;
@@ -144,7 +176,7 @@ exports.getEmployees = async (req, res) => {
   const { includeDeactivated, status } = req.query;
 
   try {
-    let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, pay_per_hour, profession, other_profession, status, created_at FROM employees WHERE tenant_id = ?';
+    let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, pay_per_hour, profession, other_profession, salary_type, piece_work_type, piece_unit_label, piece_rate, status, created_at FROM employees WHERE tenant_id = ?';
     const params = [tenantId];
 
     if (status) {

@@ -213,3 +213,26 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **Table columns**: Both tables now show GSTIN, Opening Balance (color-coded red/green), and Credit Limit columns
 - **Status filter**: Dropdown to filter by All/Active/Inactive in table header
 - **Search scope**: Extended to search by `gstin` and `pan` in addition to name/contact/email/phone
+
+## Completed (Jul 21)
+- **Work Hours in a Day field disable**: Input now disabled with `opacity-50 cursor-not-allowed` when "Hour-Based Attendance" is unchecked in Settings.
+- **Success message enhancement**: Green tick (success) / warning icon (error) on save, cross (X) dismiss button, no auto-dismiss, smooth scroll to message.
+- **Piece Work system backend**: Migration `20260802_add_piece_work.sql` adds `salary_type`, `piece_work_type`, `piece_unit_label`, `piece_rate` columns to `employees`; new `piece_work_entries` table with `quantity`, `rate_per_piece`, `calculated_amount`, `payroll_id`, `is_paid` flag + indexes. Migration ran successfully.
+- **Employee controller**: `createEmployee`/`updateEmployee`/`getEmployees` handle `salaryType`, `pieceWorkType`, `pieceUnitLabel`, `pieceRate`.
+- **Piece Work controller**: Full CRUD for entries; paid entries locked from edit/delete; summary by employee with paid/pending; mark-as-paid / unmark-paid; unpaid entries endpoint.
+- **Payroll controller**: Piece workers gross = SUM unpaid entries; advance deductions skipped; entries auto-marked paid on payroll processing; unmarked on payroll reversal; `getDueSummary` + `getPayrollHistory` include piece fields.
+- **Staff Reports controller**: Pending salary includes piece work; due rows include piece workers.
+- **Employees.jsx**: Salary Type selector (Fixed / Hourly / Per Piece); Per Piece shows work type / unit label / rate fields; table shows Salary Type badge; detail views show piece fields.
+- **PieceWork.jsx**: Full page with Entries / Summary tabs, stats cards, employee + date filters, modal add/edit, unpaid/paid badges, edit/delete only for unpaid; BottomSheet mobile detail.
+- **RunPayroll.jsx + PayrollConsole.jsx**: Type badge column, Qty/Hours column, per-piece rate display, advance deduction disabled for piece workers.
+- **HrDashboard.jsx**: Piece work due added to totalDue.
+- **Routes**: `/admin/piece-work` (pro) + sidebar item under My Staff; backend at `/api/v1/core/piece-work` (planGate(1)).
+- **Multi-rate Piece Work grid** (`Employees.jsx`): Replaced single Work Type / Unit Label / Rate fields with a line-item table (S.N., Work Type, Unit Label, Rate) + "Add More" button. `pieceRates[]` array sent to backend; falls back to legacy single fields if array empty.
+- **DB migration** `20260803_add_employee_piece_rates.sql`: New `employee_piece_rates` table (tenant/employee/work_type/unit_label/rate_per_piece) + `work_type` column on `piece_work_entries`. Backfills existing single piece data.
+- **Employee controller**: `createEmployee` inserts `pieceRates[]`; `updateEmployee` replaces rates; single DB columns kept for backward compat.
+- **Piece work controller**: `getEmployeeRates` endpoint (`GET /employee-rates`); `createEntry` accepts `workType` and auto-resolves rate from `employee_piece_rates`.
+- **Employees.jsx detail views**: Show piece rates list from `employee_piece_rates` with fallback to legacy fields.
+- **PieceWork.jsx entry form**: Work Type dropdown appears when employee has multiple piece rates; rate auto-fills from selected work type.
+- **PieceWorkCalendar.jsx**: Calendar-based piece work entry replacing the old list view. Same layout as EmployeeCalendar. Clicking a date opens a modal with work types auto-loaded from staff records; only Quantity Produced is editable; work type / unit / rate are read-only. `GET /calendar-data` and `POST /save-day` backend endpoints. Date cell indicators: green=completed, amber=partial, blue=paid, gray=none. Route `/admin/piece-work/calendar`, sidebar item "Piece Calendar".
+- **Old PieceWork.jsx deleted**, old service methods removed, HrDashboard piece work due removed.
+- Backend server restarted. Build passes.

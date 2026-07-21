@@ -28,6 +28,7 @@ import PayrollConsole from './pages/admin/PayrollConsole';
 import RunPayroll from './pages/admin/RunPayroll';
 import AdvancePayments from './pages/admin/AdvancePayments';
 import Replacements from './pages/admin/Replacements';
+import PieceWorkCalendar from './pages/admin/PieceWorkCalendar';
 import StaffReports from './pages/admin/StaffReports';
 import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
@@ -160,6 +161,7 @@ function App() {
             <Route path="payroll/run" element={<PlanRoute minPlan="pro"><RunPayroll /></PlanRoute>} />
             <Route path="advances" element={<PlanRoute minPlan="pro"><AdvancePayments /></PlanRoute>} />
             <Route path="replacements" element={<PlanRoute minPlan="pro"><Replacements /></PlanRoute>} />
+            <Route path="piece-work/calendar" element={<PlanRoute minPlan="pro"><PieceWorkCalendar /></PlanRoute>} />
             <Route path="staff-reports" element={<PlanRoute minPlan="pro"><StaffReports /></PlanRoute>} />
             <Route path="audit-logs" element={<PlanRoute minPlan="pro"><AuditLogs /></PlanRoute>} />
             <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />

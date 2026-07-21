@@ -485,6 +485,7 @@ export const MENU_SECTIONS = [
       { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Run Payroll',     route: '/admin/payroll/run' },
       { feature: 'advances',        requiredPlan: 'MANAGE', label: 'Advances',         route: '/admin/advances' },
       { feature: 'replacements',    requiredPlan: 'MANAGE', label: 'Replacements',     route: '/admin/replacements' },
+      { feature: 'payroll',         requiredPlan: 'MANAGE', label: 'Piece Calendar',   route: '/admin/piece-work/calendar' },
       { feature: null,              requiredPlan: 'MANAGE', label: 'Reports',          route: '/admin/staff-reports' },
     ],
   },

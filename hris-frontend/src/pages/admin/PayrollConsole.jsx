@@ -306,14 +306,15 @@ const PayrollConsole = () => {
                     aria-label="Select all"
                   />
                 </th>
-                <th className="table-header">Employee</th>
-                <th className="table-header">Period</th>
-                <th className="table-header">Rate</th>
-                <th className="table-header">Gross</th>
-                <th className="table-header">Adv. Ded.</th>
-                <th className="table-header">Net</th>
-                <th className="table-header">Status</th>
-                <th className="table-header w-16 text-right">Actions</th>
+                  <th className="table-header">Employee</th>
+                  <th className="table-header">Type</th>
+                  <th className="table-header">Period</th>
+                  <th className="table-header">Rate</th>
+                  <th className="table-header">Gross</th>
+                  <th className="table-header">Adv. Ded.</th>
+                  <th className="table-header">Net</th>
+                  <th className="table-header">Status</th>
+                  <th className="table-header w-16 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -329,8 +330,13 @@ const PayrollConsole = () => {
                     />
                   </td>
                   <td className="table-cell font-medium">{r.first_name} {r.last_name}</td>
+                  <td className="table-cell">
+                    <span className={`badge ${r.salary_type === 'piece' ? 'badge-success' : 'badge-info'}`}>
+                      {r.salary_type === 'piece' ? 'Per Piece' : 'Monthly/Hourly'}
+                    </span>
+                  </td>
                   <td className="table-cell text-gray-500">{(r.pay_period_start || '').split('T')[0]} to {(r.pay_period_end || '').split('T')[0]}</td>
-                  <td className="table-cell">₹{(r.hourly_rate / 100).toFixed(2)}/hr</td>
+                  <td className="table-cell">{r.salary_type === 'piece' ? formatINR(r.hourly_rate)+'/pc' : `₹${(r.hourly_rate / 100).toFixed(2)}/hr`}</td>
                   <td className="table-cell">{formatINR(r.gross_salary)}</td>
                   <td className="table-cell">{r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span className="text-gray-300">—</span>}</td>
                   <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
@@ -371,8 +377,9 @@ const PayrollConsole = () => {
         >
           {selected && (
             <div className="space-y-3">
-              <DetailRow label="Period" value={`${(selected.pay_period_start || '').split('T')[0]} to ${(selected.pay_period_end || '').split('T')[0]}`} />
-              <DetailRow label="Rate" value={`₹${(selected.hourly_rate / 100).toFixed(2)}/hr`} />
+              <DetailRow label="Salary Type" value={selected.salary_type === 'piece' ? 'Per Piece' : 'Monthly/Hourly'} />
+                  <DetailRow label="Period" value={`${(selected.pay_period_start || '').split('T')[0]} to ${(selected.pay_period_end || '').split('T')[0]}`} />
+                  <DetailRow label="Rate" value={selected.salary_type === 'piece' ? formatINR(selected.hourly_rate)+'/pc' : `₹${(selected.hourly_rate / 100).toFixed(2)}/hr`} />
               <DetailRow label="Gross" value={formatINR(selected.gross_salary)} />
               <DetailRow label="Adv. Deduction" value={selected.advance_deduction ? formatINR(selected.advance_deduction) : '—'} />
               <DetailRow label="Net"><span className="font-bold text-emerald-600">{formatINR(selected.net_salary)}</span></DetailRow>

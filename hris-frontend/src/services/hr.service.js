@@ -1060,6 +1060,20 @@ export const hrService = {
     const response = await api.delete('/core/invoice-template/signature');
     return response.data;
   },
+  // Piece Work
+  getEmployeePieceRates: async (params) => {
+    const response = await api.get('/core/piece-work/employee-rates', { params });
+    return response.data;
+  },
+  getPieceWorkCalendarData: async (params) => {
+    const response = await api.get('/core/piece-work/calendar-data', { params });
+    return response.data;
+  },
+  savePieceWorkDayEntries: async (data) => {
+    const response = await api.post('/core/piece-work/save-day', data);
+    return response.data;
+  },
+
   downloadTransactionPDF: async (id) => {
     const response = await api.get(`/core/transactions/${id}/pdf`, { responseType: 'blob' });
     return response.data;

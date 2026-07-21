@@ -41,17 +41,26 @@ exports.getSummary = async (req, res) => {
     const [paidStats] = await db.execute(paidQ, paidP);
     const totalSalaryPaid = paidStats[0].total;
 
-    // Salary Pending = unpaid worked hours × pay-per-hour (attendance not yet covered by a paid payroll).
+    // Salary Pending = unpaid worked hours × pay-per-hour (attendance not yet covered by a paid payroll) + unpaid piece work entries.
     const dateParams = [];
     let pendingDateClause = '';
     if (startDate) { pendingDateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
     if (endDate) { pendingDateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
     const [pendingEmps] = await db.execute(
-      `SELECT id, pay_per_hour FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`,
+      `SELECT id, pay_per_hour, salary_type FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`,
       [tenantId]
     );
     let totalSalaryPending = 0;
     for (const emp of pendingEmps) {
+      if (emp.salary_type === 'piece') {
+        const [p] = await db.execute(
+          `SELECT COALESCE(SUM(calculated_amount), 0) as total
+           FROM piece_work_entries
+           WHERE tenant_id = ? AND employee_id = ? AND is_paid = 0`, [tenantId, emp.id]
+        );
+        totalSalaryPending += parseInt(p[0].total || 0);
+        continue;
+      }
       const [ph] = await db.execute(
         `SELECT COALESCE(SUM(a.total_hours), 0) as h FROM attendance a
          WHERE a.tenant_id = ? AND a.employee_id = ? AND a.total_hours > 0 ${pendingDateClause}
@@ -152,12 +161,44 @@ exports.getSalaryReport = async (req, res) => {
         searchParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
       }
       const [emps] = await db.execute(
-        `SELECT id, first_name, last_name, email, base_salary, pay_per_hour
+        `SELECT id, first_name, last_name, email, base_salary, pay_per_hour, salary_type, piece_rate, piece_unit_label, piece_work_type
          FROM employees e WHERE e.tenant_id = ? AND e.status = '${empStatus}' ${searchClause}`,
         [tenantId, ...searchParams]
       );
       const rows = [];
       for (const emp of emps) {
+        if (emp.salary_type === 'piece') {
+          const [p] = await db.execute(
+            `SELECT COALESCE(SUM(calculated_amount), 0) as total, COALESCE(SUM(quantity), 0) as qty
+             FROM piece_work_entries
+             WHERE tenant_id = ? AND employee_id = ? AND is_paid = 0 ${dateClause}`,
+            [tenantId, emp.id, ...dateParams]
+          );
+          const total = parseInt(p[0].total || 0);
+          if (total <= 0) continue;
+          const qty = parseFloat(p[0].qty || 0);
+          rows.push({
+            id: null,
+            employee_id: emp.id,
+            first_name: emp.first_name,
+            last_name: emp.last_name,
+            email: emp.email,
+            base_salary: emp.base_salary,
+            pay_per_hour: emp.pay_per_hour,
+            hourly_rate: emp.piece_rate,
+            total_hours_worked: qty,
+            gross_salary: total,
+            advance_deduction: 0,
+            net_salary: total,
+            status: 'due',
+            pay_period_start: startDate || null,
+            pay_period_end: endDate || null,
+            created_at: null,
+            salary_type: 'piece',
+            piece_unit_label: emp.piece_unit_label,
+          });
+          continue;
+        }
         const [ph] = await db.execute(
           `SELECT COALESCE(SUM(a.total_hours), 0) as h FROM attendance a
            WHERE a.tenant_id = ? AND a.employee_id = ? AND a.total_hours > 0 ${dateClause}
@@ -199,7 +240,7 @@ exports.getSalaryReport = async (req, res) => {
       return;
     }
 
-    let query = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour
+    let query = `SELECT p.*, e.first_name, e.last_name, e.email, e.base_salary, e.pay_per_hour, e.salary_type
                  FROM payroll p
                  JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
                  WHERE p.tenant_id = ?`;

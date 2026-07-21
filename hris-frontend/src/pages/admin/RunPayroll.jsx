@@ -296,8 +296,9 @@ const RunPayroll = () => {
                       className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                   </th>
                   <th className="table-header">Employee</th>
-                  <th className="table-header text-right">Hours</th>
-                  <th className="table-header text-right">Pay/Hr</th>
+                  <th className="table-header">Type</th>
+                  <th className="table-header text-right">Qty/Hours</th>
+                  <th className="table-header text-right">Rate</th>
                   <th className="table-header text-right">Due Amount</th>
                   <th className="table-header text-right">Advance Deduction</th>
                   <th className="table-header text-right">Total Payable</th>
@@ -314,17 +315,24 @@ const RunPayroll = () => {
                           className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                       </td>
                       <td className="table-cell font-medium">{r.employeeName}</td>
-                      <td className="table-cell text-right text-gray-500">{r.actualHours}h</td>
-                      <td className="table-cell text-right text-gray-500">₹{(r.hourlyRate / 100).toFixed(2)}/hr</td>
+                      <td className="table-cell">
+                        <span className={`badge ${r.salaryType === 'piece' ? 'badge-success' : 'badge-info'}`}>
+                          {r.salaryType === 'piece' ? 'Per Piece' : 'Monthly/Hourly'}
+                        </span>
+                      </td>
+                      <td className="table-cell text-right text-gray-500">{r.actualHours}{r.salaryType === 'piece' ? ` ${r.unitLabel || ''}` : 'h'}</td>
+                      <td className="table-cell text-right text-gray-500">
+                        {r.salaryType === 'piece' ? `${formatINR(r.hourlyRate)}/${r.unitLabel || 'pc'}` : `₹${(r.hourlyRate / 100).toFixed(2)}/hr`}
+                      </td>
                       <td className="table-cell text-right font-medium text-gray-900">{formatINR(r.dueAmount)}</td>
                       <td className="table-cell text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <input type="text" inputMode="decimal" value={deductionInput[r.employeeId] ?? (adv / 100).toFixed(2)}
-                            disabled={r.outstandingAdvance <= 0}
+                            disabled={r.outstandingAdvance <= 0 || r.salaryType === 'piece'}
                             onChange={e => handleDeductionChange(r, e.target.value)}
                             className="w-24 text-xs border border-gray-300 rounded px-1.5 py-1 text-right disabled:bg-gray-100 disabled:text-gray-400" />
                           <span className="text-[10px] text-gray-400">
-                            {r.outstandingAdvance > 0 ? `Bal: ${formatINR(r.outstandingAdvance)}` : 'No advance'}
+                            {r.salaryType === 'piece' ? 'No advance' : r.outstandingAdvance > 0 ? `Bal: ${formatINR(r.outstandingAdvance)}` : 'No advance'}
                           </span>
                         </div>
                       </td>

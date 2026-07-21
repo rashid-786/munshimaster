@@ -43,7 +43,7 @@ const Employees = () => {
   const [phoneErr, setPhoneErr] = useState('');
   const [search, setSearch] = useState('');
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '', salaryType: 'fixed', pieceWorkType: '', pieceUnitLabel: '', pieceRate: '', pieceRates: [] });
   const [modal, setModal] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
@@ -57,6 +57,7 @@ const Employees = () => {
   const [importLoading, setImportLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [selectedPieceRates, setSelectedPieceRates] = useState([]);
   const [formFields, setFormFields] = useState(() => {
     const saved = JSON.parse(localStorage.getItem('employee_form_fields') || 'null');
     return saved || { email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true };
@@ -75,7 +76,7 @@ const Employees = () => {
   }, []);
 
   useEffect(() => {
-    if (editingEmployee) return;
+    if (editingEmployee || form.salaryType !== 'fixed') return;
     const salary = parseFloat(form.baseSalary);
     if (salary && salary > 0 && workHoursInDay > 0) {
       const calculated = salary / (30 * workHoursInDay);
@@ -83,7 +84,7 @@ const Employees = () => {
     } else if (!form.baseSalary) {
       setForm(prev => ({ ...prev, payPerHour: '' }));
     }
-  }, [form.baseSalary, workHoursInDay, editingEmployee]);
+  }, [form.baseSalary, workHoursInDay, editingEmployee, form.salaryType]);
 
   const fetchRoster = async () => {
     setLoading(true);
@@ -115,12 +116,24 @@ const Employees = () => {
         firstName: form.firstName,
         lastName: form.lastName,
         phone: form.phone,
+        salaryType: form.salaryType,
       };
+      if (form.salaryType === 'piece') {
+        payload.pieceRates = form.pieceRates.filter(r => r.workType && r.ratePerPiece);
+        if (payload.pieceRates.length === 0) {
+          // fallback to single fields for backward compatibility
+          payload.pieceWorkType = form.pieceWorkType;
+          payload.pieceUnitLabel = form.pieceUnitLabel;
+          payload.pieceRate = form.pieceRate;
+        }
+      }
       if (fieldVisible('email')) payload.email = form.email;
       if (fieldVisible('role')) payload.role = form.role;
       if (fieldVisible('jobType')) payload.jobType = form.jobType;
-      if (fieldVisible('baseSalary')) payload.baseSalary = form.baseSalary;
-      if (fieldVisible('payPerHour')) payload.payPerHour = form.payPerHour;
+      if (form.salaryType !== 'piece') {
+        if (fieldVisible('baseSalary')) payload.baseSalary = form.baseSalary;
+        if (fieldVisible('payPerHour')) payload.payPerHour = form.payPerHour;
+      }
       if (fieldVisible('profession')) {
         payload.profession = form.profession === 'Other' ? form.otherProfession : form.profession;
         payload.otherProfession = form.profession === 'Other' ? form.otherProfession : null;
@@ -131,7 +144,7 @@ const Employees = () => {
         payload.password = form.password || 'Welcome@123';
         await hrService.onboardEmployee(payload);
       }
-      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' });
+      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '', salaryType: 'fixed', pieceWorkType: '', pieceUnitLabel: '', pieceRate: '', pieceRates: [] });
       setShowOnboard(false);
       setEditingEmployee(null);
       fetchRoster();
@@ -203,10 +216,16 @@ const Employees = () => {
     }
   };
 
-  const mobileEdit = (emp) => {
+  const mobileEdit = async (emp) => {
     setSelectedRecord(null);
     setEditingEmployee(emp);
     const profession = PROFESSIONS.some(p => p.value === emp.profession) ? emp.profession : 'Other';
+    let pieceRates = [];
+    if (emp.salary_type === 'piece') {
+      try {
+        pieceRates = await hrService.getEmployeePieceRates({ employeeId: emp.id });
+      } catch (_) {}
+    }
     setForm({
       firstName: emp.first_name,
       lastName: emp.last_name,
@@ -219,6 +238,11 @@ const Employees = () => {
       payPerHour: emp.pay_per_hour ? (emp.pay_per_hour / 100).toFixed(2) : '',
       profession: profession,
       otherProfession: profession === 'Other' ? (emp.profession || '') : '',
+      salaryType: emp.salary_type || 'fixed',
+      pieceWorkType: emp.piece_work_type || '',
+      pieceUnitLabel: emp.piece_unit_label || '',
+      pieceRate: emp.piece_rate ? (emp.piece_rate / 100).toFixed(2) : '',
+      pieceRates: pieceRates.map(r => ({ id: r.id, workType: r.work_type, unitLabel: r.unit_label, ratePerPiece: (r.rate_per_piece / 100).toFixed(2) })),
     });
     setShowOnboard(true);
   };
@@ -257,6 +281,12 @@ const Employees = () => {
       const b = v === 'tenant_admin' ? 'badge-info' : 'badge-success';
       return <span className={b}>{v === 'tenant_admin' ? 'Admin' : 'Employee'}</span>;
     }}] : []),
+    { key: 'salaryType', label: 'Salary Type', render: (_, r) => {
+      const t = r.salary_type || 'fixed';
+      const colors = { fixed: 'badge-info', piece: 'badge-success' };
+      const labels = { fixed: 'Monthly/Hourly', piece: 'Per Piece' };
+      return <span className={colors[t] || 'badge-info'}>{labels[t] || 'Monthly/Hourly'}</span>;
+    }},
     ...(fieldVisible('baseSalary') ? [{ key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> }] : []),
     ...(fieldVisible('payPerHour') ? [{ key: 'payPerHour', label: 'Pay/Hr', render: (_, r) => <span className="text-gray-500">{r.pay_per_hour ? formatINR(r.pay_per_hour) : '—'}</span> }] : []),
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
@@ -326,7 +356,7 @@ const Employees = () => {
             </div>
             {isAdmin && (
               <div className="flex items-center gap-2">
-                <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '' }); setShowOnboard(true); }} className="btn-primary">
+                <button onClick={() => { setEditingEmployee(null); setForm({ firstName: '', lastName: '', email: '', phone: '', password: '', role: 'employee', jobType: 'permanent', baseSalary: '', payPerHour: '', profession: '', otherProfession: '', salaryType: 'fixed', pieceWorkType: '', pieceUnitLabel: '', pieceRate: '', pieceRates: [] }); setShowOnboard(true); }} className="btn-primary">
                   {Icons.userAdd}
                   <span className="hidden sm:inline">Onboard Staff</span>
                 </button>
@@ -374,7 +404,12 @@ const Employees = () => {
               loading={loading}
               mobilePrimary="name"
               mobileSecondary="status"
-              onRowClick={(emp) => setSelectedRecord(emp)}
+              onRowClick={async (emp) => {
+                setSelectedRecord(emp);
+                if (emp.salary_type === 'piece') {
+                  try { setSelectedPieceRates(await hrService.getEmployeePieceRates({ employeeId: emp.id })); } catch (_) { setSelectedPieceRates([]); }
+                } else { setSelectedPieceRates([]); }
+              }}
               emptyMessage="No staff found"
             />
           </div>
@@ -388,6 +423,7 @@ const Employees = () => {
                     <th className="table-header">Staff</th>
                     <th className="table-header">Phone</th>
                     {fieldVisible('role') && <th className="table-header">Role</th>}
+                    <th className="table-header">Salary Type</th>
                     {fieldVisible('baseSalary') && <th className="table-header">Monthly Salary</th>}
                     {fieldVisible('payPerHour') && <th className="table-header">Pay/Hr</th>}
                     <th className="table-header">Status</th>
@@ -396,7 +432,12 @@ const Employees = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map(emp => (
-                    <tr key={emp.id} className={`table-row-hover cursor-pointer ${emp.status === 'deactivated' ? 'opacity-60' : ''}`} onClick={() => setSelectedRecord(emp)}>
+                    <tr key={emp.id} className={`table-row-hover cursor-pointer ${emp.status === 'deactivated' ? 'opacity-60' : ''}`} onClick={async () => {
+                      setSelectedRecord(emp);
+                      if (emp.salary_type === 'piece') {
+                        try { setSelectedPieceRates(await hrService.getEmployeePieceRates({ employeeId: emp.id })); } catch (_) { setSelectedPieceRates([]); }
+                      } else { setSelectedPieceRates([]); }
+                    }}>
                       <td className="table-cell">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
@@ -415,6 +456,11 @@ const Employees = () => {
                           </span>
                         </td>
                       )}
+                      <td className="table-cell">
+                        <span className={`badge ${(emp.salary_type || 'fixed') === 'piece' ? 'badge-success' : 'badge-info'}`}>
+                          {(emp.salary_type || 'fixed') === 'piece' ? 'Per Piece' : 'Monthly/Hourly'}
+                        </span>
+                      </td>
                       {fieldVisible('baseSalary') && (
                         <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
                       )}
@@ -500,7 +546,7 @@ const Employees = () => {
                     </select>
                   </div>
                 )}
-                {fieldVisible('jobType') && (
+                  {fieldVisible('jobType') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
                     <select value={form.jobType} onChange={e => setForm({ ...form, jobType: e.target.value })} className="input-field">
@@ -509,24 +555,107 @@ const Employees = () => {
                     </select>
                   </div>
                 )}
+                <div className={fieldVisible('jobType') ? '' : 'col-span-2'}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salary Type</label>
+                  <select value={form.salaryType} onChange={e => {
+                    const t = e.target.value;
+                    setForm(f => ({
+                      ...f,
+                      salaryType: t,
+                      pieceRates: t === 'piece' && f.pieceRates.length === 0 ? [{ workType: '', unitLabel: 'pcs', ratePerPiece: '' }] : t !== 'piece' ? [] : f.pieceRates,
+                    }));
+                  }} className="input-field">
+                    <option value="fixed">Monthly/Hourly</option>
+                    <option value="piece">Per Piece</option>
+                  </select>
+                </div>
                 {!editingEmployee && fieldVisible('password') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Temp Password</label>
                     <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="input-field" placeholder="Optional — defaults to Welcome@123" />
                   </div>
                 )}
-                {fieldVisible('baseSalary') && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary ({currencySymbol})</label>
-                    <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required className="input-field" />
+                {form.salaryType === 'piece' ? (
+                  <div className="col-span-2 space-y-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Piece Work Rates</label>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider w-8">#</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Work Type</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Unit Label</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Rate ({currencySymbol})</th>
+                            <th className="w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {form.pieceRates.map((r, i) => (
+                            <tr key={i}>
+                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                              <td className="px-3 py-2">
+                                <input type="text" value={r.workType} onChange={e => {
+                                  const next = [...form.pieceRates];
+                                  next[i] = { ...next[i], workType: e.target.value };
+                                  setForm({ ...form, pieceRates: next });
+                                }} className="input-field !py-1 text-sm" placeholder="e.g. Chair Making" />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="text" value={r.unitLabel} onChange={e => {
+                                  const next = [...form.pieceRates];
+                                  next[i] = { ...next[i], unitLabel: e.target.value };
+                                  setForm({ ...form, pieceRates: next });
+                                }} className="input-field !py-1 text-sm" placeholder="e.g. pcs" />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="number" min="0" step="0.01" value={r.ratePerPiece} onChange={e => {
+                                  const next = [...form.pieceRates];
+                                  next[i] = { ...next[i], ratePerPiece: e.target.value };
+                                  setForm({ ...form, pieceRates: next });
+                                }} className="input-field !py-1 text-sm" placeholder="e.g. 50.00" />
+                              </td>
+                              <td className="px-3 py-2">
+                                <button type="button" onClick={() => {
+                                  const next = form.pieceRates.filter((_, j) => j !== i);
+                                  setForm({ ...form, pieceRates: next });
+                                }} className="text-red-400 hover:text-red-600 p-1" title="Remove">{Icons.x}</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => {
+                      setForm({ ...form, pieceRates: [...form.pieceRates, { workType: '', unitLabel: 'pcs', ratePerPiece: '' }] });
+                    }} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      Add More
+                    </button>
                   </div>
-                )}
-                {fieldVisible('payPerHour') && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
-                    <input type="number" min="0" step="0.01" value={form.payPerHour} disabled className="input-field bg-gray-100 cursor-not-allowed" />
-                    <p className="text-xs text-gray-400 mt-1">Auto-calculated from Monthly Salary / (30 × Work Hours in a Day). Set in Staff Settings.</p>
-                  </div>
+                ) : (
+                  <>
+                    {fieldVisible('baseSalary') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{form.salaryType === 'hourly' ? 'Monthly Base Salary' : 'Monthly Salary'} ({currencySymbol})</label>
+                        <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required={form.salaryType !== 'hourly'} className="input-field" />
+                      </div>
+                    )}
+                    {fieldVisible('payPerHour') && form.salaryType === 'fixed' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
+                        <input type="number" min="0" step="0.01" value={form.payPerHour} disabled className="input-field bg-gray-100 cursor-not-allowed" />
+                        <p className="text-xs text-gray-400 mt-1">Auto-calculated from Monthly Salary / (30 × Work Hours in a Day). Set in Staff Settings.</p>
+                      </div>
+                    )}
+                    {form.salaryType === 'hourly' && fieldVisible('payPerHour') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
+                        <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => setForm({ ...form, payPerHour: e.target.value })} required className="input-field" />
+                      </div>
+                    )}
+                  </>
                 )}
                 {fieldVisible('profession') && (
                   <div className="col-span-2">
@@ -579,8 +708,8 @@ const Employees = () => {
       {isMobile ? (
         <BottomSheet
           open={!!selectedRecord}
-          onClose={() => setSelectedRecord(null)}
-          title={selectedRecord ? `${selectedRecord.first_name} ${selectedRecord.last_name}` : 'Staff Details'}
+          onClose={() => { setSelectedRecord(null); setSelectedPieceRates([]); }}
+          title=""
           actions={
             <>
               <button onClick={() => mobileEdit(selectedRecord)} className="flex-1 btn-primary justify-center">Edit</button>
@@ -596,48 +725,13 @@ const Employees = () => {
             </>
           }
         >
-          {selectedRecord && (
-            <div className="space-y-3">
-              <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
-              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              {fieldVisible('role') && <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />}
-              {fieldVisible('profession') && <DetailRow label="Profession" value={selectedRecord.profession || '—'} />}
-              {fieldVisible('baseSalary') && <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>}
-              {fieldVisible('payPerHour') && <DetailRow label="Pay/Hr">{selectedRecord.pay_per_hour ? formatINR(selectedRecord.pay_per_hour) : '—'}</DetailRow>}
-              <DetailRow label="Status">
-                <span className={statusBadge(selectedRecord.status)}>
-                  {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}
-                </span>
-              </DetailRow>
-              <DetailRow label="Onboarded" value={selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-            </div>
-          )}
+          {selectedRecord && <ProfileCard employee={selectedRecord} pieceRates={selectedPieceRates} fieldVisible={fieldVisible} statusBadge={statusBadge} onClose={() => { setSelectedRecord(null); setSelectedPieceRates([]); }} />}
         </BottomSheet>
       ) : !!selectedRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{selectedRecord.first_name} {selectedRecord.last_name}</h3>
-                <p className="text-sm text-gray-500 mt-0.5">Staff Details</p>
-              </div>
-              <button onClick={() => setSelectedRecord(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">&times;</button>
-            </div>
-            <div className="p-6 space-y-4">
-              <DetailRow label="Name" value={`${selectedRecord.first_name} ${selectedRecord.last_name}`} />
-              <DetailRow label="Phone" value={formatPhone(selectedRecord.phone)} />
-              {fieldVisible('role') && <DetailRow label="Role" value={selectedRecord.role === 'tenant_admin' ? 'Admin' : 'Employee'} />}
-              {fieldVisible('profession') && <DetailRow label="Profession" value={selectedRecord.profession || '—'} />}
-              {fieldVisible('baseSalary') && <DetailRow label="Salary">{formatINR(selectedRecord.base_salary)}</DetailRow>}
-              {fieldVisible('payPerHour') && <DetailRow label="Pay/Hr">{selectedRecord.pay_per_hour ? formatINR(selectedRecord.pay_per_hour) : '—'}</DetailRow>}
-              <DetailRow label="Status">
-                <span className={statusBadge(selectedRecord.status)}>
-                  {selectedRecord.status === 'deactivated' ? 'Deactivated' : 'Active'}
-                </span>
-              </DetailRow>
-              <DetailRow label="Onboarded" value={selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => { setSelectedRecord(null); setSelectedPieceRates([]); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in overflow-hidden" onClick={e => e.stopPropagation()}>
+            <ProfileCard employee={selectedRecord} pieceRates={selectedPieceRates} fieldVisible={fieldVisible} statusBadge={statusBadge} onClose={() => { setSelectedRecord(null); setSelectedPieceRates([]); }} />
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
               <button onClick={() => mobileEdit(selectedRecord)} className="btn-primary">{Icons.edit} Edit</button>
               {isAdmin && selectedRecord.status === 'active' && (
                 <button onClick={() => { const r = selectedRecord; setSelectedRecord(null); handleDeactivate(r.id, `${r.first_name} ${r.last_name}`); }} className="btn-warning"><DeactivateIcon className="w-4 h-4" /> Deactivate</button>
@@ -771,11 +865,106 @@ const Employees = () => {
   );
 };
 
-function DetailRow({ label, value, children }) {
+function ProfileCard({ employee, pieceRates, fieldVisible, statusBadge, onClose }) {
+  const initials = (employee.first_name?.[0] || '') + (employee.last_name?.[0] || '');
+  const roleLabel = employee.role === 'tenant_admin' ? 'Admin' : 'Employee';
+  const salaryLabel = (employee.salary_type || 'fixed') === 'piece' ? 'Per Piece' : 'Monthly/Hourly';
+  const onboardDate = employee.created_at
+    ? new Date(employee.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
   return (
-    <div className="flex items-start gap-3">
-      <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
-      <span className="text-sm text-gray-900 flex-1 break-words">{children || value || '—'}</span>
+    <div className="relative">
+      {onClose && (
+        <button onClick={onClose} className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors z-10">&times;</button>
+      )}
+      <div className="px-6 py-6 text-center border-b border-gray-100">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl mx-auto shadow-md">
+          {initials}
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 mt-3">{employee.first_name} {employee.last_name}</h3>
+        <div className="flex items-center justify-center gap-2 mt-1.5">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium">{roleLabel}</span>
+          <span className={statusBadge(employee.status)}>
+            {employee.status === 'deactivated' ? 'Deactivated' : 'Active'}
+          </span>
+        </div>
+      </div>
+      <div className="px-6 py-4 space-y-4">
+        <Section title="Contact">
+          <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>} label="Phone" value={formatPhone(employee.phone)} />
+          {fieldVisible('email') && employee.email && !employee.email.includes('@local') && (
+            <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} label="Email" value={employee.email} />
+          )}
+        </Section>
+
+        <Section title="Employment">
+          <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.193 23.193 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} label="Job Type" value={employee.job_type === 'adhoc' ? 'Temporary' : 'Permanent'} />
+          <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} label="Salary Type" value={salaryLabel} />
+          {employee.salary_type === 'piece' ? (
+            <div className="pl-7">
+              {pieceRates.length > 0 ? (
+                <div className="border border-gray-100 rounded-lg overflow-hidden mt-1">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-2 py-1 text-gray-400 font-medium w-6">#</th>
+                        <th className="text-left px-2 py-1 text-gray-400 font-medium">Work Type</th>
+                        <th className="text-left px-2 py-1 text-gray-400 font-medium">Unit</th>
+                        <th className="text-right px-2 py-1 text-gray-400 font-medium">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {pieceRates.map((r, i) => (
+                        <tr key={r.id || i}>
+                          <td className="px-2 py-1 text-gray-400">{i + 1}</td>
+                          <td className="px-2 py-1 text-gray-900 font-medium">{r.work_type}</td>
+                          <td className="px-2 py-1 text-gray-500">{r.unit_label}</td>
+                          <td className="px-2 py-1 text-gray-700 text-right">{formatINR(r.rate_per_piece)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400">
+                  {employee.piece_work_type || '—'} &middot; {employee.piece_unit_label || '—'} &middot; {employee.piece_rate ? formatINR(employee.piece_rate) : '—'}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {fieldVisible('baseSalary') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>} label="Salary" value={formatINR(employee.base_salary)} />}
+              {fieldVisible('payPerHour') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} label="Pay/Hr" value={employee.pay_per_hour ? formatINR(employee.pay_per_hour) : '—'} />}
+            </>
+          )}
+        </Section>
+
+        {(fieldVisible('profession') || employee.created_at) && (
+          <Section>
+            {fieldVisible('profession') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>} label="Profession" value={employee.profession || '—'} />}
+            <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} label="Onboarded" value={onboardDate} />
+          </Section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div>
+      {title && <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{title}</h4>}
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function InfoRow({ icon, label, value }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-gray-400 shrink-0">{icon}</span>
+      <span className="text-gray-500 min-w-[5rem]">{label}</span>
+      <span className="text-gray-900 font-medium">{value || '—'}</span>
     </div>
   );
 }

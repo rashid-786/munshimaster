@@ -516,7 +516,7 @@ exports.getEmployeeCalendar = async (req, res) => {
     );
 
     const [employees] = await db.execute(
-      `SELECT id, first_name, last_name, role, pay_per_hour
+      `SELECT id, first_name, last_name, role, pay_per_hour, salary_type
        FROM employees WHERE tenant_id = ? AND status = 'active'
        ${employeeId ? 'AND id = ?' : ''}
        ORDER BY first_name`,
@@ -609,7 +609,7 @@ exports.getEmployeeCalendar = async (req, res) => {
         const isPaid = hours != null && hours > 0 && periods.some(pp => dateStr >= pp.start && dateStr <= pp.end);
         days.push({ date: dateStr, day: d, type, label, hours, isWeekend, paid: isPaid, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
       }
-      return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role, payPerHour: emp.pay_per_hour }, paidPeriods: paidMap[emp.id] || [], days };
+      return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role, payPerHour: emp.pay_per_hour, salaryType: emp.salary_type }, paidPeriods: paidMap[emp.id] || [], days };
     });
 
     res.json({ month: m, year: y, employees: result, weekendDays });

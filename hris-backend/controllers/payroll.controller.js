@@ -59,7 +59,7 @@ exports.calculatePayroll = async (req, res) => {
       return res.status(400).json({ error: 'Pay period contains no working days.' });
     }
 
-    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name FROM employees WHERE tenant_id = ? AND status = 'active'`;
+    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active'`;
     const employeeParams = [tenantId];
     if (employeeIds && employeeIds.length > 0) {
       employeeQuery += ` AND id IN (${employeeIds.map(() => '?').join(',')})`;
@@ -68,28 +68,55 @@ exports.calculatePayroll = async (req, res) => {
     const [employees] = await db.execute(employeeQuery, employeeParams);
 
     const payrollRuns = [];
+    const pieceEntryIdsByEmployee = {};
 
     for (const emp of employees) {
       const isPayPerHour = emp.pay_per_hour && emp.pay_per_hour > 0;
+      const isPieceWorker = emp.salary_type === 'piece';
 
-      const [attendance] = await db.execute(
-        `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
-         FROM attendance a
-         WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
-         ${paidExclusionClause()}`,
-        [tenantId, emp.id, startDate, endDate]
-      );
-      const actualHours = parseFloat(attendance[0].total_hours) || 0;
-
-      let hourlyRate, grossSalary, deductions;
+      let actualHours = 0;
+      let hourlyRate = 0;
+      let grossSalary = 0;
+      let deductions = 0;
       let netSalary;
 
-      if (isPayPerHour) {
+      if (isPieceWorker) {
+        const [entries] = await db.execute(
+          `SELECT id, calculated_amount, quantity, rate_per_piece
+           FROM piece_work_entries
+           WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+        const totalAmount = entries.reduce((s, e) => s + parseInt(e.calculated_amount || 0), 0);
+        hourlyRate = emp.piece_rate || 0;
+        grossSalary = totalAmount;
+        actualHours = totalQty;
+        deductions = 0;
+        netSalary = grossSalary;
+        pieceEntryIdsByEmployee[emp.id] = entries.map(e => e.id);
+      } else if (isPayPerHour) {
+        const [attendance] = await db.execute(
+          `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
+           FROM attendance a
+           WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
+           ${paidExclusionClause()}`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        actualHours = parseFloat(attendance[0].total_hours) || 0;
         hourlyRate = emp.pay_per_hour;
         grossSalary = Math.round(hourlyRate * actualHours);
         deductions = 0;
         netSalary = grossSalary;
       } else {
+        const [attendance] = await db.execute(
+          `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
+           FROM attendance a
+           WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
+           ${paidExclusionClause()}`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        actualHours = parseFloat(attendance[0].total_hours) || 0;
         hourlyRate = Math.round(emp.base_salary / standardHours);
 
         const [absences] = await db.execute(
@@ -118,70 +145,72 @@ exports.calculatePayroll = async (req, res) => {
 
       let advanceDeduction = 0;
 
-      // If recalculating an existing payroll, reverse previous advance deduction first
-      const [existingPayroll] = await db.execute(
-        `SELECT advance_deduction FROM payroll
-         WHERE tenant_id = ? AND employee_id = ? AND pay_period_start = ? AND pay_period_end = ?`,
-        [tenantId, emp.id, startDate, endDate]
-      );
-      if (existingPayroll.length > 0) {
-        const prevAdvanceDeduction = Number(existingPayroll[0].advance_deduction) || 0;
-        if (prevAdvanceDeduction > 0) {
-          await db.execute(
-            `UPDATE employee_advances SET remaining_balance = remaining_balance + ?
-             WHERE tenant_id = ? AND employee_id = ? AND status IN ('approved', 'fully_paid')`,
-            [prevAdvanceDeduction, tenantId, emp.id]
-          );
-          await db.execute(
-            `UPDATE employee_advances SET status = 'approved'
-             WHERE tenant_id = ? AND employee_id = ? AND status = 'fully_paid' AND remaining_balance > 0`,
-            [tenantId, emp.id]
-          );
-        }
-      }
-
-      const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
-      const tenantSettings = tenantRows[0]?.settings
-        ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
-        : {};
-      const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 10) / 100;
-
-      const [advances] = await db.execute(
-        `SELECT id, remaining_balance FROM employee_advances
-         WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND remaining_balance > 0
-         ORDER BY created_at ASC`,
-        [tenantId, emp.id]
-      );
-
-      if (advances.length > 0) {
-        const totalRemaining = advances.reduce((sum, a) => sum + a.remaining_balance, 0);
-        const override = advanceDeductions && advanceDeductions[emp.id];
-        let toDeduct;
-        if (override !== undefined && override !== null && Number(override) > 0) {
-          toDeduct = Math.min(Math.round(Number(override)), netSalary, totalRemaining);
-        } else {
-          const maxAdvanceDeduction = Math.round(netSalary * advanceDeductionPct);
-          toDeduct = Math.min(totalRemaining, maxAdvanceDeduction);
+      // Only do advance deductions for non-piece workers
+      if (!isPieceWorker) {
+        const [existingPayroll] = await db.execute(
+          `SELECT advance_deduction FROM payroll
+           WHERE tenant_id = ? AND employee_id = ? AND pay_period_start = ? AND pay_period_end = ?`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        if (existingPayroll.length > 0) {
+          const prevAdvanceDeduction = Number(existingPayroll[0].advance_deduction) || 0;
+          if (prevAdvanceDeduction > 0) {
+            await db.execute(
+              `UPDATE employee_advances SET remaining_balance = remaining_balance + ?
+               WHERE tenant_id = ? AND employee_id = ? AND status IN ('approved', 'fully_paid')`,
+              [prevAdvanceDeduction, tenantId, emp.id]
+            );
+            await db.execute(
+              `UPDATE employee_advances SET status = 'approved'
+               WHERE tenant_id = ? AND employee_id = ? AND status = 'fully_paid' AND remaining_balance > 0`,
+              [tenantId, emp.id]
+            );
+          }
         }
 
-        for (const adv of advances) {
-          if (toDeduct <= 0) break;
-          const deductFromThis = Math.min(adv.remaining_balance, toDeduct);
-          await db.execute(
-            'UPDATE employee_advances SET remaining_balance = remaining_balance - ? WHERE id = ?',
-            [deductFromThis, adv.id]
-          );
-          toDeduct -= deductFromThis;
-          advanceDeduction += deductFromThis;
+        const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
+        const tenantSettings = tenantRows[0]?.settings
+          ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
+          : {};
+        const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 10) / 100;
 
-          await db.execute(
-            `UPDATE employee_advances SET status = 'fully_paid'
-             WHERE id = ? AND remaining_balance <= 0`,
-            [adv.id]
-          );
+        const [advances] = await db.execute(
+          `SELECT id, remaining_balance FROM employee_advances
+           WHERE tenant_id = ? AND employee_id = ? AND status = 'approved' AND remaining_balance > 0
+           ORDER BY created_at ASC`,
+          [tenantId, emp.id]
+        );
+
+        if (advances.length > 0) {
+          const totalRemaining = advances.reduce((sum, a) => sum + a.remaining_balance, 0);
+          const override = advanceDeductions && advanceDeductions[emp.id];
+          let toDeduct;
+          if (override !== undefined && override !== null && Number(override) > 0) {
+            toDeduct = Math.min(Math.round(Number(override)), netSalary, totalRemaining);
+          } else {
+            const maxAdvanceDeduction = Math.round(netSalary * advanceDeductionPct);
+            toDeduct = Math.min(totalRemaining, maxAdvanceDeduction);
+          }
+
+          for (const adv of advances) {
+            if (toDeduct <= 0) break;
+            const deductFromThis = Math.min(adv.remaining_balance, toDeduct);
+            await db.execute(
+              'UPDATE employee_advances SET remaining_balance = remaining_balance - ? WHERE id = ?',
+              [deductFromThis, adv.id]
+            );
+            toDeduct -= deductFromThis;
+            advanceDeduction += deductFromThis;
+
+            await db.execute(
+              `UPDATE employee_advances SET status = 'fully_paid'
+               WHERE id = ? AND remaining_balance <= 0`,
+              [adv.id]
+            );
+          }
+
+          netSalary = Math.max(0, netSalary - advanceDeduction);
         }
-
-        netSalary = Math.max(0, netSalary - advanceDeduction);
       }
 
       const payrollId = uuidv4();
@@ -199,7 +228,20 @@ exports.calculatePayroll = async (req, res) => {
           hourlyRate, actualHours, standardHours, grossSalary, deductions, advanceDeduction, netSalary]
       );
 
+      // Mark piece work entries as paid
+      if (isPieceWorker && pieceEntryIdsByEmployee[emp.id]?.length > 0) {
+        const ids = pieceEntryIdsByEmployee[emp.id];
+        const placeholders = ids.map(() => '?').join(',');
+        await db.execute(
+          `UPDATE piece_work_entries SET is_paid = 1, payroll_id = ? WHERE id IN (${placeholders})`,
+          [payrollId, ...ids]
+        );
+      }
+
+      const unitLabel = isPieceWorker ? (emp.piece_unit_label || 'pcs') : 'h';
+
       payrollRuns.push({
+        employeeId: emp.id,
         employeeName: `${emp.first_name} ${emp.last_name}`,
         hourlyRate: (hourlyRate / 100).toFixed(2),
         hoursWorked: actualHours,
@@ -208,6 +250,9 @@ exports.calculatePayroll = async (req, res) => {
         deductions: (deductions / 100).toFixed(2),
         advanceDeduction: (advanceDeduction / 100).toFixed(2),
         net: (netSalary / 100).toFixed(2),
+        salaryType: isPieceWorker ? 'piece' : (isPayPerHour ? 'hourly' : 'fixed'),
+        unitLabel,
+        pieceEntriesCount: pieceEntryIdsByEmployee[emp.id]?.length || 0,
       });
     }
 
@@ -250,7 +295,7 @@ exports.previewPayroll = async (req, res) => {
       return res.status(400).json({ error: 'Pay period contains no working days.' });
     }
 
-    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name FROM employees WHERE tenant_id = ? AND status = 'active'`;
+    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate, piece_unit_label FROM employees WHERE tenant_id = ? AND status = 'active'`;
     const employeeParams = [tenantId];
     if (employeeIds && employeeIds.length > 0) {
       employeeQuery += ` AND id IN (${employeeIds.map(() => '?').join(',')})`;
@@ -268,23 +313,44 @@ exports.previewPayroll = async (req, res) => {
 
     for (const emp of employees) {
       const isPayPerHour = emp.pay_per_hour && emp.pay_per_hour > 0;
+      const isPieceWorker = emp.salary_type === 'piece';
 
-      const [attendance] = await db.execute(
-        `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
-         FROM attendance a
-         WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
-         ${paidExclusionClause()}`,
-        [tenantId, emp.id, startDate, endDate]
-      );
-      const actualHours = parseFloat(attendance[0].total_hours) || 0;
+      let actualHours = 0, hourlyRate = 0, grossSalary = 0, deductions = 0;
 
-      let hourlyRate, grossSalary, deductions;
-
-      if (isPayPerHour) {
+      if (isPieceWorker) {
+        const [entries] = await db.execute(
+          `SELECT id, calculated_amount, quantity, rate_per_piece
+           FROM piece_work_entries
+           WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+        const totalAmount = entries.reduce((s, e) => s + parseInt(e.calculated_amount || 0), 0);
+        hourlyRate = emp.piece_rate || 0;
+        grossSalary = totalAmount;
+        actualHours = totalQty;
+        deductions = 0;
+      } else if (isPayPerHour) {
+        const [attendance] = await db.execute(
+          `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
+           FROM attendance a
+           WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
+           ${paidExclusionClause()}`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        actualHours = parseFloat(attendance[0].total_hours) || 0;
         hourlyRate = emp.pay_per_hour;
         grossSalary = Math.round(hourlyRate * actualHours);
         deductions = 0;
       } else {
+        const [attendance] = await db.execute(
+          `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
+           FROM attendance a
+           WHERE a.tenant_id = ? AND a.employee_id = ? AND a.date >= ? AND a.date <= ? AND a.total_hours > 0
+           ${paidExclusionClause()}`,
+          [tenantId, emp.id, startDate, endDate]
+        );
+        actualHours = parseFloat(attendance[0].total_hours) || 0;
         hourlyRate = Math.round(emp.base_salary / standardHours);
         const [absences] = await db.execute(
           `SELECT COUNT(*) as days
@@ -316,8 +382,9 @@ exports.previewPayroll = async (req, res) => {
         [tenantId, emp.id]
       );
       const outstandingAdvance = Math.round(Number(advances[0]?.total_remaining) || 0);
-      const suggestedAdvanceDeduction = Math.min(outstandingAdvance, Math.round(netBeforeAdvance * advanceDeductionPct));
-      const netSalary = Math.max(0, netBeforeAdvance - suggestedAdvanceDeduction);
+      const suggestedAdvanceDeduction = isPieceWorker ? 0 : Math.min(outstandingAdvance, Math.round(netBeforeAdvance * advanceDeductionPct));
+      const advanceDeduction = isPieceWorker ? 0 : suggestedAdvanceDeduction;
+      const netSalary = Math.max(0, netBeforeAdvance - advanceDeduction);
 
       runs.push({
         employeeId: emp.id,
@@ -330,8 +397,10 @@ exports.previewPayroll = async (req, res) => {
         dueAmount: netBeforeAdvance,
         outstandingAdvance,
         suggestedAdvanceDeduction,
-        advanceDeduction: suggestedAdvanceDeduction,
+        advanceDeduction,
         netSalary,
+        salaryType: isPieceWorker ? 'piece' : (isPayPerHour ? 'hourly' : 'fixed'),
+        unitLabel: isPieceWorker ? (emp.piece_unit_label || 'pcs') : 'h',
       });
     }
 
@@ -355,13 +424,13 @@ exports.getPayrollHistory = async (req, res) => {
     p.gross_salary, p.deductions, p.advance_deduction, p.net_salary,
     p.status, p.created_at`;
   const queryTarget = req.user.role === 'tenant_admin'
-    ? `SELECT ${COLS}, e.first_name, e.last_name, e.email,
+    ? `SELECT ${COLS}, e.first_name, e.last_name, e.email, e.salary_type,
        (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
         WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
         AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
        FROM payroll p JOIN employees e ON p.employee_id = e.id
        WHERE p.tenant_id = ? AND e.status = 'active' ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC`
-    : `SELECT ${COLS}, e.first_name, e.last_name, e.email,
+    : `SELECT ${COLS}, e.first_name, e.last_name, e.email, e.salary_type,
        (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
         WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
         AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
@@ -608,6 +677,11 @@ exports.deletePayrollHistory = async (req, res) => {
           [tenantId, rec.employee_id]
         );
       }
+      // Unmark piece work entries
+      await db.execute(
+        'UPDATE piece_work_entries SET is_paid = 0, payroll_id = NULL WHERE payroll_id = ? AND tenant_id = ?',
+        [rec.id, tenantId]
+      );
     }
     const [result] = await db.execute(
       `DELETE FROM payroll WHERE tenant_id = ? AND id IN (${placeholders})`,
@@ -746,7 +820,7 @@ exports.getDueSummary = async (req, res) => {
 
   try {
     const [employees] = await db.execute(
-      `SELECT id, base_salary, pay_per_hour FROM employees WHERE tenant_id = ? AND status = 'active'`,
+      `SELECT id, base_salary, pay_per_hour, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active'`,
       [tenantId]
     );
     const standardHours = countWeekdays(rangeStart, rangeEnd) * 8;
@@ -756,6 +830,20 @@ exports.getDueSummary = async (req, res) => {
 
     for (const emp of employees) {
       const isPayPerHour = emp.pay_per_hour && emp.pay_per_hour > 0;
+      const isPieceWorker = emp.salary_type === 'piece';
+
+      if (isPieceWorker) {
+        const [entries] = await db.execute(
+          `SELECT COALESCE(SUM(calculated_amount), 0) as total_amount,
+                  COALESCE(SUM(quantity), 0) as total_qty
+           FROM piece_work_entries
+           WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0`,
+          [tenantId, emp.id, rangeStart, rangeEnd]
+        );
+        dueAmount += parseInt(entries[0].total_amount || 0);
+        dueHours += parseFloat(entries[0].total_qty || 0);
+        continue;
+      }
 
       const [attendance] = await db.execute(
         `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
