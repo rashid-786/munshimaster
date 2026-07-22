@@ -472,7 +472,8 @@ exports.downloadPayslip = async (req, res) => {
 
   try {
     const [records] = await db.execute(
-      `SELECT p.*, e.first_name, e.last_name, e.email, e.role, e.base_salary, t.company_name
+      `SELECT p.*, e.first_name, e.last_name, e.email, e.role, e.base_salary,
+              e.salary_type, e.piece_unit_label, t.company_name
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id
        JOIN tenants t ON p.tenant_id = t.id
@@ -482,9 +483,22 @@ exports.downloadPayslip = async (req, res) => {
 
     if (records.length === 0) return res.status(404).json({ error: 'Payslip not found.' });
     const data = records[0];
+    const isPieceWorker = data.salary_type === 'piece';
 
     if (req.user.role === 'employee' && req.user.id !== data.employee_id) {
       return res.status(403).json({ error: 'Unauthorized access.' });
+    }
+
+    // Fetch piece work entries if piece worker
+    let pieceEntries = [];
+    if (isPieceWorker) {
+      const [entries] = await db.execute(
+        `SELECT work_type, unit_label, rate_per_piece, quantity, calculated_amount
+         FROM piece_work_entries
+         WHERE payroll_id = ? AND tenant_id = ?`,
+        [payrollId, tenantId]
+      );
+      pieceEntries = entries || [];
     }
 
     const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
@@ -541,19 +555,16 @@ exports.downloadPayslip = async (req, res) => {
     const infoY = doc.y;
     doc.font(RF(true)).fontSize(10).text('EMPLOYEE DETAILS', leftX, infoY);
     doc.font(RF(true)).fontSize(10).text('PAY PERIOD', rightX, infoY);
-    doc.moveDown(1.5);
+    doc.moveDown(0.5);
 
     doc.font(RF(false)).fontSize(9);
     const empY = doc.y;
     doc.text(`Name: ${data.first_name} ${data.last_name}`, leftX, empY);
     doc.text(`From: ${fmtD(data.pay_period_start)}`, rightX, empY);
-    doc.moveDown(0.8);
     const empY2 = doc.y;
-    doc.text(`Email: ${data.email}`, leftX, empY2);
     doc.text(`To: ${fmtD(data.pay_period_end)}`, rightX, empY2);
     doc.moveDown(0.8);
     const empY3 = doc.y;
-    doc.text(`Role: ${data.role || 'Employee'}`, leftX, empY3);
     doc.text(`Status: ${data.status === 'paid' ? 'Paid' : 'Due'}`, rightX, empY3, { continued: false });
 
     const payStatus = data.status === 'paid' ? 'Paid' : 'Due';
@@ -571,16 +582,15 @@ exports.downloadPayslip = async (req, res) => {
     const col = [50, 290, 380, 470];
     const colW = [240, 90, 90, 80];
     const headerY = doc.y;
-    doc.text('Description', col[0], headerY, { width: colW[0] });
+    doc.text(isPieceWorker ? 'Work Type' : 'Description', col[0], headerY, { width: colW[0] });
     doc.text('Rate', col[1], headerY, { width: colW[1], align: 'right' });
-    doc.text('Qty/Hours', col[2], headerY, { width: colW[2], align: 'right' });
+    doc.text(isPieceWorker ? 'Qty' : 'Hours', col[2], headerY, { width: colW[2], align: 'right' });
     doc.text('Amount', col[3], headerY, { width: colW[3], align: 'right' });
     doc.moveDown(0.3);
     const lineY = doc.y;
     doc.moveTo(50, lineY).lineTo(545, lineY).stroke();
     doc.moveDown(0.5);
 
-    const hr = (data.hourly_rate / 100).toFixed(2);
     const stdHrs = data.standard_hours || 0;
     const wrkHrs = data.total_hours_worked || 0;
     const grossAmt = (data.gross_salary / 100).toFixed(2);
@@ -591,19 +601,41 @@ exports.downloadPayslip = async (req, res) => {
     doc.font(RF(false)).fontSize(9);
     let yPos = doc.y;
 
-    doc.text('Gross Pay (Hours Worked)', col[0], yPos, { width: colW[0] });
-    doc.text(`₹${hr}`, col[1], yPos, { width: colW[1], align: 'right' });
-    doc.text(`${wrkHrs}h`, col[2], yPos, { width: colW[2], align: 'right' });
-    doc.text(`₹${grossAmt}`, col[3], yPos, { width: colW[3], align: 'right' });
-    yPos += 18;
+    if (isPieceWorker) {
+      // Group piece entries by work type
+      const groupMap = {};
+      pieceEntries.forEach(e => {
+        const wt = e.work_type || 'Other';
+        if (!groupMap[wt]) groupMap[wt] = { workType: wt, unitLabel: e.unit_label || 'pcs', ratePerPiece: e.rate_per_piece || 0, quantity: 0, calculatedAmount: 0 };
+        groupMap[wt].quantity += parseFloat(e.quantity || 0);
+        groupMap[wt].calculatedAmount += parseInt(e.calculated_amount || 0, 10);
+      });
+      const rows = Object.values(groupMap);
+      const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
 
-    if (parseFloat(data.deductions) > 0) {
-      const dc = '#dc2626';
-      doc.text('Absence Deductions', col[0], yPos, { width: colW[0], color: dc });
-      doc.text('-', col[1], yPos, { width: colW[1], align: 'right', color: dc });
-      doc.text(`${(data.deductions / data.hourly_rate).toFixed(1)}h`, col[2], yPos, { width: colW[2], align: 'right', color: dc });
-      doc.text(`-₹${dedAmt}`, col[3], yPos, { width: colW[3], align: 'right', color: dc });
+      rows.forEach(r => {
+        doc.text(r.workType, col[0], yPos, { width: colW[0] });
+        doc.text(r.ratePerPiece > 0 ? `₹${(r.ratePerPiece / 100).toFixed(2)}/${r.unitLabel}` : '—', col[1], yPos, { width: colW[1], align: 'right' });
+        doc.text(String(r.quantity), col[2], yPos, { width: colW[2], align: 'right' });
+        doc.text(`₹${(r.calculatedAmount / 100).toFixed(2)}`, col[3], yPos, { width: colW[3], align: 'right' });
+        yPos += 18;
+      });
+    } else {
+      const hr = (data.hourly_rate / 100).toFixed(2);
+      doc.text('Gross Pay (Hours Worked)', col[0], yPos, { width: colW[0] });
+      doc.text(`₹${hr}`, col[1], yPos, { width: colW[1], align: 'right' });
+      doc.text(`${wrkHrs}h`, col[2], yPos, { width: colW[2], align: 'right' });
+      doc.text(`₹${grossAmt}`, col[3], yPos, { width: colW[3], align: 'right' });
       yPos += 18;
+
+      if (parseFloat(data.deductions) > 0) {
+        const dc = '#dc2626';
+        doc.text('Absence Deductions', col[0], yPos, { width: colW[0], color: dc });
+        doc.text('-', col[1], yPos, { width: colW[1], align: 'right', color: dc });
+        doc.text(`${(data.deductions / data.hourly_rate).toFixed(1)}h`, col[2], yPos, { width: colW[2], align: 'right', color: dc });
+        doc.text(`-₹${dedAmt}`, col[3], yPos, { width: colW[3], align: 'right', color: dc });
+        yPos += 18;
+      }
     }
 
     if (parseFloat(data.advance_deduction) > 0) {
@@ -635,8 +667,16 @@ exports.downloadPayslip = async (req, res) => {
     doc.moveTo(50, yPos).lineTo(545, yPos).stroke();
     yPos += 10;
     doc.font(RF(false)).fontSize(8).fillColor('#6b7280');
-    doc.text(`Standard Hours: ${stdHrs}h (${stdHrs / 8} days × 8 hrs) | Hourly Rate: ₹${hr}/hr`, col[0], yPos, { width: 495 });
-    yPos += 12;
+    if (isPieceWorker) {
+      const totalQty = pieceEntries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+      const unitLabel = data.piece_unit_label || 'pcs';
+      doc.text(`Total Quantity: ${totalQty} ${unitLabel}`, col[0], yPos, { width: 495 });
+      yPos += 12;
+    } else {
+      const hr = (data.hourly_rate / 100).toFixed(2);
+      doc.text(`Standard Hours: ${stdHrs}h (${stdHrs / 8} days × 8 hrs) | Hourly Rate: ₹${hr}/hr`, col[0], yPos, { width: 495 });
+      yPos += 12;
+    }
     doc.text(`Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, col[0], yPos, { width: 495 });
 
     doc.end();
