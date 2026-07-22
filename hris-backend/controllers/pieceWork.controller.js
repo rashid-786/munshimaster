@@ -305,6 +305,27 @@ exports.getCalendarData = async (req, res) => {
   }
 };
 
+exports.getEmployeeEntries = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { employeeId, startDate, endDate } = req.query;
+  if (!employeeId) return res.status(400).json({ error: 'employeeId is required.' });
+  try {
+    let query = `SELECT p.*, e.first_name, e.last_name
+                 FROM piece_work_entries p
+                 JOIN employees e ON p.employee_id = e.id
+                 WHERE p.tenant_id = ? AND p.employee_id = ?`;
+    const params = [tenantId, employeeId];
+    if (startDate) { query += ' AND p.date >= ?'; params.push(startDate); }
+    if (endDate) { query += ' AND p.date <= ?'; params.push(endDate); }
+    query += ' ORDER BY p.date ASC, p.work_type ASC';
+    const [rows] = await db.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch employee entries.' });
+  }
+};
+
 exports.getUnpaidEntries = async (req, res) => {
   const tenantId = req.tenantId;
   const { employeeId, startDate, endDate } = req.query;

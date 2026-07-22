@@ -56,6 +56,7 @@ const RunPayroll = () => {
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState('');
   const [processed, setProcessed] = useState(null);
+  const [pieceTooltip, setPieceTooltip] = useState(null);
 
   useEffect(() => {
     const init = getPeriodDates('monthly');
@@ -322,7 +323,15 @@ const RunPayroll = () => {
                       </td>
                       <td className="table-cell text-right text-gray-500">{r.actualHours}{r.salaryType === 'piece' ? ` ${r.unitLabel || ''}` : 'h'}</td>
                       <td className="table-cell text-right text-gray-500">
-                        {r.salaryType === 'piece' ? `${formatINR(r.hourlyRate)}/${r.unitLabel || 'pc'}` : `₹${(r.hourlyRate / 100).toFixed(2)}/hr`}
+                        {r.salaryType === 'piece' ? (
+                          <div className="relative inline-block">
+                            <span
+                              onMouseEnter={(e) => setPieceTooltip({ run: r, el: e.currentTarget })}
+                              onMouseLeave={() => setPieceTooltip(null)}
+                              className="text-indigo-500 hover:text-indigo-700 text-xs font-medium cursor-pointer"
+                            >View Details</span>
+                          </div>
+                        ) : `₹${(r.hourlyRate / 100).toFixed(2)}/hr`}
                       </td>
                       <td className="table-cell text-right font-medium text-gray-900">{formatINR(r.dueAmount)}</td>
                       <td className="table-cell text-right">
@@ -360,6 +369,63 @@ const RunPayroll = () => {
           {processing ? 'Processing...' : `Process Payroll · ${formatINR(summary.payable)}`}
         </button>
       </div>
+      {/* Piece Work Tooltip */}
+      {pieceTooltip?.el && (() => {
+        const entries = pieceTooltip.run.pieceEntries || [];
+        const rect = pieceTooltip.el.getBoundingClientRect();
+        const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+        const totalAmt = entries.reduce((s, e) => s + parseInt(e.calculatedAmount || 0), 0);
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const showAbove = spaceBelow < 350;
+        return (
+          <div
+            className="fixed z-50"
+            style={{ left: Math.min(rect.left, window.innerWidth - 420), top: showAbove ? rect.top - 6 : rect.bottom + 6 }}
+            onMouseEnter={() => setPieceTooltip(pieceTooltip)}
+            onMouseLeave={() => setPieceTooltip(null)}
+          >
+            <div className={`bg-white rounded-xl shadow-2xl border border-gray-200 w-[400px] max-h-[320px] overflow-y-auto ${showAbove ? '-translate-y-full' : ''}`}>
+              <div className="px-2.5 py-1.5 border-b border-gray-100 bg-gray-50 rounded-t-xl flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-700">{pieceTooltip.run.employeeName}</span>
+                <span className="text-[11px] text-gray-400">{pieceTooltip.run.actualHours} {pieceTooltip.run.unitLabel || 'pcs'}</span>
+              </div>
+              {entries.length === 0 ? (
+                <div className="px-2.5 py-4 text-center text-xs text-gray-400">No entries</div>
+              ) : (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left px-2.5 py-1.5 text-gray-500 font-medium">Work Type</th>
+                      <th className="text-left px-2.5 py-1.5 text-gray-500 font-medium">Unit</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Rate</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Qty</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {entries.map((e, i) => (
+                      <tr key={i}>
+                        <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{e.workType || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-gray-500">{e.unitLabel || 'pcs'}</td>
+                        <td className="px-2.5 py-1.5 text-right text-gray-600 whitespace-nowrap">
+                          {e.ratePerPiece ? `${localStorage.getItem('currency_symbol') || '₹'}${(e.ratePerPiece / 100).toFixed(2)}` : '—'}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right text-gray-700">{e.quantity || 0}</td>
+                        <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(e.calculatedAmount || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div className="border-t border-gray-100 bg-gray-50 rounded-b-xl grid grid-cols-5 text-[11px] font-semibold">
+                <span className="col-span-3 text-left px-2.5 py-1.5 text-gray-700">Total</span>
+                <span className="text-center px-2.5 py-1.5 text-gray-500">{totalQty}</span>
+                <span className="text-right px-2.5 py-1.5 text-gray-900">{formatINR(totalAmt)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

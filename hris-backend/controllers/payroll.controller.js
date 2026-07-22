@@ -316,12 +316,14 @@ exports.previewPayroll = async (req, res) => {
       const isPieceWorker = emp.salary_type === 'piece';
 
       let actualHours = 0, hourlyRate = 0, grossSalary = 0, deductions = 0;
+      let pieceEntries = [];
 
       if (isPieceWorker) {
         const [entries] = await db.execute(
-          `SELECT id, calculated_amount, quantity, rate_per_piece
+          `SELECT id, work_type, unit_label, rate_per_piece, quantity, calculated_amount, date
            FROM piece_work_entries
-           WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0`,
+           WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0
+           ORDER BY date ASC, work_type ASC`,
           [tenantId, emp.id, startDate, endDate]
         );
         const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
@@ -330,6 +332,14 @@ exports.previewPayroll = async (req, res) => {
         grossSalary = totalAmount;
         actualHours = totalQty;
         deductions = 0;
+        pieceEntries = entries.map(e => ({
+          workType: e.work_type,
+          unitLabel: e.unit_label || 'pcs',
+          ratePerPiece: e.rate_per_piece,
+          quantity: e.quantity,
+          calculatedAmount: e.calculated_amount,
+          date: e.date,
+        }));
       } else if (isPayPerHour) {
         const [attendance] = await db.execute(
           `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
@@ -401,6 +411,7 @@ exports.previewPayroll = async (req, res) => {
         netSalary,
         salaryType: isPieceWorker ? 'piece' : (isPayPerHour ? 'hourly' : 'fixed'),
         unitLabel: isPieceWorker ? (emp.piece_unit_label || 'pcs') : 'h',
+        pieceEntries,
       });
     }
 

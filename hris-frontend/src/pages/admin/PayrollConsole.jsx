@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
@@ -54,6 +54,8 @@ const PayrollConsole = () => {
   const [error, setError] = useState('');
   const [employees, setEmployees] = useState([]);
   const [calendarData, setCalendarData] = useState(null);
+  const [pieceTooltip, setPieceTooltip] = useState(null);
+  const pieceCache = useRef({});
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -336,7 +338,28 @@ const PayrollConsole = () => {
                     </span>
                   </td>
                   <td className="table-cell text-gray-500">{(r.pay_period_start || '').split('T')[0]} to {(r.pay_period_end || '').split('T')[0]}</td>
-                  <td className="table-cell">{r.salary_type === 'piece' ? formatINR(r.hourly_rate)+'/pc' : `₹${(r.hourly_rate / 100).toFixed(2)}/hr`}</td>
+                  <td className="table-cell">
+                    {r.salary_type === 'piece' ? (
+                      <span
+                        onMouseEnter={async (e) => {
+                          const key = r.employee_id + r.pay_period_start + r.pay_period_end;
+                          if (!pieceCache.current[key]) {
+                            try {
+                              const entries = await hrService.getPieceWorkEmployeeEntries({
+                                employeeId: r.employee_id,
+                                startDate: (r.pay_period_start || '').split('T')[0],
+                                endDate: (r.pay_period_end || '').split('T')[0],
+                              });
+                              pieceCache.current[key] = entries;
+                            } catch { pieceCache.current[key] = []; }
+                          }
+                          setPieceTooltip({ entries: pieceCache.current[key], el: e.currentTarget, employeeName: `${r.first_name} ${r.last_name}`, unitLabel: 'pcs', actualHours: r.total_hours_worked });
+                        }}
+                        onMouseLeave={() => setPieceTooltip(null)}
+                        className="text-indigo-500 hover:text-indigo-700 text-xs font-medium cursor-pointer"
+                      >View Details</span>
+                    ) : `₹${(r.hourly_rate / 100).toFixed(2)}/hr`}
+                  </td>
                   <td className="table-cell">{formatINR(r.gross_salary)}</td>
                   <td className="table-cell">{r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span className="text-gray-300">—</span>}</td>
                   <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
@@ -403,6 +426,63 @@ const PayrollConsole = () => {
           )}
         </BottomSheet>
       )}
+
+      {pieceTooltip?.el && (() => {
+        const entries = pieceTooltip.entries || [];
+        const rect = pieceTooltip.el.getBoundingClientRect();
+        const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+        const totalAmt = entries.reduce((s, e) => s + parseInt(e.calculatedAmount || e.calculated_amount || 0), 0);
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const showAbove = spaceBelow < 350;
+        return (
+          <div
+            className="fixed z-50"
+            style={{ left: Math.min(rect.left, window.innerWidth - 420), top: showAbove ? rect.top - 6 : rect.bottom + 6 }}
+            onMouseEnter={() => setPieceTooltip(pieceTooltip)}
+            onMouseLeave={() => setPieceTooltip(null)}
+          >
+            <div className={`bg-white rounded-xl shadow-2xl border border-gray-200 w-[400px] max-h-[320px] overflow-y-auto ${showAbove ? '-translate-y-full' : ''}`}>
+              <div className="px-2.5 py-1.5 border-b border-gray-100 bg-gray-50 rounded-t-xl flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-700">{pieceTooltip.employeeName}</span>
+                <span className="text-[11px] text-gray-400">{pieceTooltip.actualHours} {pieceTooltip.unitLabel || 'pcs'}</span>
+              </div>
+              {entries.length === 0 ? (
+                <div className="px-2.5 py-4 text-center text-xs text-gray-400">No entries</div>
+              ) : (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left px-2.5 py-1.5 text-gray-500 font-medium">Work Type</th>
+                      <th className="text-left px-2.5 py-1.5 text-gray-500 font-medium">Unit</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Rate</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Qty</th>
+                      <th className="text-right px-2.5 py-1.5 text-gray-500 font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {entries.map((e, i) => (
+                      <tr key={i}>
+                        <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{e.workType || e.work_type || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-gray-500">{e.unitLabel || e.unit_label || 'pcs'}</td>
+                        <td className="px-2.5 py-1.5 text-right text-gray-600 whitespace-nowrap">
+                          {e.ratePerPiece || e.rate_per_piece ? `${localStorage.getItem('currency_symbol') || '₹'}${(((e.ratePerPiece || e.rate_per_piece) || 0) / 100).toFixed(2)}` : '—'}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right text-gray-700">{e.quantity || 0}</td>
+                        <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(e.calculatedAmount || e.calculated_amount || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div className="border-t border-gray-100 bg-gray-50 rounded-b-xl grid grid-cols-5 text-[11px] font-semibold">
+                <span className="col-span-3 text-left px-2.5 py-1.5 text-gray-700">Total</span>
+                <span className="text-center px-2.5 py-1.5 text-gray-500">{totalQty}</span>
+                <span className="text-right px-2.5 py-1.5 text-gray-900">{formatINR(totalAmt)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <ConfirmModal
         open={!!pendingDelete}

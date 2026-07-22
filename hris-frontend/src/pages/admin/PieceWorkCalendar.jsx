@@ -9,10 +9,9 @@ import { formatINR } from '../../utils/currency';
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const COLORS = {
-  none:      { bg: 'bg-white',     text: 'text-gray-300', dot: 'bg-gray-200' },
-  partial:   { bg: 'bg-amber-50',  text: 'text-amber-700', dot: 'bg-amber-400' },
-  completed: { bg: 'bg-emerald-50',text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  paid:      { bg: 'bg-blue-50',   text: 'text-blue-700',  dot: 'bg-blue-500' },
+  paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  unpaid:  { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-orange-500' },
+  none:    { bg: 'bg-white',      text: 'text-gray-300',    dot: 'bg-gray-200' },
 };
 
 const Tooltip = ({ day, rect }) => {
@@ -26,9 +25,7 @@ const Tooltip = ({ day, rect }) => {
           'No Entry'
         ) : (
           <>
-            <div className="font-medium">{day.label}</div>
-            <div className="text-gray-300 mt-0.5">{day.totalQty} qty · {formatINR(day.totalAmt)}</div>
-            {day.isPaid ? <div className="text-blue-300 mt-0.5">Paid</div> : null}
+            <div className="text-gray-300">Amount: {formatINR(day.totalAmt)} ({day.isPaid ? 'Paid' : 'Unpaid'})</div>
           </>
         )}
       </div>
@@ -255,9 +252,8 @@ const PieceWorkCalendar = () => {
 
       {/* Legend */}
       <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap items-center">
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Completed</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>In Progress</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Paid</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Paid</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>Unpaid</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-200"></span>No Entry</div>
         {weekendDays.map(d => (
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>{DAY_SHORT[d]}</div>
@@ -360,15 +356,11 @@ const PieceWorkCalendar = () => {
                               {!isNone && !isWeekend && (
                                 <span className={`w-2 h-2 rounded-full ${color?.dot || 'bg-gray-200'}`} />
                               )}
-                              {day.type === 'paid' && (
-                                <span className="text-[9px] font-semibold text-blue-700 bg-blue-100 rounded px-1 py-0.5 leading-none">Paid</span>
+
+                              {day.type === 'unpaid' && (
+                                <span className="text-[9px] font-semibold text-amber-700">{day.totalQuantity} Qty</span>
                               )}
-                              {day.type === 'partial' && (
-                                <span className="text-[9px] text-amber-600 font-medium">~</span>
-                              )}
-                              {day.type === 'completed' && (
-                                <span className="text-[9px] text-emerald-600 font-medium">{day.entryCount}</span>
-                              )}
+
                             </div>
                           </td>
                         );

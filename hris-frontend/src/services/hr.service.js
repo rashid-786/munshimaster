@@ -1069,6 +1069,10 @@ export const hrService = {
     const response = await api.get('/core/piece-work/calendar-data', { params });
     return response.data;
   },
+   getPieceWorkEmployeeEntries: async (params) => {
+    const response = await api.get('/core/piece-work/employee-entries', { params });
+    return response.data;
+  },
   savePieceWorkDayEntries: async (data) => {
     const response = await api.post('/core/piece-work/save-day', data);
     return response.data;
