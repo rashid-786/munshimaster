@@ -464,6 +464,6 @@ export default function TransactionForm({ transactionType, initial, onClose, onS
 }
 
 function formatINR(val) {
-  const symbol = localStorage.getItem('currency_symbol') || '₹';
+  const symbol = '₹';
   return symbol + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

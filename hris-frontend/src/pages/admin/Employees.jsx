@@ -37,7 +37,7 @@ const Employees = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const isAdmin = user?.role === 'tenant_admin';
-  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
+  const currencySymbol = '₹';
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
   const [phoneErr, setPhoneErr] = useState('');

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { hrService } from '../../services/hr.service';
 import { ActionEdit, ActionDelete } from '../../components/ActionIcons';
 function formatRupees(v) {
-  const symbol = localStorage.getItem('currency_symbol') || '₹';
+  const symbol = '₹';
   return symbol + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 import ConfirmModal from '../../components/ConfirmModal';

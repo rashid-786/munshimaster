@@ -41,7 +41,7 @@ const KiranaStore = () => {
   const [message, setMessage] = useState('');
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
-  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
+  const currencySymbol = '₹';
 
   // Cashbook
   const [cashEntries, setCashEntries] = useState([]);

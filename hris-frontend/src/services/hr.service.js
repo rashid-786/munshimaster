@@ -606,6 +606,10 @@ export const hrService = {
     const response = await api.get('/core/staff-reports/advances', { params });
     return response.data;
   },
+  getPieceWorkReport: async (params) => {
+    const response = await api.get('/core/staff-reports/piece-work', { params });
+    return response.data;
+  },
   getStaffReportCharts: async (params) => {
     const response = await api.get('/core/staff-reports/charts', { params });
     return response.data;

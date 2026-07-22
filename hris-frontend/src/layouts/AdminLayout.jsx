@@ -348,7 +348,7 @@ export default function AdminLayout() {
     '/admin/products': 'products',
     '/admin/hr': 'my_staff',
     '/admin/employees': 'staff_directory',
-    '/admin/calendar': 'attendance',
+    '/admin/attendance': 'attendance',
     '/admin/leaves': 'leaves',
     '/admin/payroll': 'payroll',
     '/admin/payroll/run': 'payroll',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
@@ -36,7 +36,7 @@ function getPeriodDates(key) {
   return { startDate: '', endDate: '' };
 }
 
-const RunPayroll = () => {
+const RunPayroll = ({ onSwitchToHistory }) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -57,6 +57,13 @@ const RunPayroll = () => {
   const [message, setMessage] = useState('');
   const [processed, setProcessed] = useState(null);
   const [pieceTooltip, setPieceTooltip] = useState(null);
+  const messageRef = useRef(null);
+
+  useEffect(() => {
+    if (message && messageRef.current) {
+      messageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [message]);
 
   useEffect(() => {
     const init = getPeriodDates('monthly');
@@ -198,15 +205,15 @@ const RunPayroll = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Run Payroll</h2>
-        <button onClick={() => navigate('/admin/payroll')} className="btn-secondary text-sm self-start">
+        <button onClick={() => onSwitchToHistory ? onSwitchToHistory() : navigate('/admin/payroll')} className="btn-secondary text-sm self-start">
           View History
         </button>
       </div>
 
       {message && (
-        <div className={`p-3 rounded-lg text-sm flex items-center justify-between ${processed ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-blue-50 border border-blue-200 text-blue-700'}`}>
+        <div ref={messageRef} className={`p-3 rounded-lg text-sm flex items-center justify-between ${processed ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-blue-50 border border-blue-200 text-blue-700'}`}>
           <span>{message}</span>
-          <button onClick={() => { setMessage(''); if (processed) { setProcessed(null); navigate('/admin/payroll'); } }} className="ml-3 text-current hover:opacity-70">&times;</button>
+          <button onClick={() => { setMessage(''); if (processed) { setProcessed(null); onSwitchToHistory ? onSwitchToHistory() : navigate('/admin/payroll'); } }} className="ml-3 text-current hover:opacity-70">&times;</button>
         </div>
       )}
 
@@ -300,7 +307,7 @@ const RunPayroll = () => {
                   <th className="table-header">Type</th>
                   <th className="table-header text-right">Qty/Hours</th>
                   <th className="table-header text-right">Rate</th>
-                  <th className="table-header text-right">Due Amount</th>
+                  <th className="table-header text-right">Unpaid Amount</th>
                   <th className="table-header text-right">Advance Deduction</th>
                   <th className="table-header text-right">Total Payable</th>
                 </tr>
@@ -362,7 +369,7 @@ const RunPayroll = () => {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-gray-400">
-          Preview updates automatically. Review dues, advances &amp; deductions, then process.
+          Preview updates automatically. Review unpaid amounts, advances &amp; deductions, then process.
         </p>
         <button onClick={handleProcess} disabled={processing || selectedIds.size === 0}
           className="btn-primary">
@@ -408,7 +415,7 @@ const RunPayroll = () => {
                         <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{e.workType || '—'}</td>
                         <td className="px-2.5 py-1.5 text-gray-500">{e.unitLabel || 'pcs'}</td>
                         <td className="px-2.5 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {e.ratePerPiece ? `${localStorage.getItem('currency_symbol') || '₹'}${(e.ratePerPiece / 100).toFixed(2)}` : '—'}
+                          {e.ratePerPiece ? `${'₹'}${(e.ratePerPiece / 100).toFixed(2)}` : '—'}
                         </td>
                         <td className="px-2.5 py-1.5 text-right text-gray-700">{e.quantity || 0}</td>
                         <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(e.calculatedAmount || 0)}</td>

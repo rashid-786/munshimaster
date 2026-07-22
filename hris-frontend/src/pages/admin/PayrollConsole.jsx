@@ -214,27 +214,23 @@ const PayrollConsole = () => {
 
   const statusBadge = (status) => {
     if (status === 'paid') return <span className="badge-success">Paid</span>;
-    return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Due</span>;
+    return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Unpaid</span>;
   };
 
   if (loading) return <Loading text="Loading payroll history..." />;
 
   const cards = [
     { label: 'Total Staff', value: totalStaff, sub: `${employees.length} active`, accent: 'text-gray-900', onClick: () => navigate('/admin/employees') },
-    { label: 'Present Today', value: todayAttendance.present, sub: `${todayAttendance.absent} absent, ${todayAttendance.leave} on leave`, accent: 'text-emerald-600', onClick: () => navigate('/admin/calendar') },
-    { label: 'Total Due Amount', value: formatINR(Math.round(totalDue)), sub: `${formatINR(Math.round(totalPaid))} paid`, accent: 'text-amber-600', onClick: () => navigate('/admin/payroll') },
-    { label: 'Total Due Hours', value: `${totalDueHours.toFixed(1)}h`, sub: `${totalPaidHours.toFixed(1)}h paid`, accent: 'text-amber-600', onClick: () => navigate('/admin/calendar') },
-    { label: 'Total Hours Logged', value: `${totalLoggedHours.toFixed(1)}h`, sub: '', accent: 'text-indigo-600', onClick: () => navigate('/admin/calendar') },
+    { label: 'Present Today', value: todayAttendance.present, sub: `${todayAttendance.absent} absent, ${todayAttendance.leave} on leave`, accent: 'text-emerald-600', onClick: () => navigate('/admin/attendance') },
+    { label: 'Total Unpaid Amount', value: formatINR(Math.round(totalDue)), sub: `${formatINR(Math.round(totalPaid))} paid`, accent: 'text-amber-600', onClick: () => navigate('/admin/payroll') },
+    { label: 'Total Unpaid Hours', value: `${totalDueHours.toFixed(1)}h`, sub: `${totalPaidHours.toFixed(1)}h paid`, accent: 'text-amber-600', onClick: () => navigate('/admin/attendance') },
+    { label: 'Total Hours Logged', value: `${totalLoggedHours.toFixed(1)}h`, sub: '', accent: 'text-indigo-600', onClick: () => navigate('/admin/attendance') },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Payroll History</h2>
-        <button onClick={() => navigate('/admin/payroll/run')} className="btn-primary text-sm self-start">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          Run Payroll
-        </button>
       </div>
 
       {error && (
@@ -465,7 +461,7 @@ const PayrollConsole = () => {
                         <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{e.workType || e.work_type || '—'}</td>
                         <td className="px-2.5 py-1.5 text-gray-500">{e.unitLabel || e.unit_label || 'pcs'}</td>
                         <td className="px-2.5 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {e.ratePerPiece || e.rate_per_piece ? `${localStorage.getItem('currency_symbol') || '₹'}${(((e.ratePerPiece || e.rate_per_piece) || 0) / 100).toFixed(2)}` : '—'}
+                          {e.ratePerPiece || e.rate_per_piece ? `${'₹'}${(((e.ratePerPiece || e.rate_per_piece) || 0) / 100).toFixed(2)}` : '—'}
                         </td>
                         <td className="px-2.5 py-1.5 text-right text-gray-700">{e.quantity || 0}</td>
                         <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(e.calculatedAmount || e.calculated_amount || 0)}</td>
@@ -487,7 +483,7 @@ const PayrollConsole = () => {
       <ConfirmModal
         open={!!pendingDelete}
         title={pendingDelete && pendingDelete.length > 1 ? `Delete ${pendingDelete.length} payroll records?` : 'Delete payroll record?'}
-        message="This will permanently remove the record(s), restore any advance deductions, and mark the hours as unpaid (due) again."
+        message="This will permanently remove the record(s), restore any advance deductions, and mark the hours as unpaid again."
         confirmLabel="Delete"
         variant="danger"
         loading={deleting}

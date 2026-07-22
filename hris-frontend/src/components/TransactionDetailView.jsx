@@ -13,7 +13,7 @@ function logoFullUrl(url) {
 }
 
 function fmtCurrency(paise) {
-  const s = localStorage.getItem('currency_symbol') || '₹';
+  const s = '₹';
   return s + Number(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 

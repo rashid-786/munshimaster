@@ -129,9 +129,8 @@ const Settings = () => {
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
       if (res.settings?.groupLabels) setGroupLabels(prev => ({ ...prev, ...res.settings.groupLabels }));
-      if (res.settings?.currencySymbol) {
-        setCurrencySymbol(res.settings.currencySymbol);
-        localStorage.setItem('currency_symbol', res.settings.currencySymbol);
+        if (res.settings?.currencySymbol) {
+          setCurrencySymbol(res.settings.currencySymbol);
       }
       if (res.settings?.countryCode) {
         setCountryCode(res.settings.countryCode);
@@ -179,7 +178,6 @@ const Settings = () => {
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
       localStorage.setItem('group_labels', JSON.stringify(groupLabels));
-      localStorage.setItem('currency_symbol', currencySymbol);
       localStorage.setItem('default_country_code', countryCode);
       localStorage.setItem('employee_form_fields', JSON.stringify(employeeFormFields));
       window.dispatchEvent(new CustomEvent('settings-saved', { detail: { hiddenGroups, hiddenItems, groupLabels } }));

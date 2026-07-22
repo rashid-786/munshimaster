@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import ProductSearchInput from './ProductSearchInput';
 
 function fmt(val) {
-  const s = localStorage.getItem('currency_symbol') || '₹';
+  const s = '₹';
   return s + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 

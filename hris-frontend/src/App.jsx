@@ -22,13 +22,11 @@ import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import Pricing from './pages/landing/Pricing';
 import Employees from './pages/admin/Employees';
-import EmployeeCalendar from './pages/admin/EmployeeCalendar';
+import AdminAttendance from './pages/admin/Attendance';
+import Payroll from './pages/admin/Payroll';
 import LeaveApprovals from './pages/admin/LeaveApprovals';
-import PayrollConsole from './pages/admin/PayrollConsole';
-import RunPayroll from './pages/admin/RunPayroll';
 import AdvancePayments from './pages/admin/AdvancePayments';
 import Replacements from './pages/admin/Replacements';
-import PieceWorkCalendar from './pages/admin/PieceWorkCalendar';
 import StaffReports from './pages/admin/StaffReports';
 import AuditLogs from './pages/admin/AuditLogs';
 import BalanceSheet from './pages/admin/BalanceSheet';
@@ -155,13 +153,14 @@ function App() {
           >
             <Route index element={<DefaultRedirect />} />
             <Route path="employees" element={<PlanRoute minPlan="pro"><Employees /></PlanRoute>} />
-            <Route path="calendar" element={<PlanRoute minPlan="pro"><EmployeeCalendar /></PlanRoute>} />
+            <Route path="attendance" element={<PlanRoute minPlan="pro"><AdminAttendance /></PlanRoute>} />
+            <Route path="calendar" element={<Navigate to="/admin/attendance" replace />} />
+            <Route path="piece-work/calendar" element={<Navigate to="/admin/attendance" replace />} />
             <Route path="leaves" element={<PlanRoute minPlan="pro"><LeaveApprovals /></PlanRoute>} />
-            <Route path="payroll" element={<PlanRoute minPlan="pro"><PayrollConsole /></PlanRoute>} />
-            <Route path="payroll/run" element={<PlanRoute minPlan="pro"><RunPayroll /></PlanRoute>} />
+            <Route path="payroll" element={<PlanRoute minPlan="pro"><Payroll /></PlanRoute>} />
+            <Route path="payroll/run" element={<Navigate to="/admin/payroll" replace />} />
             <Route path="advances" element={<PlanRoute minPlan="pro"><AdvancePayments /></PlanRoute>} />
             <Route path="replacements" element={<PlanRoute minPlan="pro"><Replacements /></PlanRoute>} />
-            <Route path="piece-work/calendar" element={<PlanRoute minPlan="pro"><PieceWorkCalendar /></PlanRoute>} />
             <Route path="staff-reports" element={<PlanRoute minPlan="pro"><StaffReports /></PlanRoute>} />
             <Route path="audit-logs" element={<PlanRoute minPlan="pro"><AuditLogs /></PlanRoute>} />
             <Route path="balance" element={<PlanRoute minPlan="business"><BalanceSheet /></PlanRoute>} />

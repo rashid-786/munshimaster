@@ -1,6 +1,7 @@
+try { if (localStorage.getItem('currency_symbol') && localStorage.getItem('currency_symbol') !== '₹') localStorage.removeItem('currency_symbol'); } catch {}
+
 export function formatINR(cents) {
-  const symbol = localStorage.getItem('currency_symbol') || '₹';
-  return symbol + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return '₹' + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function centsToDollars(cents) {

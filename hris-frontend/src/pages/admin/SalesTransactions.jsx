@@ -363,7 +363,7 @@ export default function SalesTransactions() {
 
 
 function formatINR(cents) {
-  const symbol = localStorage.getItem('currency_symbol') || '₹';
+  const symbol = '₹';
   return symbol + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -377,7 +377,7 @@ function buildInvoiceHTML(t, cfg, direction) {
   const apiBase = import.meta.env.VITE_API_BASE_URL || '';
   const imgUrl = (url) => url ? (url.startsWith('http') ? url : apiBase + url.replace(/^\/api\/v1/, '')) : '';
   const fmt = (cents) => {
-    const sym = localStorage.getItem('currency_symbol') || '₹';
+    const sym = '₹';
     return sym + Number(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
   const statusBg = { draft:'#F3F4F6', sent:'#DBEAFE', paid:'#DCFCE7', partial:'#FEF3C7', overdue:'#FEE2E2', completed:'#DCFCE7', issued:'#E0E7FF', delivered:'#CCFBF1', cancelled:'#FEE2E2' };

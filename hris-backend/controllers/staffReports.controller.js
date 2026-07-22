@@ -19,10 +19,23 @@ function empStatusValue(staffStatus) {
 
 exports.getSummary = async (req, res) => {
   const tenantId = req.tenantId;
-  const { startDate, endDate, staffStatus } = req.query;
+  const { startDate, endDate, search, staffStatus } = req.query;
   const empStatus = empStatusValue(staffStatus);
   try {
-    const [empCount] = await db.execute(`SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`, [tenantId]);
+    let searchClause = '';
+    const searchParams = [];
+    if (search) {
+      searchClause = ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ?)`;
+      searchParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    let empSearchClause = '';
+    const empSearchParams = [];
+    if (search) {
+      empSearchClause = ` AND (first_name ILIKE ? OR last_name ILIKE ? OR CONCAT(first_name, ' ', last_name) ILIKE ?)`;
+      empSearchParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const [empCount] = await db.execute(`SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND status = '${empStatus}'${empSearchClause}`, [tenantId, ...empSearchParams]);
     const totalEmployees = empCount[0].c;
 
     let payrollQ = 'SELECT COALESCE(SUM(net_salary), 0) as total_net, COALESCE(SUM(total_hours_worked), 0) as total_hours FROM payroll WHERE tenant_id = ?';
@@ -38,6 +51,7 @@ exports.getSummary = async (req, res) => {
     const paidP = [tenantId, 'paid'];
     if (startDate) { paidQ += ' AND p.pay_period_end >= ?'; paidP.push(startDate); }
     if (endDate) { paidQ += ' AND p.pay_period_end <= ?'; paidP.push(endDate); }
+    if (search) { paidQ += searchClause; paidP.push(...searchParams); }
     const [paidStats] = await db.execute(paidQ, paidP);
     const totalSalaryPaid = paidStats[0].total;
 
@@ -47,8 +61,8 @@ exports.getSummary = async (req, res) => {
     if (startDate) { pendingDateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
     if (endDate) { pendingDateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
     const [pendingEmps] = await db.execute(
-      `SELECT id, pay_per_hour, salary_type FROM employees WHERE tenant_id = ? AND status = '${empStatus}'`,
-      [tenantId]
+      `SELECT id, pay_per_hour, salary_type FROM employees WHERE tenant_id = ? AND status = '${empStatus}'${empSearchClause}`,
+      [tenantId, ...empSearchParams]
     );
     let totalSalaryPending = 0;
     for (const emp of pendingEmps) {
@@ -80,8 +94,9 @@ exports.getSummary = async (req, res) => {
                 JOIN employees e ON a.employee_id = e.id AND e.status = '${empStatus}'
                 WHERE a.tenant_id = ?`;
     const attP = [tenantId];
-    if (startDate) { attQ += ' AND date >= ?'; attP.push(startDate); }
-    if (endDate) { attQ += ' AND date <= ?'; attP.push(endDate); }
+    if (startDate) { attQ += ' AND a.date >= ?'; attP.push(startDate); }
+    if (endDate) { attQ += ' AND a.date <= ?'; attP.push(endDate); }
+    if (search) { attQ += searchClause; attP.push(...searchParams); }
     const [attendanceStats] = await db.execute(attQ, attP);
     const totalHoursLogged = parseFloat(attendanceStats[0].total_hours) || 0;
 
@@ -90,8 +105,9 @@ exports.getSummary = async (req, res) => {
                 JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}'
                 WHERE p.tenant_id = ? AND p.status = 'paid'`;
     const payrollHoursP = [tenantId];
-    if (startDate) { payrollHoursQ += ' AND pay_period_end >= ?'; payrollHoursP.push(startDate); }
-    if (endDate) { payrollHoursQ += ' AND pay_period_end <= ?'; payrollHoursP.push(endDate); }
+    if (startDate) { payrollHoursQ += ' AND p.pay_period_end >= ?'; payrollHoursP.push(startDate); }
+    if (endDate) { payrollHoursQ += ' AND p.pay_period_end <= ?'; payrollHoursP.push(endDate); }
+    if (search) { payrollHoursQ += searchClause; payrollHoursP.push(...searchParams); }
     const [payrollHoursStats] = await db.execute(payrollHoursQ, payrollHoursP);
     const totalPaidHours = parseFloat(payrollHoursStats[0].paid_hours) || 0;
 
@@ -108,6 +124,7 @@ exports.getSummary = async (req, res) => {
       leaveQ = `SELECT COUNT(*) as total_leaves FROM leaves l JOIN employees e ON l.employee_id = e.id AND e.status = '${empStatus}' WHERE l.tenant_id = ? AND l.status = 'approved'`;
       leaveP = [tenantId];
     }
+    if (search) { leaveQ += searchClause; leaveP.push(...searchParams); }
     const [leaveStats] = await db.execute(leaveQ, leaveP);
     const totalLeaveDays = Number(leaveStats[0].total_leaves) || 0;
 
@@ -117,11 +134,28 @@ exports.getSummary = async (req, res) => {
     const advP = [tenantId];
     if (startDate) { advQ += ' AND ea.created_at >= ?'; advP.push(startDate); }
     if (endDate) { advQ += ' AND ea.created_at <= ?'; advP.push(endDate + ' 23:59:59'); }
+    if (search) { advQ += searchClause; advP.push(...searchParams); }
     const [advanceStats] = await db.execute(advQ, advP);
     const totalAdvancesIssued = advanceStats[0].total_issued;
     const outstandingBalance = advanceStats[0].outstanding;
 
-    const totalUnpaidHours = totalHoursLogged - totalPaidHours;
+    const totalUnpaidHours = Math.max(0, totalHoursLogged - totalPaidHours);
+
+    let qtyLoggedQ = `SELECT COALESCE(SUM(pwe.quantity), 0) as total FROM piece_work_entries pwe JOIN employees e ON pwe.employee_id = e.id AND e.status = '${empStatus}' WHERE pwe.tenant_id = ?`;
+    const qtyLoggedP = [tenantId];
+    if (startDate) { qtyLoggedQ += ' AND pwe.date >= ?'; qtyLoggedP.push(startDate); }
+    if (endDate) { qtyLoggedQ += ' AND pwe.date <= ?'; qtyLoggedP.push(endDate); }
+    if (search) { qtyLoggedQ += searchClause; qtyLoggedP.push(...searchParams); }
+    const [qtyLoggedStats] = await db.execute(qtyLoggedQ, qtyLoggedP);
+    const totalQtyLogged = parseFloat(qtyLoggedStats[0].total) || 0;
+
+    let qtyPaidQ = `SELECT COALESCE(SUM(pwe.quantity), 0) as total FROM piece_work_entries pwe JOIN employees e ON pwe.employee_id = e.id AND e.status = '${empStatus}' WHERE pwe.tenant_id = ? AND pwe.is_paid = 1`;
+    const qtyPaidP = [tenantId];
+    if (startDate) { qtyPaidQ += ' AND pwe.date >= ?'; qtyPaidP.push(startDate); }
+    if (endDate) { qtyPaidQ += ' AND pwe.date <= ?'; qtyPaidP.push(endDate); }
+    if (search) { qtyPaidQ += searchClause; qtyPaidP.push(...searchParams); }
+    const [qtyPaidStats] = await db.execute(qtyPaidQ, qtyPaidP);
+    const totalQtyPaid = parseFloat(qtyPaidStats[0].total) || 0;
 
     res.json({
       totalEmployees,
@@ -135,6 +169,8 @@ exports.getSummary = async (req, res) => {
       totalLeaveDays,
       totalAdvancesIssued,
       outstandingBalance,
+      totalQtyLogged,
+      totalQtyPaid,
     });
   } catch (error) {
     console.error(error);
@@ -152,8 +188,8 @@ exports.getSalaryReport = async (req, res) => {
     const buildDueRows = async () => {
       const dateParams = [];
       let dateClause = '';
-      if (startDate) { dateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
-      if (endDate) { dateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
+      if (startDate) { dateClause += ' AND date >= ?'; dateParams.push(startDate); }
+      if (endDate) { dateClause += ' AND date <= ?'; dateParams.push(endDate); }
       let searchClause = '';
       const searchParams = [];
       if (search) {
@@ -300,6 +336,41 @@ exports.getWorkingHoursReport = async (req, res) => {
   }
 };
 
+exports.getPieceWorkReport = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { startDate, endDate, search, payStatus, staffStatus } = req.query;
+  const empStatus = empStatusValue(staffStatus);
+  try {
+    let query = `SELECT pwe.*, e.first_name, e.last_name, e.email, e.salary_type,
+                        CASE
+                          WHEN pwe.is_paid = 1 OR EXISTS (SELECT 1 FROM payroll p WHERE p.id = pwe.payroll_id AND p.status = 'paid') THEN 'paid'
+                          WHEN EXISTS (SELECT 1 FROM payroll p WHERE p.id = pwe.payroll_id AND p.status IN ('due','draft')) THEN 'due'
+                          ELSE 'unbilled'
+                        END as pay_status
+                 FROM piece_work_entries pwe
+                 JOIN employees e ON pwe.employee_id = e.id AND e.status = '${empStatus}'
+                 WHERE pwe.tenant_id = ?`;
+    const params = [tenantId];
+    const df = buildDateFilter('pwe', startDate, endDate);
+    query += df.clause; params.push(...df.params);
+    if (search) { query += ` AND (e.first_name ILIKE ? OR e.last_name ILIKE ? OR CONCAT(e.first_name, ' ', e.last_name) ILIKE ?)`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+    if (payStatus === 'paid') {
+      query += " AND (pwe.is_paid = 1 OR EXISTS (SELECT 1 FROM payroll p WHERE p.id = pwe.payroll_id AND p.status = 'paid'))";
+    } else if (payStatus === 'due') {
+      query += " AND (pwe.is_paid = 0 AND EXISTS (SELECT 1 FROM payroll p WHERE p.id = pwe.payroll_id AND p.status IN ('due','draft')))";
+    } else if (payStatus === 'unbilled') {
+      query += " AND pwe.is_paid = 0 AND NOT EXISTS (SELECT 1 FROM payroll p WHERE p.id = pwe.payroll_id)";
+    }
+    query += ' ORDER BY pwe.date DESC, e.first_name';
+
+    const [rows] = await db.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch piece work report.' });
+  }
+};
+
 exports.getLeaveReport = async (req, res) => {
   const tenantId = req.tenantId;
   const { startDate, endDate, search, leaveType, status, staffStatus } = req.query;
@@ -395,6 +466,15 @@ async function getTabData(tenantId, tab, params) {
       if (params.startDate) { q += ' AND ea.created_at >= ?'; p.push(params.startDate); }
       if (params.endDate) { q += ' AND ea.created_at <= ?'; p.push(params.endDate + ' 23:59:59'); }
       q += ' ORDER BY ea.created_at DESC';
+      const [rows] = await db.execute(q, p);
+      return rows;
+    }
+    case 'piece-work': {
+      let q = `SELECT pwe.*, e.first_name, e.last_name FROM piece_work_entries pwe JOIN employees e ON pwe.employee_id = e.id AND e.status = '${empStatus}' WHERE pwe.tenant_id = ?`;
+      const p = [tenantId];
+      if (params.startDate) { q += ' AND pwe.date >= ?'; p.push(params.startDate); }
+      if (params.endDate) { q += ' AND pwe.date <= ?'; p.push(params.endDate); }
+      q += ' ORDER BY pwe.date DESC';
       const [rows] = await db.execute(q, p);
       return rows;
     }
@@ -497,10 +577,12 @@ exports.exportReport = async (req, res) => {
         const labels = tab === 'salary' ? ['Employee', 'Pay Rate', 'Worked', 'Gross', 'Adv. Ded.', 'Net', 'Status']
           : tab === 'working-hours' ? ['Employee', 'Date', 'Hours', 'Status']
           : tab === 'leaves' ? ['Employee', 'Type', 'Start', 'End', 'Days', 'Status']
+          : tab === 'piece-work' ? ['Employee', 'Date', 'Work Type', 'Qty', 'Rate', 'Amount', 'Status']
           : ['Employee', 'Amount', 'Recovered', 'Outstanding', 'Date', 'Status'];
         const aligns = tab === 'salary' ? ['left', 'center', 'center', 'right', 'right', 'right', 'center']
           : tab === 'working-hours' ? ['left', 'center', 'center', 'center']
           : tab === 'leaves' ? ['left', 'center', 'center', 'center', 'center', 'center']
+          : tab === 'piece-work' ? ['left', 'center', 'center', 'center', 'center', 'right', 'center']
           : ['left', 'right', 'right', 'right', 'center', 'center'];
         const formatters = {
           salary: [
@@ -517,6 +599,15 @@ exports.exportReport = async (req, res) => {
             r => r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—',
             r => r.total_hours ? `${r.total_hours}h` : '—',
             r => r.pay_status === 'paid' ? 'Paid' : r.pay_status === 'due' ? 'Due' : 'Unbilled',
+          ],
+          'piece-work': [
+            r => `${r.first_name} ${r.last_name}`,
+            r => r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—',
+            r => r.work_type || '—',
+            r => r.quantity ? `${r.quantity}` : '0',
+            r => `₹${(r.rate_per_piece / 100).toFixed(2)}`,
+            r => r.calculated_amount ? `₹${(r.calculated_amount / 100).toFixed(2)}` : '₹0.00',
+            r => r.is_paid ? 'Paid' : 'Unpaid',
           ],
           leaves: [
             r => `${r.first_name} ${r.last_name}`,

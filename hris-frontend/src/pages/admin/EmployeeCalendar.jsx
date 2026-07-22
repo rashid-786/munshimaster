@@ -337,7 +337,7 @@ const EmployeeCalendar = () => {
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>Weekend ({DAY_SHORT[d]})</div>
         ))}
         {missingPayCount > 0 && (
-          <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5" title={`${missingPayCount} employee(s) have no Pay Per Hour configured — due amount defaults to ₹0.`}>
+          <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5" title={`${missingPayCount} employee(s) have no Pay Per Hour configured — unpaid amount defaults to ₹0.`}>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
             <span className="font-medium">{missingPayCount} without pay/hr</span>
           </div>
@@ -350,22 +350,22 @@ const EmployeeCalendar = () => {
           <p className="text-2xl font-bold text-gray-900 mt-1">{totalStaff}</p>
           <p className="text-xs text-gray-400 mt-0.5">{activeStaff} active</p>
         </div>
-        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/attendance')}>
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Present Today</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">{presentToday.present}</p>
           <p className="text-xs text-gray-400 mt-0.5">{presentToday.absent} absent, {presentToday.leave} on leave</p>
         </div>
         <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/payroll')}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Due Amount</p>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Unpaid Amount</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(Math.round(totalDueAmount))}</p>
           <p className="text-xs text-gray-400 mt-0.5">{formatINR(Math.round(totalPaidAmount))} paid</p>
         </div>
-        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Due Hours</p>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/attendance')}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Unpaid Hours</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{totalDueHours.toFixed(1)}h</p>
           <p className="text-xs text-gray-400 mt-0.5">{totalPaidHours.toFixed(1)}h paid</p>
         </div>
-        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/calendar')}>
+        <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/attendance')}>
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Hours Logged</p>
           <p className="text-2xl font-bold text-indigo-600 mt-1">{totalLoggedHours.toFixed(1)}h</p>
         </div>
@@ -415,7 +415,7 @@ const EmployeeCalendar = () => {
                         </span>
                         {empHours > 0 ? (
                           empMissingPay ? (
-                            <span className="text-[10px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — due amount defaults to ₹0">
+                            <span className="text-[10px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — unpaid amount defaults to ₹0">
                               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
                               {empHours.toFixed(1)}h · no pay/hr
                             </span>
@@ -425,7 +425,7 @@ const EmployeeCalendar = () => {
                             </span>
                           )
                         ) : (
-                          <span className="text-[10px] text-gray-300">—</span>
+                          <span className="text-[10px] text-gray-300">No Unpaid</span>
                         )}
                       </div>
                     </td>
@@ -507,6 +507,17 @@ const EmployeeCalendar = () => {
             {selectedDay.day.date > todayStr ? (
               <div className="py-6 text-center">
                 <p className="text-sm text-amber-600 font-medium">Cannot manage attendance for future dates.</p>
+              </div>
+            ) : selectedDay.day.paid ? (
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg text-sm bg-gray-50 border border-gray-200 text-gray-600 flex items-center gap-2">
+                  <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                  <span>This record has been processed in payroll and cannot be edited.</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours Worked</label>
+                  <input type="text" value={selectedDay.day.hours || ''} disabled className="input-field text-sm text-center bg-gray-50 text-gray-500 cursor-not-allowed opacity-70" />
+                </div>
               </div>
             ) : (
               <div className="space-y-4">

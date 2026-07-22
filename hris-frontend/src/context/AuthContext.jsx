@@ -15,7 +15,7 @@ export const AuthProvider = ({ children }) => {
       const updated = { ...current, name: data.companyName, subscriptionPlan: data.subscriptionPlan, settings: data.settings };
       setTenant(updated);
       localStorage.setItem('tenant_data', JSON.stringify(updated));
-      if (data.settings?.currencySymbol) localStorage.setItem('currency_symbol', data.settings.currencySymbol);
+      if (data.settings?.currencySymbol) {}
       if (data.settings?.countryCode) localStorage.setItem('default_country_code', data.settings.countryCode);
     } catch {
       // silent — retry on next page visit

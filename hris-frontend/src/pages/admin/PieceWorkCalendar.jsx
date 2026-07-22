@@ -11,6 +11,7 @@ const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const COLORS = {
   paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   unpaid:  { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-orange-500' },
+  absent:  { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
   none:    { bg: 'bg-white',      text: 'text-gray-300',    dot: 'bg-gray-200' },
 };
 
@@ -161,9 +162,10 @@ const PieceWorkCalendar = () => {
 
   const handleSave = async () => {
     if (!selectedDay) return;
-    const validEntries = dayEntries.filter(e => e.workType && parseFloat(e.quantity) > 0);
+    if (dayEntries.some(e => e.isPaid === 1 || e.isPaid === '1')) return;
+    const validEntries = dayEntries.filter(e => e.workType);
     if (validEntries.length === 0) {
-      setModalMsg('Add at least one work type with quantity.');
+      setModalMsg('Add at least one work type.');
       return;
     }
     setSaving(true);
@@ -181,6 +183,7 @@ const PieceWorkCalendar = () => {
       });
       setModalMsg('Saved successfully!');
       setRefreshKey(k => k + 1);
+      closeDay();
     } catch (err) {
       setModalMsg(err.response?.data?.error || 'Failed to save.');
     } finally {
@@ -195,6 +198,17 @@ const PieceWorkCalendar = () => {
       return () => clearTimeout(t);
     }
   }, [modalMsg, closeDay]);
+
+  // Focus first Qty input when modal opens
+  useEffect(() => {
+    if (selectedDay) {
+      const timer = setTimeout(() => {
+        const firstInput = document.querySelector('#pw-first-qty');
+        if (firstInput) { firstInput.focus(); firstInput.select(); }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedDay]);
 
   const pieceEmployees = useMemo(() =>
     employees.filter(e => e.salary_type === 'piece' && e.status === 'active'),
@@ -254,6 +268,7 @@ const PieceWorkCalendar = () => {
       <div className="flex gap-3 md:gap-4 text-xs text-gray-500 overflow-x-auto flex-wrap items-center">
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Paid</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>Unpaid</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Absent</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-200"></span>No Entry</div>
         {weekendDays.map(d => (
           <div key={d} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>{DAY_SHORT[d]}</div>
@@ -271,7 +286,7 @@ const PieceWorkCalendar = () => {
           <p className="text-2xl font-bold text-indigo-600 mt-1">{stats.totalQty}</p>
         </div>
         <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/payroll')}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Due Amount</p>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Unpaid Amount</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(stats.totalDue)}</p>
         </div>
         <div className="card p-4">
@@ -319,11 +334,12 @@ const PieceWorkCalendar = () => {
                           <span className="text-xs font-medium text-gray-800">
                             {emp.employee.firstName} {emp.employee.lastName}
                           </span>
-                          {empDays.some(d => d.type !== 'none') && (
-                            <span className="text-[10px] text-gray-400 font-medium">
-                              {empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalQuantity : 0), 0)} due · {formatINR(empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalAmount : 0), 0))}
-                            </span>
-                          )}
+                          {(() => {
+                            const dueQty = empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalQuantity : 0), 0);
+                            const dueAmt = empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalAmount : 0), 0);
+                            if (dueQty === 0 && dueAmt === 0) return <span className="text-[10px] text-gray-300 font-medium">No Unpaid</span>;
+                            return <span className="text-[10px] text-gray-400 font-medium">{dueQty} unpaid · {formatINR(dueAmt)}</span>;
+                          })()}
                         </div>
                       </td>
                       {empDays.map((day, idx) => {
@@ -357,8 +373,8 @@ const PieceWorkCalendar = () => {
                                 <span className={`w-2 h-2 rounded-full ${color?.dot || 'bg-gray-200'}`} />
                               )}
 
-                              {day.type === 'unpaid' && (
-                                <span className="text-[9px] font-semibold text-amber-700">{day.totalQuantity} Qty</span>
+                              {!isNone && !isWeekend && day.totalQuantity > 0 && (
+                                <span className="text-[9px] font-semibold" style={{ color: day.type === 'paid' ? '#059669' : day.type === 'absent' ? '#dc2626' : '#d97706' }}>{day.totalQuantity} Qty</span>
                               )}
 
                             </div>
@@ -383,7 +399,7 @@ const PieceWorkCalendar = () => {
       {/* Entry Modal */}
       {selectedDay && (
         <div className="fixed inset-0 bg-black/20 flex items-start justify-center z-50 pt-10 md:pt-20">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div tabIndex={-1} className="bg-white rounded-2xl shadow-xl w-full max-w-3xl mx-4 max-h-[85vh] flex flex-col outline-none" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); handleSave(); } }}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
               <div>
                 <h4 className="text-base font-semibold text-gray-900">Piece Work Entry</h4>
@@ -398,6 +414,57 @@ const PieceWorkCalendar = () => {
               {selectedDay.day.date > todayStr ? (
                 <div className="py-6 text-center">
                   <p className="text-sm text-amber-600 font-medium">Cannot enter piece work for future dates.</p>
+                </div>
+              ) : selectedDay.day.isPaid === 1 || dayEntries.some(e => e.isPaid === 1 || e.isPaid === '1') ? (
+                <div className="space-y-4">
+                  <div className="p-3 rounded-lg text-sm bg-gray-50 border border-gray-200 text-gray-600 flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                    <span>This record has been processed in payroll and cannot be edited.</span>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider w-8">#</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Work Type</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Unit</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Rate</th>
+                          <th className="text-center px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Qty</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium text-xs uppercase tracking-wider">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {dayEntries.map((entry, i) => (
+                          <tr key={i} className="opacity-60">
+                            <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                            <td className="px-3 py-2 text-sm text-gray-900 font-medium">{entry.workType || '—'}</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">{entry.unitLabel || 'pcs'}</td>
+                            <td className="px-3 py-2 text-sm text-gray-700 text-right font-medium">
+                              {entry.ratePerPiece ? `${'₹'}${entry.ratePerPiece}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-center text-sm text-gray-500">{entry.quantity || '—'}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                              {formatINR(entry.calculatedAmount || 0)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 flex justify-between items-center">
+                    <div className="space-y-1">
+                      <p className="text-sm text-gray-500">
+                        Total Quantity: <span className="font-semibold text-gray-900">
+                          {dayEntries.reduce((s, e) => s + (parseFloat(e.quantity) || 0), 0)}
+                        </span>
+                      </p>
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      Total Amount: <span className="font-semibold text-gray-900">
+                        {formatINR(dayEntries.reduce((s, e) => s + (e.calculatedAmount || 0), 0))}
+                      </span>
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -422,7 +489,7 @@ const PieceWorkCalendar = () => {
                               <td className="px-3 py-2 text-sm text-gray-900 font-medium">{entry.workType || '—'}</td>
                               <td className="px-3 py-2 text-sm text-gray-600">{entry.unitLabel || 'pcs'}</td>
                               <td className="px-3 py-2 text-sm text-gray-700 text-right font-medium">
-                                {entry.ratePerPiece ? `${localStorage.getItem('currency_symbol') || '₹'}${entry.ratePerPiece}` : '—'}
+                                {entry.ratePerPiece ? `${'₹'}${entry.ratePerPiece}` : '—'}
                               </td>
                               <td className="px-3 py-2 text-center">
                                 <input
@@ -433,6 +500,7 @@ const PieceWorkCalendar = () => {
                                   className="input-field !py-1 text-sm text-center font-medium w-20 mx-auto"
                                   placeholder="0"
                                   disabled={isPaid}
+                                  {...(i === 0 ? { id: 'pw-first-qty' } : {})}
                                 />
                               </td>
                               <td className="px-3 py-2 text-right font-semibold text-gray-900">

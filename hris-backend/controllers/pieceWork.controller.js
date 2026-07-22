@@ -193,17 +193,37 @@ exports.saveDayEntries = async (req, res) => {
       'DELETE FROM piece_work_entries WHERE tenant_id = $1 AND employee_id = $2 AND date = $3 AND is_paid = 0',
       [tenantId, employeeId, date]
     );
-    // Insert new entries
+    // Insert new entries and compute total qty
+    let totalQty = 0;
     for (const entry of entries) {
-      if (!entry.workType || !entry.quantity) continue;
+      if (!entry.workType || entry.quantity === undefined || entry.quantity === '' || entry.quantity === null) continue;
       const rate = entry.ratePerPiece !== undefined ? Math.round(parseFloat(entry.ratePerPiece) * 100) : 0;
       const qty = parseFloat(entry.quantity) || 0;
+      totalQty += qty;
       const amount = Math.round(qty * rate);
       const id = uuidv4();
       await client.query(
         `INSERT INTO piece_work_entries (id, tenant_id, employee_id, quantity, date, work_type, unit_label, rate_per_piece, calculated_amount)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [id, tenantId, employeeId, qty, date, entry.workType, entry.unitLabel || 'pcs', rate, amount]
+      );
+    }
+    // Create or remove Absent leave record based on total qty
+    if (totalQty === 0) {
+      await client.query(
+        'DELETE FROM leaves WHERE tenant_id = $1 AND employee_id = $2 AND start_date <= $3 AND end_date >= $4',
+        [tenantId, employeeId, date, date]
+      );
+      const leaveId = uuidv4();
+      await client.query(
+        `INSERT INTO leaves (id, tenant_id, employee_id, leave_type, start_date, end_date, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [leaveId, tenantId, employeeId, 'Absent', date, date, 'approved']
+      );
+    } else {
+      await client.query(
+        'DELETE FROM leaves WHERE tenant_id = $1 AND employee_id = $2 AND leave_type = $3 AND start_date <= $4 AND end_date >= $5',
+        [tenantId, employeeId, 'Absent', date, date]
       );
     }
     await client.query('COMMIT');
@@ -275,6 +295,8 @@ exports.getCalendarData = async (req, res) => {
         let type = 'none';
         if (dayEntries.length > 0 && isPaid) type = 'paid';
         else if (dayEntries.length > 0) type = 'unpaid';
+        // Zero qty on a day with entries means the employee was absent
+        if (dayEntries.length > 0 && totalQty === 0) type = 'absent';
         days.push({
           date: dateStr,
           type,

@@ -24,7 +24,7 @@ const LedgerDashboard = () => {
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const currencySymbol = localStorage.getItem('currency_symbol') || '₹';
+  const currencySymbol = '₹';
 
   useEffect(() => {
     Promise.all([
