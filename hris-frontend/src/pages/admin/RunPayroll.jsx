@@ -380,8 +380,16 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       {pieceTooltip?.el && (() => {
         const entries = pieceTooltip.run.pieceEntries || [];
         const rect = pieceTooltip.el.getBoundingClientRect();
-        const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
-        const totalAmt = entries.reduce((s, e) => s + parseInt(e.calculatedAmount || 0), 0);
+        const grouped = {};
+        entries.forEach(e => {
+          const wt = e.workType || e.work_type || 'Other';
+          if (!grouped[wt]) grouped[wt] = { workType: wt, unitLabel: e.unitLabel || e.unit_label || 'pcs', ratePerPiece: e.ratePerPiece || e.rate_per_piece || 0, quantity: 0, calculatedAmount: 0 };
+          grouped[wt].quantity += parseFloat(e.quantity || 0);
+          grouped[wt].calculatedAmount += parseInt(e.calculatedAmount || e.calculated_amount || 0);
+        });
+        const rows = Object.values(grouped);
+        const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
+        const totalAmt = rows.reduce((s, r) => s + r.calculatedAmount, 0);
         const spaceBelow = window.innerHeight - rect.bottom;
         const showAbove = spaceBelow < 350;
         return (
@@ -396,7 +404,7 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                 <span className="text-xs font-semibold text-gray-700">{pieceTooltip.run.employeeName}</span>
                 <span className="text-[11px] text-gray-400">{pieceTooltip.run.actualHours} {pieceTooltip.run.unitLabel || 'pcs'}</span>
               </div>
-              {entries.length === 0 ? (
+              {rows.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-xs text-gray-400">No entries</div>
               ) : (
                 <table className="w-full text-[11px]">
@@ -410,15 +418,15 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {entries.map((e, i) => (
+                    {rows.map((r, i) => (
                       <tr key={i}>
-                        <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{e.workType || '—'}</td>
-                        <td className="px-2.5 py-1.5 text-gray-500">{e.unitLabel || 'pcs'}</td>
+                        <td className="px-2.5 py-1.5 text-gray-800 font-medium truncate max-w-[100px]">{r.workType}</td>
+                        <td className="px-2.5 py-1.5 text-gray-500">{r.unitLabel}</td>
                         <td className="px-2.5 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {e.ratePerPiece ? `${'₹'}${(e.ratePerPiece / 100).toFixed(2)}` : '—'}
+                          {r.ratePerPiece > 0 ? `₹${(r.ratePerPiece / 100).toFixed(2)}` : '—'}
                         </td>
-                        <td className="px-2.5 py-1.5 text-right text-gray-700">{e.quantity || 0}</td>
-                        <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(e.calculatedAmount || 0)}</td>
+                        <td className="px-2.5 py-1.5 text-right text-gray-700">{r.quantity}</td>
+                        <td className="px-2.5 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(r.calculatedAmount)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -143,6 +143,10 @@ exports.calculatePayroll = async (req, res) => {
         netSalary = Math.max(0, grossSalary - deductions);
       }
 
+      // Skip employees with no valid work records in the period
+      if (isPieceWorker && pieceEntryIdsByEmployee[emp.id]?.length === 0) continue;
+      if (!isPieceWorker && actualHours <= 0) continue;
+
       let advanceDeduction = 0;
 
       // Only do advance deductions for non-piece workers
@@ -382,6 +386,10 @@ exports.previewPayroll = async (req, res) => {
         grossSalary = Math.round(hourlyRate * actualHours);
         deductions = Math.round(hourlyRate * deductionHours);
       }
+
+      // Skip employees with no valid work records in the period
+      if (isPieceWorker && pieceEntries.length === 0) continue;
+      if (!isPieceWorker && actualHours <= 0) continue;
 
       const netBeforeAdvance = Math.max(0, grossSalary - deductions);
 
