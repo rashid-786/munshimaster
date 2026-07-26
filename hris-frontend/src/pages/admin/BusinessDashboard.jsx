@@ -154,7 +154,7 @@ const BusinessDashboard = () => {
           hint="Paid out this period" icon="💳" color="text-red-600"
           onClick={() => navigate('/admin/purchase-transactions')} />
         <HeroKpi title="Receivables" value={formatINR((s.outstandingReceivables || 0) * 100)}
-          hint={`${s.invoiceCounts?.pending || 0} pending invoices`} icon="📋" color="text-amber-600"
+          hint={`${s.invoiceCounts?.pending || 0} pending invoices`} icon="📋" color="text-red-600"
           onClick={() => navigate('/admin/sales-transactions')} />
         <HeroKpi title="Stock to Reorder" value={`${lowStock.length} item${lowStock.length === 1 ? '' : 's'}`}
           hint="Below threshold" icon="📦" color={lowStock.length ? 'text-red-600' : 'text-gray-900'}

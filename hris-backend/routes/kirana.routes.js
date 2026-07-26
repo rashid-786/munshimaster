@@ -12,6 +12,7 @@ router.delete('/parties/:id', authenticateToken, ctrl.deleteParty);
 
 // Transactions
 router.post('/transactions', authenticateToken, ctrl.createTransaction);
+router.get('/transactions', authenticateToken, ctrl.getTransactions);
 router.delete('/transactions/:id', authenticateToken, ctrl.deleteTransaction);
 
 // Summary
@@ -25,6 +26,15 @@ router.post('/cashbook', authenticateToken, ctrl.createCashEntry);
 router.get('/cashbook', authenticateToken, ctrl.getCashbook);
 router.put('/cashbook/:id', authenticateToken, ctrl.updateCashEntry);
 router.delete('/cashbook/:id', authenticateToken, ctrl.deleteCashEntry);
+
+// Invoices
+router.get('/invoices/next-number', authenticateToken, ctrl.getNextNumber);
+router.post('/invoices', authenticateToken, ctrl.createInvoice);
+router.get('/invoices', authenticateToken, ctrl.getInvoices);
+router.get('/invoices/:id', authenticateToken, ctrl.getInvoice);
+router.put('/invoices/:id', authenticateToken, ctrl.updateInvoice);
+router.delete('/invoices/:id', authenticateToken, ctrl.deleteInvoice);
+router.patch('/invoices/:id/status', authenticateToken, ctrl.updateInvoiceStatus);
 
 // Reports
 router.get('/reports', authenticateToken, ctrl.getReport);

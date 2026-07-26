@@ -5,25 +5,16 @@ const { incrementUsage } = require('../services/usage.service');
 // ── Parties (Buyers / Sellers) ──
 
 exports.createParty = async (req, res) => {
-  const { type, name, phone, address, amount, direction, entryDate, note } = req.body;
+  const { type, name, phone, address, amount, direction, note } = req.body;
   if (!type || !name) return res.status(400).json({ error: 'type and name are required.' });
   try {
     const id = uuidv4();
+    const rawCents = amount ? Math.round(parseFloat(amount) * 100) : 0;
+    const openingCents = direction === 'to_give' ? rawCents : -rawCents;
     await db.execute(
-      'INSERT INTO kirana_parties (id, tenant_id, type, name, phone, address) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, req.tenantId, type, name, phone || null, address || null]
+      'INSERT INTO kirana_parties (id, tenant_id, type, name, phone, address, notes, opening_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.tenantId, type, name, phone || null, address || null, note || null, openingCents]
     );
-
-    if (amount && direction && entryDate) {
-      const txId = uuidv4();
-      const amountCents = Math.round(parseFloat(amount) * 100);
-      const txType = direction === 'to_receive' ? 'given' : 'received';
-      await db.execute(
-        'INSERT INTO kirana_transactions (id, tenant_id, party_id, type, amount, note, entry_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [txId, req.tenantId, id, txType, amountCents, note || null, entryDate, req.user.id]
-      );
-      incrementUsage(req.tenantId, 'transactions').catch(() => {});
-    }
 
     res.status(201).json({ message: `${type} added successfully.`, id });
   } catch (error) {
@@ -35,7 +26,7 @@ exports.createParty = async (req, res) => {
 exports.getParties = async (req, res) => {
   const { type, search } = req.query;
   try {
-    let query = 'SELECT id, type, name, phone, address, created_at FROM kirana_parties WHERE tenant_id = ?';
+    let query = 'SELECT id, type, name, phone, address, notes, opening_balance, created_at FROM kirana_parties WHERE tenant_id = ?';
     const params = [req.tenantId];
     if (type) { query += ' AND type = ?'; params.push(type); }
     if (search) { query += ' AND name LIKE ?'; params.push(`%${search}%`); }
@@ -48,8 +39,11 @@ exports.getParties = async (req, res) => {
         "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END), 0) as total_received, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END), 0) as total_given FROM kirana_transactions WHERE tenant_id = ? AND party_id = ?",
         [req.tenantId, party.id]
       );
-      const balance = txns[0].total_received - txns[0].total_given;
-      result.push({ ...party, totalReceived: txns[0].total_received, totalGiven: txns[0].total_given, balance });
+      const ob = Number(party.opening_balance || 0);
+      const tg = Number(txns[0].total_given || 0);
+      const tr = Number(txns[0].total_received || 0);
+      const balance = ob + tg - tr;
+      result.push({ ...party, openingBalance: ob, totalGiven: tg, totalReceived: tr, balance });
     }
 
     res.json(result);
@@ -73,9 +67,10 @@ exports.getPartyDetails = async (req, res) => {
 
     const totalReceived = txns.filter(t => t.type === 'received').reduce((s, t) => s + t.amount, 0);
     const totalGiven = txns.filter(t => t.type === 'given').reduce((s, t) => s + t.amount, 0);
-    const balance = totalReceived - totalGiven;
+    const ob = Number(party.opening_balance || 0);
+    const balance = ob + totalGiven - totalReceived;
 
-    res.json({ party, transactions: txns, totalReceived, totalGiven, balance });
+    res.json({ party, transactions: txns, openingBalance: ob, totalGiven, totalReceived, balance });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch party details.' });
@@ -84,12 +79,15 @@ exports.getPartyDetails = async (req, res) => {
 
 exports.updateParty = async (req, res) => {
   const { id } = req.params;
-  const { name, phone, address } = req.body;
+  const { name, phone, address, note } = req.body;
   try {
-    await db.execute('UPDATE kirana_parties SET name = ?, phone = ?, address = ? WHERE id = ? AND tenant_id = ?',
-      [name, phone || null, address || null, id, req.tenantId]);
+    await db.execute(
+      'UPDATE kirana_parties SET name = ?, phone = ?, address = ?, notes = ? WHERE id = ? AND tenant_id = ?',
+      [name, phone || null, address || null, note || null, id, req.tenantId]
+    );
     res.json({ message: 'Updated.' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to update.' });
   }
 };
@@ -135,12 +133,29 @@ exports.deleteTransaction = async (req, res) => {
   }
 };
 
+exports.getTransactions = async (req, res) => {
+  const { startDate, endDate, partyId } = req.query;
+  try {
+    let query = `SELECT kt.*, kp.name as party_name, kp.type as party_type FROM kirana_transactions kt LEFT JOIN kirana_parties kp ON kt.party_id = kp.id WHERE kt.tenant_id = ?`;
+    const params = [req.tenantId];
+    if (startDate) { query += ' AND kt.entry_date >= ?'; params.push(startDate); }
+    if (endDate) { query += ' AND kt.entry_date <= ?'; params.push(endDate); }
+    if (partyId) { query += ' AND kt.party_id = ?'; params.push(partyId); }
+    query += ' ORDER BY kt.entry_date DESC, kt.created_at DESC';
+    const [rows] = await db.execute(query, params);
+    res.json({ data: rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch transactions.' });
+  }
+};
+
 // ── Summary ──
 
 exports.getSummary = async (req, res) => {
   const { type } = req.query;
   try {
-    let partyQuery = 'SELECT id FROM kirana_parties WHERE tenant_id = ?';
+    let partyQuery = 'SELECT id, opening_balance FROM kirana_parties WHERE tenant_id = ?';
     const params = [req.tenantId];
     if (type) { partyQuery += ' AND type = ?'; params.push(type); }
     const [parties] = await db.execute(partyQuery, params);
@@ -151,7 +166,10 @@ exports.getSummary = async (req, res) => {
         "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END), 0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END), 0) as g FROM kirana_transactions WHERE party_id = ?",
         [p.id]
       );
-      const balance = txns[0].r - txns[0].g;
+      const ob = Number(p.opening_balance || 0);
+      const tg = Number(txns[0].g || 0);
+      const tr = Number(txns[0].r || 0);
+      const balance = ob + tg - tr;
       if (balance > 0) youWillGive += balance;
       else youWillGet += Math.abs(balance);
     }
@@ -234,6 +252,169 @@ exports.deleteCashEntry = async (req, res) => {
   }
 };
 
+// ── Invoices ──
+
+async function getNextInvoiceNumber(tenantId, dateStr, partyType) {
+  const d = new Date(dateStr);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const code = partyType === 'seller' ? 'PO' : 'INV';
+  const prefix = `${code}-${mm}${yyyy}`;
+  const [rows] = await db.execute(
+    `SELECT invoice_number FROM kirana_invoices WHERE tenant_id = ? AND invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1`,
+    [tenantId, `${prefix}%`]
+  );
+  let next = 1;
+  if (rows.length > 0) {
+    const last = rows[0].invoice_number;
+    const seqStr = last.slice(prefix.length);
+    next = (parseInt(seqStr, 10) || 0) + 1;
+  }
+  return `${prefix}${String(next).padStart(2, '0')}`;
+}
+
+exports.getNextNumber = async (req, res) => {
+  const { date, partyType } = req.query;
+  if (!date) return res.status(400).json({ error: 'date query param required (YYYY-MM-DD).' });
+  try {
+    const invoiceNumber = await getNextInvoiceNumber(req.tenantId, date, partyType);
+    res.json({ invoiceNumber });
+  } catch (err) {
+    console.error('Error generating next invoice number:', err);
+    res.status(500).json({ error: 'Failed to generate invoice number.' });
+  }
+};
+
+exports.createInvoice = async (req, res) => {
+  const { partyId, partyType, partyName, invoiceDate, dueDate, items, discountAmount, taxAmount, notes, status } = req.body;
+  if (!partyId || !partyType || !invoiceDate) return res.status(400).json({ error: 'partyId, partyType, invoiceDate required.' });
+  try {
+    const id = require('uuid').v4();
+    const invDate = invoiceDate || new Date().toISOString().slice(0, 10);
+    const invoiceNumber = await getNextInvoiceNumber(req.tenantId, invDate, partyType);
+    const itemRows = items || [];
+    let subtotal = 0;
+    const mappedItems = itemRows.map((item) => {
+      const qty = parseFloat(item.quantity) || 1;
+      const rate = Math.round(parseFloat(item.rate) * 100);
+      const amt = qty * rate;
+      subtotal += amt;
+      return { id: uuidv4(), name: item.name, quantity: qty, rate, amount: amt };
+    });
+    const discountVal = Math.round(parseFloat(discountAmount || 0) * 100);
+    const taxVal = Math.round(parseFloat(taxAmount || 0) * 100);
+    const totalAmount = subtotal - discountVal + taxVal;
+
+    await db.execute(
+      `INSERT INTO kirana_invoices (id, tenant_id, invoice_number, party_id, party_type, party_name, invoice_date, due_date, items, subtotal, discount_amount, tax_amount, total_amount, notes, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [id, req.tenantId, invoiceNumber, partyId, partyType, partyName || null, invDate, dueDate || null, JSON.stringify(mappedItems), Math.round(subtotal), discountVal, taxVal, Math.round(totalAmount), notes || null, status || 'draft', req.user?.id || null]
+    );
+    res.status(201).json({ message: 'Invoice created.', id, invoiceNumber });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create invoice.' });
+  }
+};
+
+exports.getInvoices = async (req, res) => {
+  const { search, status, page = 1, limit = 35 } = req.query;
+  try {
+    let query = 'SELECT * FROM kirana_invoices WHERE tenant_id = ?';
+    const params = [req.tenantId];
+    if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
+    if (search) { query += ' AND (invoice_number ILIKE ? OR party_name ILIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    query += ' ORDER BY created_at DESC';
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    const [rows] = await db.execute(query, params);
+    const [countRows] = await db.execute(
+      `SELECT COUNT(*) as total FROM kirana_invoices WHERE tenant_id = ?${status && status !== 'all' ? ' AND status = ?' : ''}`,
+      status && status !== 'all' ? [req.tenantId, status] : [req.tenantId]
+    );
+    res.json({ data: rows, total: parseInt(countRows[0].total), page: parseInt(page), limit: parseInt(limit) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch invoices.' });
+  }
+};
+
+exports.getInvoice = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.execute('SELECT * FROM kirana_invoices WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Invoice not found.' });
+    const inv = rows[0];
+    inv.items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+    res.json(inv);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch invoice.' });
+  }
+};
+
+exports.updateInvoice = async (req, res) => {
+  const { id } = req.params;
+  const { invoiceDate, dueDate, items, discountAmount, taxAmount, notes, status } = req.body;
+  try {
+    const [existing] = await db.execute('SELECT * FROM kirana_invoices WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const itemRows = items || existing[0].items;
+    const parsedItems = typeof itemRows === 'string' ? JSON.parse(itemRows) : itemRows;
+    let subtotalVal = 0;
+    const mappedItems = (parsedItems || []).map((item) => {
+      const qty = parseFloat(item.quantity) || 1;
+      const rate = Math.round(parseFloat(item.rate) * 100);
+      const amt = qty * rate;
+      subtotalVal += amt;
+      return { id: item.id || uuidv4(), name: item.name, quantity: qty, rate, amount: amt };
+    });
+    const discountVal = discountAmount !== undefined ? Math.round(parseFloat(discountAmount) * 100) : existing[0].discount_amount;
+    const taxVal = taxAmount !== undefined ? Math.round(parseFloat(taxAmount) * 100) : existing[0].tax_amount;
+    const totalAmt = subtotalVal - discountVal + taxVal;
+    const invDate = invoiceDate || existing[0].invoice_date;
+
+    await db.execute(
+      `UPDATE kirana_invoices SET invoice_date = ?, due_date = ?, items = ?, subtotal = ?, discount_amount = ?, tax_amount = ?, total_amount = ?, notes = ?, status = COALESCE(?, status), updated_at = NOW() WHERE id = ? AND tenant_id = ?`,
+      [invDate, dueDate || null, JSON.stringify(mappedItems), Math.round(subtotalVal), discountVal, taxVal, Math.round(totalAmt), notes || null, status || null, id, req.tenantId]
+    );
+    res.json({ message: 'Invoice updated.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update invoice.' });
+  }
+};
+
+exports.deleteInvoice = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [existing] = await db.execute('SELECT status FROM kirana_invoices WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Invoice not found.' });
+    if (existing[0].status !== 'draft') return res.status(400).json({ error: 'Only draft invoices can be deleted.' });
+    await db.execute('DELETE FROM kirana_invoices WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
+    res.json({ message: 'Invoice deleted.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete invoice.' });
+  }
+};
+
+exports.updateInvoiceStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const validStatuses = ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'];
+  if (!validStatuses.includes(status)) return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+  try {
+    const [existing] = await db.execute('SELECT status FROM kirana_invoices WHERE id = ? AND tenant_id = ?', [id, req.tenantId]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Invoice not found.' });
+    await db.execute('UPDATE kirana_invoices SET status = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?', [status, id, req.tenantId]);
+    res.json({ message: 'Status updated.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update status.' });
+  }
+};
+
 // ── Reports ──
 
 async function fetchKiranaParties(tenantId, { partyType, startDate, endDate } = {}) {
@@ -249,7 +430,8 @@ async function fetchKiranaParties(tenantId, { partyType, startDate, endDate } = 
     if (startDate) { txnQuery += ' AND entry_date >= ?'; txnParams.push(startDate); }
     if (endDate) { txnQuery += ' AND entry_date <= ?'; txnParams.push(endDate); }
     const [txns] = await db.execute(txnQuery, txnParams);
-    result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g });
+    const ob = Number(p.opening_balance || 0);
+    result.push({ ...p, openingBalance: ob, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: ob + Number(txns[0].g) - Number(txns[0].r) });
   }
   return result;
 }

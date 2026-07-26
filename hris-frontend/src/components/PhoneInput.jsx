@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import PhoneInput from 'react-phone-number-input';
 import { isValidPhoneNumber } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
@@ -20,7 +20,6 @@ const COUNTRY_INFO = {
   FR: { national: 9, cc: '+33' }, DE: { national: 10, cc: '+49' }, IT: { national: 10, cc: '+39' },
   ES: { national: 9, cc: '+34' }, NL: { national: 9, cc: '+31' }, BE: { national: 9, cc: '+32' },
 };
-const DEFAULT_MAX = 16;
 
 const CUSTOM_PHONE_INPUT = React.forwardRef(({ ...rest }, ref) => (
   <input ref={ref} {...rest} className="input-field pl-14 text-base" />
@@ -30,23 +29,35 @@ export default function PhoneField({ value, onChange, error, defaultCountry: def
   const { globalConfig } = useGlobalConfig();
   const defaultCountry = defaultCountryProp || globalConfig?.defaultCountry || detectBrowserCountry() || 'IN';
   const [country, setCountry] = useState(defaultCountry);
+  const [resetKey, setResetKey] = useState(0);
   const info = COUNTRY_INFO[country];
-  const maxLength = info ? info.cc.length + info.national + 5 : DEFAULT_MAX;
+  const nationalDigits = info ? info.national : 10;
+  const validationError = value && !isValidPhoneNumber(value) ? 'Enter a valid phone number' : null;
+  const displayError = error || validationError;
+  const handleChange = useCallback((v) => {
+    if (!v) { onChange(v); return; }
+    const cc = (info && info.cc) || '+91';
+    const digits = v.replace(/\D/g, '');
+    if (digits.length - cc.length + 1 > nationalDigits) {
+      setResetKey(k => k + 1);
+      return;
+    }
+    onChange(v);
+  }, [onChange, info, nationalDigits]);
   return (
     <div>
       <PhoneInput
-        key={defaultCountry}
+        key={`${defaultCountry}-${resetKey}`}
         international
         countrySelectProps={{ className: '!absolute !left-0 !top-0 !h-full !w-auto !z-10 !opacity-0 !cursor-pointer' }}
         defaultCountry={defaultCountry}
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         onCountryChange={setCountry}
         inputComponent={CUSTOM_PHONE_INPUT}
         placeholder={placeholder}
         autoFocus={autoFocus}
         id={id}
-        maxLength={maxLength}
         className="relative"
         smartCaret
         required={required}
@@ -59,7 +70,7 @@ export default function PhoneField({ value, onChange, error, defaultCountry: def
         .PhoneInput .PhoneInputCountryIcon--border { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); border-radius: 2px; }
         .PhoneInput .PhoneInputCountrySelectArrow { display: none; }
       `}</style>
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      {displayError && <p className="text-xs text-red-500 mt-1">{displayError}</p>}
     </div>
   );
 }

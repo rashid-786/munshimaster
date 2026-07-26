@@ -145,6 +145,15 @@ app.get('/api/v1/public/global-config', async (req, res) => {
   }
 });
 
+app.get('/api/v1/public/check-phone', async (req, res) => {
+  const phone = req.query.phone;
+  if (!phone) return res.status(400).json({ error: 'Phone number is required.' });
+  try {
+    const [rows] = await db.execute('SELECT id FROM tenants WHERE phone = ?', [phone]);
+    res.json({ exists: rows.length > 0 });
+  } catch { res.status(500).json({ error: 'Failed to check phone.' }); }
+});
+
 app.get('/api/v1/public/gst-tax', async (req, res) => {
   try {
     const ctrl = require('./controllers/gstTax.controller');

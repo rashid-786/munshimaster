@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { createEntry, getEntries, updateEntry, deleteEntry, getSummary, markAsPaid, unmarkPaid, getUnpaidEntries, getEmployeeEntries, getEmployeeRates, saveDayEntries, getCalendarData } = require('../controllers/pieceWork.controller');
+const { createEntry, getEntries, updateEntry, deleteEntry, getSummary, markAsPaid, unmarkPaid, getUnpaidEntries, getEmployeeEntries, getEmployeeRates, saveDayEntries, getCalendarData, createWorkType, updateWorkType, deleteWorkType } = require('../controllers/pieceWork.controller');
 const { authenticateToken } = require('../middleware/auth');
 
 router.get('/employee-rates', authenticateToken, getEmployeeRates);
+router.post('/work-types', authenticateToken, createWorkType);
+router.put('/work-types/:id', authenticateToken, updateWorkType);
+router.delete('/work-types/:id', authenticateToken, deleteWorkType);
 router.get('/calendar-data', authenticateToken, getCalendarData);
 router.post('/save-day', authenticateToken, saveDayEntries);
 router.post('/', authenticateToken, createEntry);

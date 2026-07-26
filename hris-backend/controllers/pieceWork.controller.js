@@ -348,6 +348,72 @@ exports.getEmployeeEntries = async (req, res) => {
   }
 };
 
+exports.createWorkType = async (req, res) => {
+  const { employeeId, workType, unitLabel, ratePerPiece } = req.body;
+  const tenantId = req.tenantId;
+  if (!workType || !ratePerPiece) {
+    return res.status(400).json({ error: 'workType and ratePerPiece are required.' });
+  }
+  try {
+    const id = uuidv4();
+    const rate = Math.round(parseFloat(ratePerPiece) * 100);
+    await db.execute(
+      `INSERT INTO employee_piece_rates (id, tenant_id, employee_id, work_type, unit_label, rate_per_piece)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, tenantId, employeeId || null, workType, unitLabel || 'piece', rate]
+    );
+    res.status(201).json({ message: 'Work type created.', id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create work type.' });
+  }
+};
+
+exports.updateWorkType = async (req, res) => {
+  const { id } = req.params;
+  const { workType, unitLabel, ratePerPiece } = req.body;
+  const tenantId = req.tenantId;
+  try {
+    const [existing] = await db.execute(
+      'SELECT id FROM employee_piece_rates WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (existing.length === 0) return res.status(404).json({ error: 'Work type not found.' });
+    const fields = [];
+    const params = [];
+    if (workType !== undefined) { fields.push('work_type = ?'); params.push(workType); }
+    if (unitLabel !== undefined) { fields.push('unit_label = ?'); params.push(unitLabel); }
+    if (ratePerPiece !== undefined) { fields.push('rate_per_piece = ?'); params.push(Math.round(parseFloat(ratePerPiece) * 100)); }
+    if (fields.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+    params.push(id, tenantId);
+    await db.execute(
+      `UPDATE employee_piece_rates SET ${fields.join(', ')}, created_at = created_at WHERE id = ? AND tenant_id = ?`,
+      params
+    );
+    res.json({ message: 'Work type updated.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update work type.' });
+  }
+};
+
+exports.deleteWorkType = async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.tenantId;
+  try {
+    const [existing] = await db.execute(
+      'SELECT id FROM employee_piece_rates WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (existing.length === 0) return res.status(404).json({ error: 'Work type not found.' });
+    await db.execute('DELETE FROM employee_piece_rates WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    res.json({ message: 'Work type deleted.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete work type.' });
+  }
+};
+
 exports.getUnpaidEntries = async (req, res) => {
   const tenantId = req.tenantId;
   const { employeeId, startDate, endDate } = req.query;

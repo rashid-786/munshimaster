@@ -213,7 +213,7 @@ const Suppliers = () => {
     { key: 'opening_balance', label: 'Opening Bal.', render: (v, r) => {
       if (!v) return '—';
       const amt = formatINR(v);
-      return <span className={r.opening_balance_type === 'payable' ? 'text-red-600' : 'text-green-600'}>{amt}</span>;
+      return <span className={r.opening_balance_type === 'payable' ? 'text-green-600' : 'text-red-600'}>{amt}</span>;
     }},
     { key: 'credit_limit', label: 'Credit Limit', render: (v) => (v ? formatINR(v) : '—') },
     { key: 'status', label: 'Status', render: (v) => <span className={v === 'active' ? 'badge-success' : 'badge-danger'}>{v}</span> },
@@ -331,12 +331,13 @@ const Suppliers = () => {
                       className="input-field flex-1" placeholder="0.00" />
                     <select value={form.opening_balance_type}
                       onChange={e => setForm({ ...form, opening_balance_type: e.target.value })}
-                      className="input-field max-w-[130px] text-sm">
-                      <option value="payable">Payable</option>
-                      <option value="receivable">Receivable</option>
+                      className="input-field max-w-[140px] text-sm">
+                      <option value="payable" className="text-green-600">You will give</option>
+                      <option value="receivable" className="text-red-600">You will receive</option>
+                      <option value="settled">Settled</option>
                     </select>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Payable = you owe, Receivable = they owe</p>
+                  <p className="text-xs text-gray-400 mt-1">You will give = you owe, You will receive = they owe</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Credit Period (days)</label>
@@ -512,7 +513,7 @@ const Suppliers = () => {
 };
 
 function SupplierDetailContent({ supplier }) {
-  const balType = supplier.opening_balance_type === 'payable' ? 'Payable' : 'Receivable';
+  const balType = supplier.opening_balance_type === 'payable' ? 'You will give' : 'You will receive';
   return (
     <div className="space-y-3">
       <DetailRow label="Name" value={supplier.name} />

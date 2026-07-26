@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
-import PhoneField from '../../components/PhoneInput';
+import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 import Loading from '../../components/Loading';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -71,12 +71,16 @@ const LedgerDashboard = () => {
 
   const openPartyForm = (type) => {
     setPartyType(type);
-    setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' });
+    const dir = type === 'seller' ? 'to_give' : 'to_receive'; setPartyForm({ name: '', phone: '', address: '', amount: '', direction: dir, entryDate: new Date().toISOString().split('T')[0], note: '' });
     setShowPartyForm(true);
   };
 
   const handleAddParty = async (e) => {
     e.preventDefault();
+    if (partyForm.phone && !isValidPhoneNumber(partyForm.phone)) {
+      setMessage('Enter a valid phone number');
+      return;
+    }
     setSaving(true);
     try {
       await hrService.kirana.createParty({ type: partyType, ...partyForm });
@@ -131,13 +135,13 @@ const LedgerDashboard = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <button onClick={() => navigate('/admin/ledger/buyers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Receivables</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{formatINR(receivables)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">What buyers owe you</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{formatINR(receivables)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">From Parties</p>
             </button>
             <button onClick={() => navigate('/admin/ledger/sellers')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Payables</p>
-              <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(payables)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">What you owe sellers</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{formatINR(payables)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">To Parties</p>
             </button>
             <button onClick={() => navigate('/admin/ledger/cashbook')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-indigo-300 transition-all">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Cash Balance</p>
@@ -152,7 +156,7 @@ const LedgerDashboard = () => {
           <div className="bg-white rounded-xl border border-gray-200">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
               <h3 className="text-sm font-semibold text-gray-900">Recent Transactions</h3>
-              <button onClick={() => navigate('/admin/ledger/cashbook')} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
+              <button onClick={() => navigate('/admin/ledger/reports')} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
             </div>
             <div className="divide-y divide-gray-50">
               {(data.recentTransactions || []).slice(0, 5).map(t => (
@@ -217,22 +221,22 @@ const LedgerDashboard = () => {
               <span className="text-xs text-gray-400">Top 5 each</span>
             </div>
             <div className="p-2">
-              <p className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-emerald-600">To Receive</p>
+              <p className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-red-600">You will receive</p>
               {topReceivables.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No receivables.</p>}
               {topReceivables.map(p => (
                 <button key={p.id} onClick={() => navigate('/admin/ledger/buyers')}
                   className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left">
                   <span className="text-sm text-gray-800 truncate">{p.name}</span>
-                  <span className="text-sm font-semibold text-emerald-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
+                  <span className="text-sm font-semibold text-red-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
                 </button>
               ))}
-              <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-amber-600">To Give</p>
+              <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-green-600">You will give</p>
               {topPayables.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No payables.</p>}
               {topPayables.map(p => (
                 <button key={p.id} onClick={() => navigate('/admin/ledger/sellers')}
                   className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left">
                   <span className="text-sm text-gray-800 truncate">{p.name}</span>
-                  <span className="text-sm font-semibold text-amber-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
+                  <span className="text-sm font-semibold text-green-600 shrink-0 ml-2">{formatINR(p.outstanding)}</span>
                 </button>
               ))}
             </div>
@@ -281,8 +285,9 @@ const LedgerDashboard = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Direction</label>
                   <select value={partyForm.direction} onChange={e => setPartyForm({ ...partyForm, direction: e.target.value })} className="input-field">
-                    <option value="to_receive">To Receive</option>
-                    <option value="to_give">To Give</option>
+                    <option value="to_receive" className="text-red-600">You will receive</option>
+                    <option value="to_give" className="text-green-600">You will give</option>
+                    <option value="">Settled</option>
                   </select>
                 </div>
                 <div>

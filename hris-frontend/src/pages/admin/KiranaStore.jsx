@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR, formatPhone } from '../../utils/currency';
-import PhoneField from '../../components/PhoneInput';
+import PhoneField, { isValidPhoneNumber } from '../../components/PhoneInput';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
@@ -121,11 +121,17 @@ const KiranaStore = () => {
     try {
       const data = await hrService.kirana.getPartyDetails(party.id);
       setDetail(data);
+      const defaultTxType = party.type === 'buyer' ? 'received' : 'given';
+      setTxForm({ type: defaultTxType, amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
     } catch {}
   };
 
   const handleAddParty = async (e) => {
     e.preventDefault();
+    if (partyForm.phone && !isValidPhoneNumber(partyForm.phone)) {
+      setMessage('Enter a valid phone number');
+      return;
+    }
     setSaving(true);
     try {
       if (editingParty) {
@@ -135,7 +141,8 @@ const KiranaStore = () => {
       }
       setShowPartyForm(false);
       setEditingParty(null);
-      setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' });
+      const defaultDir = (partyForm.partyType || partyType) === 'seller' ? 'to_give' : 'to_receive';
+      setPartyForm({ name: '', phone: '', address: '', amount: '', direction: defaultDir, entryDate: new Date().toISOString().split('T')[0], note: '' });
       fetchParties();
       fetchSummary();
     } catch (err) { setMessage(err.response?.data?.error || 'Failed.'); }
@@ -150,7 +157,7 @@ const KiranaStore = () => {
       phone: party.phone || '',
       address: party.address || '',
       amount: '',
-      direction: 'to_receive',
+      direction: party.type === 'seller' ? 'to_give' : 'to_receive',
       entryDate: new Date().toISOString().split('T')[0],
       note: '',
     });
@@ -163,7 +170,8 @@ const KiranaStore = () => {
     setSaving(true);
     try {
       await hrService.kirana.createTransaction({ partyId: detail.party.id, ...txForm });
-      setTxForm({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+      const defaultTxType = detail.party?.type === 'buyer' ? 'received' : 'given';
+      setTxForm({ type: defaultTxType, amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
       const data = await hrService.kirana.getPartyDetails(detail.party.id);
       setDetail(data);
       fetchParties();
@@ -240,7 +248,8 @@ const KiranaStore = () => {
     try {
       const data = await hrService.kirana.getPartyDetails(party.id);
       setSelectedParty(data);
-      setMobileTxForm({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+      const defaultTxType = party.type === 'buyer' ? 'received' : 'given';
+      setMobileTxForm({ type: defaultTxType, amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
     } catch {}
   };
 
@@ -250,7 +259,8 @@ const KiranaStore = () => {
     setSaving(true);
     try {
       await hrService.kirana.createTransaction({ partyId: selectedParty.party.id, ...mobileTxForm });
-      setMobileTxForm({ type: 'given', amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+      const defaultTxType = selectedParty.party?.type === 'buyer' ? 'received' : 'given';
+      setMobileTxForm({ type: defaultTxType, amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
       const data = await hrService.kirana.getPartyDetails(selectedParty.party.id);
       setSelectedParty(data);
       fetchParties();
@@ -335,10 +345,10 @@ const KiranaStore = () => {
     )},
     { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '—' },
     { key: 'balance', label: 'Balance', render: (_, p) => (
-      <span className={`font-semibold ${p.balance <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+      <span className={`font-semibold ${p.balance <= 0 ? 'text-red-500' : 'text-green-600'}`}>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${p.balance <= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
-          {p.balance <= 0 ? `You will get ${formatINR(Math.abs(p.balance))}` : `You will give ${formatINR(p.balance)}`}
+          <span className={`w-2 h-2 rounded-full ${p.balance <= 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+          {p.balance <= 0 ? `You will receive ${formatINR(Math.abs(p.balance))}` : `You will give ${formatINR(p.balance)}`}
         </span>
       </span>
     )},
@@ -385,10 +395,10 @@ const KiranaStore = () => {
     { key: 'type', label: 'Type', render: (v) => <span className="capitalize">{v}</span> },
     { key: 'name', label: 'Name' },
     { key: 'phone', label: 'Phone', render: (v) => formatPhone(v) || '-' },
-    { key: 'totalReceived', label: 'Total Received', render: (v) => <span className="text-green-600">{formatINR(v || 0)}</span> },
-    { key: 'totalGiven', label: 'Total Given', render: (v) => <span className="text-orange-600">{formatINR(v || 0)}</span> },
+    { key: 'totalReceived', label: 'Total You Gave', render: (v) => <span className="text-red-600">{formatINR(v || 0)}</span> },
+    { key: 'totalGiven', label: 'Total You Got', render: (v) => <span className="text-green-600">{formatINR(v || 0)}</span> },
     { key: 'balance', label: 'Balance', render: (v, r) => (
-      <span className={`font-bold ${(r.balance || 0) <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+      <span className={`font-bold ${(r.balance || 0) <= 0 ? 'text-red-600' : 'text-green-600'}`}>
         {formatINR(Math.abs(v || 0))}
       </span>
     )},
@@ -423,17 +433,17 @@ const KiranaStore = () => {
           <div className="p-6 space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="stat-card text-center">
-                <p className="text-xs text-gray-500">Total Given</p>
-                <p className="text-lg font-bold text-orange-600">{formatINR(totalGiven)}</p>
+                <p className="text-xs text-gray-500">Total You Got</p>
+                <p className="text-lg font-bold text-green-600">{formatINR(totalGiven)}</p>
               </div>
               <div className="stat-card text-center">
-                <p className="text-xs text-gray-500">Total Received</p>
-                <p className="text-lg font-bold text-green-600">{formatINR(totalReceived)}</p>
+                <p className="text-xs text-gray-500">Total You Gave</p>
+                <p className="text-lg font-bold text-red-600">{formatINR(totalReceived)}</p>
               </div>
               <div className="stat-card text-center">
                 <p className="text-xs text-gray-500">Balance</p>
-                <p className={`text-lg font-bold ${balance <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {balance <= 0 ? `You will get ${formatINR(Math.abs(balance))}` : `You will give ${formatINR(balance)}`}
+                <p className={`text-lg font-bold ${balance <= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {balance <= 0 ? `You will receive ${formatINR(Math.abs(balance))}` : `You will give ${formatINR(balance)}`}
                 </p>
               </div>
             </div>
@@ -445,8 +455,8 @@ const KiranaStore = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
                     <select value={txForm.type} onChange={e => setTxForm({ ...txForm, type: e.target.value })} className="input-field" required>
-                      <option value="given">Given</option>
-                      <option value="received">Received</option>
+                      <option value="received" className="text-red-600">You Gave</option>
+                      <option value="given" className="text-green-600">You Got</option>
                     </select>
                   </div>
                   <div>
@@ -476,8 +486,8 @@ const KiranaStore = () => {
                   transactions.map(tx => (
                     <div key={tx.id} className="p-3 flex items-center justify-between hover:bg-gray-50">
                       <div className="flex-1">
-                        <p className={`text-sm font-semibold ${tx.type === 'received' ? 'text-green-600' : 'text-orange-600'}`}>
-                          {tx.type === 'received' ? 'Received' : 'Given'} &middot; {formatINR(tx.amount)}
+                        <p className={`text-sm font-semibold ${tx.type === 'received' ? 'text-red-600' : 'text-green-600'}`}>
+                          {tx.type === 'received' ? 'You Gave' : 'You Got'} &middot; {formatINR(tx.amount)}
                         </p>
                         <p className="text-xs text-gray-400">{tx.entry_date ? tx.entry_date.split('T')[0] : ''} {tx.note ? `- ${tx.note}` : ''}</p>
                       </div>
@@ -506,17 +516,17 @@ const KiranaStore = () => {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="stat-card flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">{ledgerIcons.get}</div>
+          <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-500 shrink-0">{ledgerIcons.get}</div>
           <div>
-            <p className="text-sm text-gray-500">You will get</p>
-            <p className="text-2xl font-bold text-emerald-600">{formatINR(summary.youWillGet)}</p>
+            <p className="text-sm text-gray-500">You will receive</p>
+            <p className="text-2xl font-bold text-red-500">{formatINR(summary.youWillGet)}</p>
           </div>
         </div>
         <div className="stat-card flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-500 shrink-0">{ledgerIcons.give}</div>
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">{ledgerIcons.give}</div>
           <div>
             <p className="text-sm text-gray-500">You will give</p>
-            <p className="text-2xl font-bold text-red-500">{formatINR(summary.youWillGive)}</p>
+            <p className="text-2xl font-bold text-green-600">{formatINR(summary.youWillGive)}</p>
           </div>
         </div>
         <button onClick={() => navigate('/admin/ledger/reports')} className="stat-card flex items-center gap-4 text-left w-full cursor-pointer group">
@@ -537,7 +547,7 @@ const KiranaStore = () => {
               </span>
               <input type="text" placeholder={`Search ${partyType}...`} value={search} onChange={e => setSearch(e.target.value)} className="input-field pl-9 max-w-[200px]" />
             </div>
-            <button onClick={() => { setEditingParty(null); setPartyForm({ name: '', phone: '', address: '', amount: '', direction: 'to_receive', entryDate: new Date().toISOString().split('T')[0], note: '' }); setShowPartyForm(true); }} className="btn-primary">
+            <button onClick={() => { const dir = partyType === 'seller' ? 'to_give' : 'to_receive'; setEditingParty(null); setPartyForm({ name: '', phone: '', address: '', amount: '', direction: dir, entryDate: new Date().toISOString().split('T')[0], note: '' }); setShowPartyForm(true); }} className="btn-primary">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Add
             </button>
@@ -568,7 +578,7 @@ const KiranaStore = () => {
               {editingParty && (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg mb-2">
                   <span className="text-sm text-gray-600">Current Balance:</span>
-                  <span className={`text-lg font-bold ${(editingParty.balance || 0) <= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  <span className={`text-lg font-bold ${(editingParty.balance || 0) <= 0 ? 'text-red-600' : 'text-green-600'}`}>
                     {formatINR(editingParty.balance || 0)}
                   </span>
                 </div>
@@ -596,8 +606,9 @@ const KiranaStore = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Direction</label>
                       <select value={partyForm.direction} onChange={e => setPartyForm({ ...partyForm, direction: e.target.value })} className="input-field">
-                        <option value="to_receive">To Receive</option>
-                        <option value="to_give">To Give</option>
+                        <option value="to_receive" className="text-red-600">You will receive</option>
+                        <option value="to_give" className="text-green-600">You will give</option>
+                        <option value="">Settled</option>
                       </select>
                     </div>
                     <div>
@@ -722,6 +733,7 @@ const KiranaStore = () => {
           </div>
         </div>
       )}
+
     </div>
   );
   };
@@ -881,13 +893,13 @@ const KiranaStore = () => {
             </div>
           )}
           <div className="ml-auto flex items-center gap-4 shrink-0 pl-2">
+            <span className="flex items-center gap-1.5 text-red-600">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+              You Gave: <span className="font-semibold">{formatINR(reportTotals.received)}</span>
+            </span>
             <span className="flex items-center gap-1.5 text-green-600">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              Received: <span className="font-semibold">{formatINR(reportTotals.received)}</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-orange-600">
-              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-              Given: <span className="font-semibold">{formatINR(reportTotals.given)}</span>
+              You Got: <span className="font-semibold">{formatINR(reportTotals.given)}</span>
             </span>
           </div>
         </div>
@@ -948,17 +960,17 @@ const KiranaStore = () => {
           <p className="text-sm text-gray-500">{formatPhone(selectedParty.party.phone) || 'No phone'} &middot; {selectedParty.party.address || 'No address'}</p>
           <div className="grid grid-cols-3 gap-2">
             <div className="card text-center p-2">
-              <p className="text-xs text-gray-500">Total Given</p>
-              <p className="text-sm font-bold text-orange-600">{formatINR(selectedParty.totalGiven)}</p>
+              <p className="text-xs text-gray-500">Total You Got</p>
+              <p className="text-sm font-bold text-green-600">{formatINR(selectedParty.totalGiven)}</p>
             </div>
             <div className="card text-center p-2">
-              <p className="text-xs text-gray-500">Total Received</p>
-              <p className="text-sm font-bold text-green-600">{formatINR(selectedParty.totalReceived)}</p>
+              <p className="text-xs text-gray-500">Total You Gave</p>
+              <p className="text-sm font-bold text-red-600">{formatINR(selectedParty.totalReceived)}</p>
             </div>
             <div className="card text-center p-2">
               <p className="text-xs text-gray-500">Balance</p>
-              <p className={`text-sm font-bold ${selectedParty.balance <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {selectedParty.balance <= 0 ? `You will get ${formatINR(Math.abs(selectedParty.balance))}` : `You will give ${formatINR(selectedParty.balance)}`}
+              <p className={`text-sm font-bold ${selectedParty.balance <= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {selectedParty.balance <= 0 ? `You will receive ${formatINR(Math.abs(selectedParty.balance))}` : `You will give ${formatINR(selectedParty.balance)}`}
               </p>
             </div>
           </div>
@@ -969,8 +981,8 @@ const KiranaStore = () => {
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
                   <select value={mobileTxForm.type} onChange={e => setMobileTxForm({ ...mobileTxForm, type: e.target.value })} className="input-field text-sm" required>
-                    <option value="given">Given</option>
-                    <option value="received">Received</option>
+                    <option value="received" className="text-red-600">You Gave</option>
+                    <option value="given" className="text-green-600">You Got</option>
                   </select>
                 </div>
                 <div>
@@ -999,8 +1011,8 @@ const KiranaStore = () => {
                 selectedParty.transactions.map(tx => (
                   <div key={tx.id} className="p-3 flex items-center justify-between hover:bg-gray-50">
                     <div className="flex-1">
-                      <p className={`text-sm font-semibold ${tx.type === 'received' ? 'text-green-600' : 'text-orange-600'}`}>
-                        {tx.type === 'received' ? 'Received' : 'Given'} &middot; {formatINR(tx.amount)}
+                      <p className={`text-sm font-semibold ${tx.type === 'received' ? 'text-red-600' : 'text-green-600'}`}>
+                        {tx.type === 'received' ? 'You Gave' : 'You Got'} &middot; {formatINR(tx.amount)}
                       </p>
                       <p className="text-xs text-gray-400">{tx.entry_date ? tx.entry_date.split('T')[0] : ''} {tx.note ? `- ${tx.note}` : ''}</p>
                     </div>
@@ -1049,8 +1061,8 @@ const KiranaStore = () => {
               <DetailRow label="Type" value={selectedReport.type} />
               <DetailRow label="Name" value={selectedReport.name} />
               <DetailRow label="Phone" value={formatPhone(selectedReport.phone)} />
-              <DetailRow label="Total Received" value={formatINR(selectedReport.totalReceived || 0)} />
-              <DetailRow label="Total Given" value={formatINR(selectedReport.totalGiven || 0)} />
+              <DetailRow label="Total You Gave" value={formatINR(selectedReport.totalReceived || 0)} />
+              <DetailRow label="Total You Got" value={formatINR(selectedReport.totalGiven || 0)} />
               <DetailRow label="Balance" value={formatINR(Math.abs(selectedReport.balance || 0))} />
             </>
           ) : (
