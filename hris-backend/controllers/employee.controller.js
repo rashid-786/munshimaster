@@ -5,7 +5,7 @@ const { log } = require('../utils/audit');
 const { incrementUsage } = require('../services/usage.service');
 
 exports.createEmployee = async (req, res) => {
-  const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour, salaryType, pieceWorkType, pieceUnitLabel, pieceRate, pieceRates, openingAdvance, address, notes, joiningDate } = req.body;
+const { firstName, lastName, email, password, role, baseSalary, phone, profession, otherProfession, jobType, payPerHour, salaryType, pieceWorkType, pieceUnitLabel, pieceRate, pieceRates, openingAdvance, address, notes, joiningDate } = req.body;
   const tenantId = req.tenantId;
 
   try {
@@ -41,9 +41,9 @@ exports.createEmployee = async (req, res) => {
     const emailVal = email || `emp-${employeeId.slice(0,8)}@local`;
 
     await db.execute(
-      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, salary_type, opening_balance, address, notes, joining_date, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [employeeId, tenantId, firstName, lastName, emailVal, phone || null, hashedPassword, role, jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null, salaryType || 'fixed', openingAdvance !== undefined && openingAdvance !== '' ? parseFloat(openingAdvance) : null, address || null, notes || null, joiningDate || null]
+      `INSERT INTO employees (id, tenant_id, first_name, last_name, email, phone, password_hash, role, job_type, base_salary, pay_per_hour, status, profession, other_profession, salary_type, address, notes, joining_date, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, NOW())`,
+      [employeeId, tenantId, firstName, lastName, emailVal, phone || null, hashedPassword, role || 'employee', jobType || 'permanent', salaryInCents, payPerHourCents, profession || null, otherProfession || null, salaryType || 'fixed', address || null, notes || null, joiningDate || null]
     );
 
     // Insert piece rates if provided
@@ -54,6 +54,19 @@ exports.createEmployee = async (req, res) => {
         await db.execute(
           'INSERT INTO employee_piece_rates (id, tenant_id, employee_id, work_type, unit_label, rate_per_piece) VALUES (?, ?, ?, ?, ?, ?)',
           [prId, tenantId, employeeId, pr.workType, pr.unitLabel || 'pcs', pr.ratePerPiece ? parseFloat(pr.ratePerPiece) : 0]
+        );
+      }
+    }
+
+    // Convert opening balance to an advance entry
+    if (openingAdvance !== undefined && openingAdvance !== '') {
+      const advanceAmount = parseFloat(openingAdvance);
+      if (advanceAmount > 0) {
+        const advanceId = uuidv4();
+        await db.execute(
+          `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status, approved_by, approved_at, created_at)
+           VALUES (?, ?, ?, ?, ?, 'Opening Balance', 'approved', ?, NOW(), NOW())`,
+          [advanceId, tenantId, employeeId, Math.round(advanceAmount * 100), Math.round(advanceAmount * 100), req.user.id]
         );
       }
     }
@@ -123,7 +136,6 @@ exports.updateEmployee = async (req, res) => {
     if (salaryType !== undefined) { updates.push('salary_type = ?'); params.push(salaryType); }
     if (pieceWorkType !== undefined) { updates.push('piece_work_type = ?'); params.push(pieceWorkType || null); }
     if (pieceUnitLabel !== undefined) { updates.push('piece_unit_label = ?'); params.push(pieceUnitLabel || null); }
-    if (openingAdvance !== undefined) { updates.push('opening_balance = ?'); params.push(openingAdvance !== '' ? parseFloat(openingAdvance) : null); }
     if (address !== undefined) { updates.push('address = ?'); params.push(address || null); }
     if (notes !== undefined) { updates.push('notes = ?'); params.push(notes || null); }
     if (joiningDate !== undefined) { updates.push('joining_date = ?'); params.push(joiningDate || null); }
@@ -155,6 +167,31 @@ exports.updateEmployee = async (req, res) => {
       }
     }
 
+    // Convert opening advance to advance entry (single source of truth)
+    if (openingAdvance !== undefined) {
+      const advanceAmount = parseFloat(openingAdvance);
+      if (advanceAmount > 0) {
+        // Deactivate any existing "Opening Balance" advance entries
+        await db.execute(
+          'UPDATE employee_advances SET status = \'rejected\' WHERE tenant_id = ? AND employee_id = ? AND reason = \'Opening Balance\'',
+          [tenantId, id]
+        );
+        // Create new advance entry
+        const advanceId = uuidv4();
+        await db.execute(
+          `INSERT INTO employee_advances (id, tenant_id, employee_id, amount, remaining_balance, reason, status, approved_by, approved_at, created_at)
+           VALUES (?, ?, ?, ?, ?, 'Opening Balance', 'approved', ?, NOW(), NOW())`,
+          [advanceId, tenantId, id, Math.round(advanceAmount * 100), Math.round(advanceAmount * 100), req.user.id]
+        );
+      } else if (openingAdvance === '' || openingAdvance === null || openingAdvance === undefined) {
+        // Zero out any existing Opening Balance advances
+        await db.execute(
+          'UPDATE employee_advances SET status = \'rejected\' WHERE tenant_id = ? AND employee_id = ? AND reason = \'Opening Balance\'',
+          [tenantId, id]
+        );
+      }
+    }
+
     const changes = {};
     if (firstName !== undefined) changes.firstName = firstName;
     if (lastName !== undefined) changes.lastName = lastName;
@@ -180,7 +217,7 @@ exports.getEmployees = async (req, res) => {
   const { includeDeactivated, status } = req.query;
 
   try {
-    let query = 'SELECT id, first_name, last_name, email, phone, role, job_type, base_salary, pay_per_hour, profession, other_profession, salary_type, piece_work_type, piece_unit_label, piece_rate, status, created_at, opening_balance, address, notes, joining_date FROM employees WHERE tenant_id = ?';
+    let query = 'SELECT e.id, e.first_name, e.last_name, e.email, e.phone, e.role, e.job_type, e.base_salary, e.pay_per_hour, e.profession, e.other_profession, e.salary_type, e.piece_work_type, e.piece_unit_label, e.piece_rate, e.status, e.created_at, e.address, e.notes, e.joining_date, (SELECT COALESCE(SUM(ea.amount), 0) FROM employee_advances ea WHERE ea.employee_id = e.id AND ea.reason = \'Opening Balance\' AND ea.status IN (\'approved\', \'fully_paid\')) as opening_advance FROM employees e WHERE e.tenant_id = ? AND (e.role IS NULL OR e.role != \'tenant_admin\')';
     const params = [tenantId];
 
     if (status) {

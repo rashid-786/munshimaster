@@ -58,14 +58,14 @@ exports.getAdvances = async (req, res) => {
     if (req.user.role === 'tenant_admin') {
       query = `SELECT ea.*, e.first_name, e.last_name, e.email
                FROM employee_advances ea
-               JOIN employees e ON ea.employee_id = e.id
+               JOIN employees e ON ea.employee_id = e.id AND (e.role IS NULL OR e.role != 'tenant_admin')
                WHERE ea.tenant_id = ?
                ORDER BY ea.created_at DESC`;
       params = [tenantId];
     } else {
       query = `SELECT ea.*, e.first_name, e.last_name, e.email
                FROM employee_advances ea
-               JOIN employees e ON ea.employee_id = e.id
+               JOIN employees e ON ea.employee_id = e.id AND (e.role IS NULL OR e.role != 'tenant_admin')
                WHERE ea.tenant_id = ? AND ea.employee_id = ?
                ORDER BY ea.created_at DESC`;
       params = [tenantId, req.user.id];

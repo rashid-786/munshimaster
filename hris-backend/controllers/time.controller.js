@@ -452,7 +452,7 @@ exports.getTenantLeaves = async (req, res) => {
     const [rows] = await db.execute(
       `SELECT l.id, l.leave_type, l.start_date, l.end_date, l.status, e.first_name, e.last_name
              FROM leaves l
-             JOIN employees e ON l.employee_id = e.id
+             JOIN employees e ON l.employee_id = e.id AND (e.role IS NULL OR e.role != 'tenant_admin')
              ${where}
              ORDER BY l.created_at DESC`,
       params
@@ -517,7 +517,7 @@ exports.getEmployeeCalendar = async (req, res) => {
 
     const [employees] = await db.execute(
       `SELECT id, first_name, last_name, role, pay_per_hour, salary_type
-       FROM employees WHERE tenant_id = ? AND status = 'active'
+       FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')
        ${employeeId ? 'AND id = ?' : ''}
        ORDER BY first_name`,
       employeeId ? [tenantId, employeeId] : [tenantId]

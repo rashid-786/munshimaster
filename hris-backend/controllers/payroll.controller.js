@@ -59,7 +59,7 @@ exports.calculatePayroll = async (req, res) => {
       return res.status(400).json({ error: 'Pay period contains no working days.' });
     }
 
-    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active'`;
+    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')`;
     const employeeParams = [tenantId];
     if (employeeIds && employeeIds.length > 0) {
       employeeQuery += ` AND id IN (${employeeIds.map(() => '?').join(',')})`;
@@ -299,7 +299,7 @@ exports.previewPayroll = async (req, res) => {
       return res.status(400).json({ error: 'Pay period contains no working days.' });
     }
 
-    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate, piece_unit_label FROM employees WHERE tenant_id = ? AND status = 'active'`;
+    let employeeQuery = `SELECT id, base_salary, pay_per_hour, first_name, last_name, salary_type, piece_rate, piece_unit_label FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')`;
     const employeeParams = [tenantId];
     if (employeeIds && employeeIds.length > 0) {
       employeeQuery += ` AND id IN (${employeeIds.map(() => '?').join(',')})`;
@@ -447,13 +447,13 @@ exports.getPayrollHistory = async (req, res) => {
        (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
         WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
         AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
-       FROM payroll p JOIN employees e ON p.employee_id = e.id
+       FROM payroll p JOIN employees e ON p.employee_id = e.id AND (e.role IS NULL OR e.role != 'tenant_admin')
        WHERE p.tenant_id = ? AND e.status = 'active' ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC`
-    : `SELECT ${COLS}, e.first_name, e.last_name, e.email, e.salary_type,
+     : `SELECT ${COLS}, e.first_name, e.last_name, e.email, e.salary_type,
        (SELECT COALESCE(SUM(ea.remaining_balance), 0) FROM employee_advances ea
         WHERE ea.tenant_id = p.tenant_id AND ea.employee_id = p.employee_id
         AND ea.status = 'approved' AND ea.remaining_balance > 0) as outstanding_advance
-       FROM payroll p JOIN employees e ON p.employee_id = e.id
+       FROM payroll p JOIN employees e ON p.employee_id = e.id AND (e.role IS NULL OR e.role != 'tenant_admin')
        WHERE p.tenant_id = ? AND p.employee_id = ? AND e.status = 'active' ORDER BY COALESCE(p.created_at, p.pay_period_end) DESC`;
 
   const params = req.user.role === 'tenant_admin' ? [tenantId] : [tenantId, req.user.id];
@@ -879,7 +879,7 @@ exports.getDueSummary = async (req, res) => {
 
   try {
     const [employees] = await db.execute(
-      `SELECT id, base_salary, pay_per_hour, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active'`,
+      `SELECT id, base_salary, pay_per_hour, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')`,
       [tenantId]
     );
     const standardHours = countWeekdays(rangeStart, rangeEnd) * 8;

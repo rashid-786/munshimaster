@@ -1077,10 +1077,14 @@ export const hrService = {
     const response = await api.get('/core/piece-work/employee-entries', { params });
     return response.data;
   },
-  savePieceWorkDayEntries: async (data) => {
+   savePieceWorkDayEntries: async (data) => {
     const response = await api.post('/core/piece-work/save-day', data);
     return response.data;
-  },
+   },
+   deletePieceWorkEntry: async (id) => {
+    const response = await api.delete(`/core/piece-work/${id}`);
+    return response.data;
+   },
 
   downloadTransactionPDF: async (id) => {
     const response = await api.get(`/core/transactions/${id}/pdf`, { responseType: 'blob' });

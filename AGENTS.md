@@ -11,6 +11,7 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - Audit `actor_name` must come from JWT `name` field (was missing)
 - `created_at` must be explicitly set in INSERT (PostgreSQL default was broken)
 - `boolean = integer` comparisons fail in PostgreSQL — use `= false` / `= true`
+- **PostgreSQL string values use single quotes `'text'` — double quotes `"text"` are interpreted as column/identifier references and cause error 42703**
 - Sidebar labels (My Ledger Book, My Business, My HR) configurable from Settings; stable internal keys preserved
 - Phone input: `react-phone-number-input` with country flag selector, E.164 output, `isValidPhoneNumber` validation, country prefill by priority (stored > tenant settings > system country code > browser locale > 'KW')
 - `is_read` is SMALLINT not boolean — `= 0/1` comparisons are fine for that column
@@ -236,3 +237,4 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - **PieceWorkCalendar.jsx**: Calendar-based piece work entry replacing the old list view. Same layout as EmployeeCalendar. Clicking a date opens a modal with work types auto-loaded from staff records; only Quantity Produced is editable; work type / unit / rate are read-only. `GET /calendar-data` and `POST /save-day` backend endpoints. Date cell indicators: green=completed, amber=partial, blue=paid, gray=none. Route `/admin/piece-work/calendar`, sidebar item "Piece Calendar".
 - **Old PieceWork.jsx deleted**, old service methods removed, HrDashboard piece work due removed.
 - Backend server restarted. Build passes.
+- **Opening Balance → Advance conversion**: Migration `20260805_opening_balance_to_advance.sql` moves existing `opening_balance` to `employee_advances`; drops column from `employees`. `createEmployee` and `updateEmployee` in backend create/update advance entries when `openingAdvance` field is provided. `getEmployees` includes subquery summing approved advance amounts. Mobile `mapEmployee` divides by 100 (cents → rupees). Mobile `EditEmployeeScreen` pre-fills `openingAdvance` from employee data. Removed `openingBalance` from `Employee` type, `RawEmployee`, and `mapEmployee`.

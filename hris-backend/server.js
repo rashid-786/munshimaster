@@ -67,7 +67,7 @@ const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
 const { startWhatsAppCron } = require('./cron/whatsappReminders');
 const { startAuditCleanupCron } = require('./cron/auditCleanup');
 const { startOverdueCron } = require('./cron/overdueCheck');
-const { apiLimiter, paymentLimiter, superLimiter, publicLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, paymentLimiter, superLimiter, publicLimiter, notificationsLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
 
@@ -224,6 +224,10 @@ app.post('/api/v1/public/contact', async (req, res) => {
 // ==========================================
 // 2. PROTECTED MULTI-TENANT ROUTES
 // ==========================================
+
+// Notification routes (before general apiLimiter to avoid getting blocked by high-volume core routes)
+app.use('/api/v1/core/notifications', tenantResolver, notificationsLimiter, attachTenant, notificationRoutes);
+
 app.use('/api/v1/core', tenantResolver, apiLimiter, attachTenant);
 // Staff & attendance feature-gated routes
 app.use('/api/v1/core/employees', requireFeature('staff_directory'), employeeRoutes);
@@ -255,7 +259,6 @@ app.use('/api/v1/core/profile', profileRoutes);
 app.use('/api/v1/core/kirana', kiranaRoutes);
 app.use('/api/v1/core/subscription', apiLimiter, subscriptionRoutes);
 app.use('/api/v1/core/branding', brandingRoutes);
-app.use('/api/v1/core/notifications', notificationRoutes);
 app.use('/api/v1/core/staff-reports', planGate(1), require('./routes/staffReports.routes'));
 app.use('/api/v1/core/piece-work', planGate(1), pieceWorkRoutes);
 app.use('/api/v1/core/retention', retentionRoutes);

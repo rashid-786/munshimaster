@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { hrService } from '../../services/hr.service';
-import { formatINR, formatPhone } from '../../utils/currency';
+import { formatPhone } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -33,6 +33,8 @@ const Icons = {
   trash: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
 };
 
+const fmtSalary = n => '₹' + Number(n || 0).toLocaleString('en-IN');
+
 const Employees = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -64,7 +66,7 @@ const Employees = () => {
   });
   const fieldVisible = (key) => formFields[key] !== false;
   const [workHoursInDay, setWorkHoursInDay] = useState(8);
-
+  const [workingDaysPerMonth, setWorkingDaysPerMonth] = useState(30);
   useEffect(() => {
     hrService.getTenantSettings().then(res => {
       if (res.settings?.employeeFormFields) {
@@ -72,19 +74,20 @@ const Employees = () => {
         localStorage.setItem('employee_form_fields', JSON.stringify(res.settings.employeeFormFields));
       }
       if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(res.settings.workHoursInDay);
+      if (res.settings?.workingDaysPerMonth !== undefined) setWorkingDaysPerMonth(res.settings.workingDaysPerMonth);
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (editingEmployee || form.salaryType !== 'fixed') return;
     const salary = parseFloat(form.baseSalary);
-    if (salary && salary > 0 && workHoursInDay > 0) {
-      const calculated = salary / (30 * workHoursInDay);
+    if (salary && salary > 0 && workHoursInDay > 0 && workingDaysPerMonth > 0) {
+      const calculated = salary / (workingDaysPerMonth * workHoursInDay);
       setForm(prev => ({ ...prev, payPerHour: calculated.toFixed(2) }));
     } else if (!form.baseSalary) {
       setForm(prev => ({ ...prev, payPerHour: '' }));
     }
-  }, [form.baseSalary, workHoursInDay, editingEmployee, form.salaryType]);
+  }, [form.baseSalary, workHoursInDay, workingDaysPerMonth, editingEmployee, form.salaryType]);
 
   const fetchRoster = async () => {
     setLoading(true);
@@ -234,15 +237,15 @@ const Employees = () => {
       password: '',
       role: emp.role,
       jobType: emp.job_type || 'permanent',
-      baseSalary: (emp.base_salary / 100).toFixed(2),
-      payPerHour: emp.pay_per_hour ? (emp.pay_per_hour / 100).toFixed(2) : '',
+        baseSalary: String(emp.base_salary || ''),
+        payPerHour: emp.pay_per_hour ? String(emp.pay_per_hour) : '',
       profession: profession,
       otherProfession: profession === 'Other' ? (emp.profession || '') : '',
       salaryType: emp.salary_type || 'fixed',
       pieceWorkType: emp.piece_work_type || '',
       pieceUnitLabel: emp.piece_unit_label || '',
-      pieceRate: emp.piece_rate ? (emp.piece_rate / 100).toFixed(2) : '',
-      pieceRates: pieceRates.map(r => ({ id: r.id, workType: r.work_type, unitLabel: r.unit_label, ratePerPiece: (r.rate_per_piece / 100).toFixed(2) })),
+      pieceRate: emp.piece_rate ? String(emp.piece_rate) : '',
+      pieceRates: pieceRates.map(r => ({ id: r.id, workType: r.work_type, unitLabel: r.unit_label, ratePerPiece: String(r.rate_per_piece) })),
     });
     setShowOnboard(true);
   };
@@ -287,8 +290,8 @@ const Employees = () => {
       const labels = { fixed: 'Monthly/Hourly', piece: 'Per Piece' };
       return <span className={colors[t] || 'badge-info'}>{labels[t] || 'Monthly/Hourly'}</span>;
     }},
-    ...(fieldVisible('baseSalary') ? [{ key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{formatINR(r.base_salary)}</span> }] : []),
-    ...(fieldVisible('payPerHour') ? [{ key: 'payPerHour', label: 'Pay/Hr', render: (_, r) => <span className="text-gray-500">{r.pay_per_hour ? formatINR(r.pay_per_hour) : '—'}</span> }] : []),
+    ...(fieldVisible('baseSalary') ? [{ key: 'salary', label: 'Monthly Salary', render: (_, r) => <span className="font-medium">{fmtSalary(r.base_salary)}</span> }] : []),
+    ...(fieldVisible('payPerHour') ? [{ key: 'payPerHour', label: 'Pay/Hr', render: (_, r) => <span className="text-gray-500">{r.pay_per_hour ? fmtSalary(r.pay_per_hour) : '—'}</span> }] : []),
     { key: 'status', label: 'Status', render: (v) => <span className={statusBadge(v)}>{v === 'deactivated' ? 'Deactivated' : 'Active'}</span> },
     { key: 'actions', label: 'Actions', className: 'text-center', render: (_, emp) => (
       <div className="flex gap-1.5 justify-end">
@@ -462,10 +465,10 @@ const Employees = () => {
                         </span>
                       </td>
                       {fieldVisible('baseSalary') && (
-                        <td className="table-cell font-medium text-gray-900">{formatINR(emp.base_salary)}</td>
+                        <td className="table-cell font-medium text-gray-900">{fmtSalary(emp.base_salary)}</td>
                       )}
                       {fieldVisible('payPerHour') && (
-                        <td className="table-cell text-gray-500">{emp.pay_per_hour ? formatINR(emp.pay_per_hour) : '—'}</td>
+                        <td className="table-cell text-gray-500">{emp.pay_per_hour ? fmtSalary(emp.pay_per_hour) : '—'}</td>
                       )}
                       <td className="table-cell">
                         <span className={`badge ${emp.status === 'deactivated' ? 'badge-danger' : 'badge-success'}`}>
@@ -815,7 +818,7 @@ const Employees = () => {
                               </td>
                               <td className="px-3 py-2 text-gray-600">{row.email}</td>
                               <td className="px-3 py-2"><span className={`badge ${row.jobType === 'adhoc' ? 'badge-warning' : 'badge-info'}`}>{row.jobType}</span></td>
-                              <td className="px-3 py-2 text-gray-600">{formatINR(Number(row.baseSalary) * 100)}</td>
+                              <td className="px-3 py-2 text-gray-600">{fmtSalary(row.baseSalary)}</td>
                               <td className="px-3 py-2"><span className={`badge ${row.status === 'active' ? 'badge-success' : 'badge-danger'}`}>{row.status}</span></td>
                             </tr>
                           ))}
@@ -919,7 +922,7 @@ function ProfileCard({ employee, pieceRates, fieldVisible, statusBadge, onClose 
                           <td className="px-2 py-1 text-gray-400">{i + 1}</td>
                           <td className="px-2 py-1 text-gray-900 font-medium">{r.work_type}</td>
                           <td className="px-2 py-1 text-gray-500">{r.unit_label}</td>
-                          <td className="px-2 py-1 text-gray-700 text-right">{formatINR(r.rate_per_piece)}</td>
+                          <td className="px-2 py-1 text-gray-700 text-right">{fmtSalary(r.rate_per_piece)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -927,14 +930,14 @@ function ProfileCard({ employee, pieceRates, fieldVisible, statusBadge, onClose 
                 </div>
               ) : (
                 <div className="text-sm text-gray-400">
-                  {employee.piece_work_type || '—'} &middot; {employee.piece_unit_label || '—'} &middot; {employee.piece_rate ? formatINR(employee.piece_rate) : '—'}
+                  {employee.piece_work_type || '—'} &middot; {employee.piece_unit_label || '—'} &middot; {employee.piece_rate ? fmtSalary(employee.piece_rate) : '—'}
                 </div>
               )}
             </div>
           ) : (
             <>
-              {fieldVisible('baseSalary') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>} label="Salary" value={formatINR(employee.base_salary)} />}
-              {fieldVisible('payPerHour') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} label="Pay/Hr" value={employee.pay_per_hour ? formatINR(employee.pay_per_hour) : '—'} />}
+              {fieldVisible('baseSalary') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>} label="Salary" value={fmtSalary(employee.base_salary)} />}
+              {fieldVisible('payPerHour') && <InfoRow icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} label="Pay/Hr" value={employee.pay_per_hour ? fmtSalary(employee.pay_per_hour) : '—'} />}
             </>
           )}
         </Section>

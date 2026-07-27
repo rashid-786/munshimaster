@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { superService } from '../../services/super.service';
 import { Link } from 'react-router-dom';
-import { formatINR } from '../../utils/currency';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const AllEmployees = () => {
+  const fmtSalary = n => '₹' + Number(n || 0).toLocaleString('en-IN');
   const [employees, setEmployees] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -47,7 +47,7 @@ const AllEmployees = () => {
       lastName: emp.last_name,
       email: emp.email,
       role: emp.role,
-      baseSalary: (emp.base_salary / 100).toFixed(2)
+      baseSalary: String(emp.base_salary || '')
     });
   };
 
@@ -114,7 +114,7 @@ const AllEmployees = () => {
               <div className="flex items-center gap-3 text-xs text-gray-500">
                 <Link to={`/super/tenants/${emp.tenant_id}`} className="text-indigo-600 hover:text-indigo-500 font-medium">{emp.company_name}</Link>
                 <span>&middot;</span>
-                <span className="font-medium text-gray-700">{formatINR(emp.base_salary)}</span>
+                <span className="font-medium text-gray-700">{fmtSalary(emp.base_salary)}</span>
               </div>
               <button onClick={() => startEdit(emp)} className="btn-secondary !py-1 !px-2.5 text-xs">Edit</button>
             </div>
@@ -239,7 +239,7 @@ const AllEmployees = () => {
                               {emp.role === 'tenant_admin' ? 'Admin' : 'Employee'}
                             </span>
                           </td>
-                          <td className="table-cell font-medium">{formatINR(emp.base_salary)}</td>
+                          <td className="table-cell font-medium">{fmtSalary(emp.base_salary)}</td>
                           <td className="table-cell text-gray-500">{new Date(emp.created_at).toLocaleDateString()}</td>
                           <td className="table-cell">
                             <button onClick={() => startEdit(emp)} className="btn-secondary !py-1 !px-3 text-xs">Edit</button>

@@ -15,10 +15,9 @@ const NotificationBell = ({ role = 'admin' }) => {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetch(); }, [fetch]);
-
   useEffect(() => {
     if (!open) return;
+    fetch();
     const t = setInterval(fetch, 60000);
     return () => clearInterval(t);
   }, [open, fetch]);

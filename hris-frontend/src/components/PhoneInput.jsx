@@ -21,8 +21,8 @@ const COUNTRY_INFO = {
   ES: { national: 9, cc: '+34' }, NL: { national: 9, cc: '+31' }, BE: { national: 9, cc: '+32' },
 };
 
-const CUSTOM_PHONE_INPUT = React.forwardRef(({ ...rest }, ref) => (
-  <input ref={ref} {...rest} className="input-field pl-14 text-base" />
+const CUSTOM_PHONE_INPUT = React.forwardRef(({ value, ...rest }, ref) => (
+  <input ref={ref} value={value ? value.replace(/\s/g, '') : value} {...rest} className="input-field pl-14 text-base" />
 ));
 
 export default function PhoneField({ value, onChange, error, defaultCountry: defaultCountryProp, placeholder = '+xxx xxxxxxxx', autoFocus, id, required }) {
@@ -36,13 +36,16 @@ export default function PhoneField({ value, onChange, error, defaultCountry: def
   const displayError = error || validationError;
   const handleChange = useCallback((v) => {
     if (!v) { onChange(v); return; }
-    const cc = (info && info.cc) || '+91';
     const digits = v.replace(/\D/g, '');
-    if (digits.length - cc.length + 1 > nationalDigits) {
+    const ccMatch = v.match(/^\+(\d{1,3})/);
+    const nationalLen = ccMatch
+      ? digits.length - ccMatch[1].length
+      : digits.length;
+    if (nationalLen > nationalDigits) {
       setResetKey(k => k + 1);
       return;
     }
-    onChange(v);
+    onChange(v.replace(/\s/g, ''));
   }, [onChange, info, nationalDigits]);
   return (
     <div>
@@ -59,7 +62,7 @@ export default function PhoneField({ value, onChange, error, defaultCountry: def
         autoFocus={autoFocus}
         id={id}
         className="relative"
-        smartCaret
+        smartCaret={false}
         required={required}
       />
       <style>{`

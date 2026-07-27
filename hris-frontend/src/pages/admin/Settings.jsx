@@ -89,6 +89,7 @@ const Settings = () => {
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
   const [workHoursInDay, setWorkHoursInDay] = useState('8');
+  const [workingDaysPerMonth, setWorkingDaysPerMonth] = useState('30');
   const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [employeeFormFields, setEmployeeFormFields] = useState({
     email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
@@ -137,6 +138,7 @@ const Settings = () => {
         localStorage.setItem('default_country_code', res.settings.countryCode);
       }
       if (res.settings?.workHoursInDay !== undefined) setWorkHoursInDay(String(res.settings.workHoursInDay));
+      if (res.settings?.workingDaysPerMonth !== undefined) setWorkingDaysPerMonth(String(res.settings.workingDaysPerMonth));
       if (res.settings?.hourBasedAttendance !== undefined) setHourBasedAttendance(res.settings.hourBasedAttendance);
       if (res.settings?.employeeFormFields) {
         setEmployeeFormFields(res.settings.employeeFormFields);
@@ -173,7 +175,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), workingDaysPerMonth: parseDecimal(workingDaysPerMonth, 30), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -758,8 +760,12 @@ const Settings = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Work Hours in a Day</label>
                   <input type="text" inputMode="decimal" value={workHoursInDay} onChange={e => setWorkHoursInDay(sanitizeDecimal(e.target.value))} disabled={!hourBasedAttendance} className={`input-field transition-opacity ${!hourBasedAttendance ? 'opacity-50 cursor-not-allowed' : ''}`} />
                 </div>
+                <div className="w-full sm:w-auto sm:min-w-[200px]">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Working Days per Month</label>
+                  <input type="text" inputMode="decimal" value={workingDaysPerMonth} onChange={e => setWorkingDaysPerMonth(sanitizeDecimal(e.target.value))} className="input-field" />
+                </div>
               </div>
-              <p className="text-xs text-gray-400">Used to calculate Pay Per Hour. Formula: Monthly Salary / (30 × Work Hours).</p>
+              <p className="text-xs text-gray-400">Used to calculate Pay Per Hour. Formula: Monthly Salary ÷ (Working Days per Month × Work Hours in a Day).</p>
             </div>
 
             <div className="space-y-4">
