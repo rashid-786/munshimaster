@@ -336,7 +336,7 @@ export default function StaffReports() {
     { key: 'work_type', label: 'Work Type', render: (v) => v || '—' },
     { key: 'quantity', label: 'Quantity', render: (v) => String(v || 0) },
     { key: 'unit_label', label: 'Unit', render: (v) => v || '—' },
-    { key: 'rate_per_piece', label: 'Rate per Piece', render: (v) => `₹${(v / 100).toFixed(2)}` },
+    { key: 'rate_per_piece', label: 'Rate per Piece', render: (v) => `₹${Number(v || 0).toFixed(2)}` },
     { key: 'calculated_amount', label: 'Amount', render: (v) => formatINR(v) },
     { key: 'payroll_id', label: 'Payroll Ref', render: (v) => v ? v.substring(0, 8) + '…' : '—' },
   ];
@@ -717,7 +717,7 @@ export default function StaffReports() {
                     {selectedRecord.workTypeDetails.map((e, i) => (
                       <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-gray-50 last:border-0">
                         <span className="text-gray-800 font-medium">{e.work_type || '—'}</span>
-                        <span className="text-gray-500">{e.quantity || 0} × ₹{((e.rate_per_piece || 0) / 100).toFixed(2)} = <span className="font-semibold text-gray-900">{formatINR(e.calculated_amount)}</span></span>
+                        <span className="text-gray-500">{e.quantity || 0} × ₹{Number(e.rate_per_piece || 0).toFixed(2)} = <span className="font-semibold text-gray-900">{formatINR(e.calculated_amount)}</span></span>
                       </div>
                     ))}
                   </div>

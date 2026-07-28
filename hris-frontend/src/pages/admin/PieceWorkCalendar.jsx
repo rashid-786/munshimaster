@@ -116,7 +116,7 @@ const PieceWorkCalendar = () => {
         id: e.id,
         workType: e.workType || '',
         unitLabel: e.unitLabel || 'pcs',
-        ratePerPiece: e.ratePerPiece !== undefined ? String((e.ratePerPiece / 100).toFixed(2)) : '',
+        ratePerPiece: e.ratePerPiece !== undefined ? String(e.ratePerPiece) : '',
         quantity: e.quantity !== undefined ? String(e.quantity) : '',
         calculatedAmount: e.calculatedAmount || 0,
         isPaid: e.isPaid,
@@ -126,7 +126,7 @@ const PieceWorkCalendar = () => {
       setDayEntries(rates.map(r => ({
         workType: r.work_type || '',
         unitLabel: r.unit_label || 'pcs',
-        ratePerPiece: r.rate_per_piece ? String((r.rate_per_piece / 100).toFixed(2)) : '',
+        ratePerPiece: r.rate_per_piece ? String(r.rate_per_piece) : '',
         quantity: '',
         calculatedAmount: 0,
       })));

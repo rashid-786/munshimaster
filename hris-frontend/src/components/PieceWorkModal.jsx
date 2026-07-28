@@ -51,7 +51,7 @@ export default function PieceWorkModal({ open, onClose, entries, employeeName, a
                     <td className="px-2 py-2 text-gray-800 font-medium truncate max-w-[120px]">{r.workType}</td>
                     <td className="px-2 py-2 text-gray-500">{r.unitLabel}</td>
                     <td className="px-2 py-2 text-right text-gray-600 whitespace-nowrap">
-                      {r.ratePerPiece > 0 ? `₹${(r.ratePerPiece / 100).toFixed(2)}` : '—'}
+                      {r.ratePerPiece > 0 ? `₹${Number(r.ratePerPiece).toFixed(2)}` : '—'}
                     </td>
                     <td className="px-2 py-2 text-right text-gray-700">{r.quantity}</td>
                     <td className="px-2 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{formatINR(r.calculatedAmount)}</td>
