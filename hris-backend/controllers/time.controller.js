@@ -566,7 +566,7 @@ exports.getEmployeeCalendar = async (req, res) => {
       const start = new Date(l.start_date);
       const end = new Date(l.end_date);
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         leaveMap[l.employee_id][dateStr] = l.leave_type;
       }
     });
@@ -592,7 +592,7 @@ exports.getEmployeeCalendar = async (req, res) => {
           hours = att.totalHours != null ? parseFloat(att.totalHours) : null;
           if (hours === 0) {
             type = 'absent';
-            label = leave ? `${leave} Leave` : 'Absent';
+            label = leave && leave !== 'Absent' ? `${leave} Leave` : 'Absent';
           } else if (hours && hours > 0) {
             type = 'present';
             label = leave ? `Present (${hours}h, ${leave} leave)` : `Present (${hours}h)`;

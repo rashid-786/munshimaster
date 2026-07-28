@@ -5,7 +5,7 @@ exports.getEmployeeRates = async (req, res) => {
   const { employeeId } = req.query;
   const tenantId = req.tenantId;
   try {
-    let query = 'SELECT id, work_type, unit_label, rate_per_piece FROM employee_piece_rates WHERE tenant_id = ?';
+    let query = 'SELECT id, employee_id, work_type, unit_label, rate_per_piece FROM employee_piece_rates WHERE tenant_id = ?';
     const params = [tenantId];
     if (employeeId) { query += ' AND employee_id = ?'; params.push(employeeId); }
     query += ' ORDER BY created_at ASC';
@@ -29,7 +29,7 @@ exports.createEntry = async (req, res) => {
       [employeeId, tenantId]
     );
     if (emp.length === 0) return res.status(404).json({ error: 'Employee not found.' });
-    let rate = ratePerPiece !== undefined ? Math.round(parseFloat(ratePerPiece) * 100) : 0;
+    let rate = ratePerPiece !== undefined ? Math.round(parseFloat(ratePerPiece)) : 0;
     if (!ratePerPiece && workType) {
       const [pr] = await db.execute(
         'SELECT rate_per_piece FROM employee_piece_rates WHERE tenant_id = ? AND employee_id = ? AND work_type = ?',
@@ -38,7 +38,7 @@ exports.createEntry = async (req, res) => {
       rate = pr.length > 0 ? pr[0].rate_per_piece : 0;
     }
     const qty = parseFloat(quantity) || 0;
-    const amount = Math.round(qty * rate);
+    const amount = Math.round(qty * rate * 100);
     const id = uuidv4();
     await db.execute(
       `INSERT INTO piece_work_entries (id, tenant_id, employee_id, quantity, date, work_type, rate_per_piece, calculated_amount)
@@ -88,8 +88,8 @@ exports.updateEntry = async (req, res) => {
       return res.status(400).json({ error: 'Cannot edit a paid entry. Reverse the payroll first.' });
     }
     const qty = quantity !== undefined ? (parseFloat(quantity) || 0) : existing[0].quantity;
-    const rate = ratePerPiece !== undefined ? Math.round(parseFloat(ratePerPiece) * 100) : existing[0].rate_per_piece;
-    const amount = Math.round(qty * rate);
+    const rate = ratePerPiece !== undefined ? Math.round(parseFloat(ratePerPiece)) : existing[0].rate_per_piece;
+    const amount = Math.round(qty * rate * 100);
     const dateVal = date || existing[0].date;
     await db.execute(
       'UPDATE piece_work_entries SET quantity = ?, date = ?, rate_per_piece = ?, calculated_amount = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
@@ -197,10 +197,10 @@ exports.saveDayEntries = async (req, res) => {
     let totalQty = 0;
     for (const entry of entries) {
       if (!entry.workType || entry.quantity === undefined || entry.quantity === '' || entry.quantity === null) continue;
-      const rate = entry.ratePerPiece !== undefined ? Math.round(parseFloat(entry.ratePerPiece) * 100) : 0;
+      const rate = entry.ratePerPiece !== undefined ? Math.round(parseFloat(entry.ratePerPiece)) : 0;
       const qty = parseFloat(entry.quantity) || 0;
       totalQty += qty;
-      const amount = Math.round(qty * rate);
+      const amount = Math.round(qty * rate * 100);
       const id = uuidv4();
       await client.query(
         `INSERT INTO piece_work_entries (id, tenant_id, employee_id, quantity, date, work_type, unit_label, rate_per_piece, calculated_amount)
@@ -356,7 +356,7 @@ exports.createWorkType = async (req, res) => {
   }
   try {
     const id = uuidv4();
-    const rate = Math.round(parseFloat(ratePerPiece) * 100);
+    const rate = Math.round(parseFloat(ratePerPiece));
     await db.execute(
       `INSERT INTO employee_piece_rates (id, tenant_id, employee_id, work_type, unit_label, rate_per_piece)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -383,7 +383,7 @@ exports.updateWorkType = async (req, res) => {
     const params = [];
     if (workType !== undefined) { fields.push('work_type = ?'); params.push(workType); }
     if (unitLabel !== undefined) { fields.push('unit_label = ?'); params.push(unitLabel); }
-    if (ratePerPiece !== undefined) { fields.push('rate_per_piece = ?'); params.push(Math.round(parseFloat(ratePerPiece) * 100)); }
+    if (ratePerPiece !== undefined) { fields.push('rate_per_piece = ?'); params.push(Math.round(parseFloat(ratePerPiece))); }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update.' });
     params.push(id, tenantId);
     await db.execute(

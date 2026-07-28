@@ -171,7 +171,7 @@ const PayrollConsole = () => {
     for (const emp of calendarData.employees) {
       const hours = emp.days.reduce((s, d) => s + (d.paid ? 0 : parseFloat(d.hours || 0)), 0);
       const payPerHour = Number(emp.employee.payPerHour || 0);
-      map[emp.employee.id] = { hours, payPerHour, due: hours * payPerHour };
+      map[emp.employee.id] = { hours, payPerHour, due: hours * payPerHour * 100 };
     }
     return map;
   }, [calendarData]);

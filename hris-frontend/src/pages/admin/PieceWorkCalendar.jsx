@@ -24,10 +24,10 @@ const Tooltip = ({ day, rect }) => {
       <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
         {day.type === 'none' ? (
           'No Entry'
+        ) : day.totalAmt == null || Number(day.totalAmt) === 0 ? (
+          'Absent'
         ) : (
-          <>
-            <div className="text-gray-300">Amount: {formatINR(day.totalAmt)} ({day.isPaid ? 'Paid' : 'Unpaid'})</div>
-          </>
+          <div className="text-gray-300">Amount: {formatINR(day.totalAmt)} ({day.isPaid ? 'Paid' : 'Unpaid'})</div>
         )}
       </div>
       <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45" />

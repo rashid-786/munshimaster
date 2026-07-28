@@ -615,7 +615,7 @@ exports.downloadPayslip = async (req, res) => {
 
       rows.forEach(r => {
         doc.text(r.workType, col[0], yPos, { width: colW[0] });
-        doc.text(r.ratePerPiece > 0 ? `₹${(r.ratePerPiece / 100).toFixed(2)}/${r.unitLabel}` : '—', col[1], yPos, { width: colW[1], align: 'right' });
+        doc.text(r.ratePerPiece > 0 ? `₹${Number(r.ratePerPiece).toFixed(2)}/${r.unitLabel}` : '—', col[1], yPos, { width: colW[1], align: 'right' });
         doc.text(String(r.quantity), col[2], yPos, { width: colW[2], align: 'right' });
         doc.text(`₹${(r.calculatedAmount / 100).toFixed(2)}`, col[3], yPos, { width: colW[3], align: 'right' });
         yPos += 18;

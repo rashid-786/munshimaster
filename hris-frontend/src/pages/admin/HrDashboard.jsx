@@ -103,7 +103,7 @@ const HrDashboard = () => {
       const empId = emp.employee.id;
       const hours = emp.days.reduce((sum, d) => sum + (d.paid ? 0 : parseFloat(d.hours || 0)), 0);
       const payPerHour = Number(emp.employee.payPerHour || 0);
-      map[empId] = { hours, payPerHour, due: hours * payPerHour };
+      map[empId] = { hours, payPerHour, due: hours * payPerHour * 100 };
     }
     return map;
   }, [calendarData]);

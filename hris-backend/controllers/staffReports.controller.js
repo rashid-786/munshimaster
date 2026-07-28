@@ -605,7 +605,7 @@ exports.exportReport = async (req, res) => {
             r => r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—',
             r => r.work_type || '—',
             r => r.quantity ? `${r.quantity}` : '0',
-            r => `₹${(r.rate_per_piece / 100).toFixed(2)}`,
+            r => `₹${Number(r.rate_per_piece || 0).toFixed(2)}`,
             r => r.calculated_amount ? `₹${(r.calculated_amount / 100).toFixed(2)}` : '₹0.00',
             r => r.is_paid ? 'Paid' : 'Unpaid',
           ],

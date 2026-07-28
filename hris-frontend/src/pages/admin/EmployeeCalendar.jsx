@@ -266,8 +266,8 @@ const EmployeeCalendar = () => {
         dueHours,
         paidHours,
         payPerHour,
-        due: dueHours * payPerHour,
-        paid: paidHours * payPerHour,
+        due: dueHours * payPerHour * 100,
+        paid: paidHours * payPerHour * 100,
       };
     });
   }, [calendarEmployees]);
@@ -404,7 +404,7 @@ const EmployeeCalendar = () => {
                 const empDays = emp.days || [];
                 const empHours = empDays.reduce((sum, day) => sum + (day.paid ? 0 : (day.hours || 0)), 0);
                 const empPay = Number(emp.employee.payPerHour || 0);
-                const empDue = empHours * empPay;
+                const empDue = empHours * empPay * 100;
                 const empMissingPay = empHours > 0 && empPay <= 0;
                 return (
                   <tr key={emp.employee.id} className="hover:bg-gray-50/50 transition-colors">

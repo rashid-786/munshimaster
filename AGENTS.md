@@ -16,6 +16,7 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - Phone input: `react-phone-number-input` with country flag selector, E.164 output, `isValidPhoneNumber` validation, country prefill by priority (stored > tenant settings > system country code > browser locale > 'KW')
 - `is_read` is SMALLINT not boolean — `= 0/1` comparisons are fine for that column
 - Global config (hidePayments, hideSubscription, hideUsage, hideReferEarn, hideSubscriptionLabels) stored in system_settings.global_config JSONB, fetched via public endpoint, cached in localStorage, consumed across all components
+- **Timezone date shift**: Never use `d.toISOString().split('T')[0]` for local date formatting — it converts to UTC and shifts dates in positive timezones. Use `\`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}\`` instead.
 
 ## Done
 - **Loading component** (`src/components/Loading.jsx`): SVG arc spinner using `var(--primary-600)`, used by `ResponsiveTable.jsx`
