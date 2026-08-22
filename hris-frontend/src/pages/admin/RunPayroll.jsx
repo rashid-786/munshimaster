@@ -60,8 +60,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState('');
   const [processed, setProcessed] = useState(null);
-  const [monthRemaining, setMonthRemaining] = useState(null);
-  const [monthByEmployee, setMonthByEmployee] = useState({});
   const [pieceModal, setPieceModal] = useState(null);
   const messageRef = useRef(null);
 
@@ -79,16 +77,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       setEmployees(emps);
       setSelectedIds(new Set());
     }).catch(() => {});
-    // Remaining payable for the current month (unpaid + partial remainders).
-    const now = new Date();
-    hrService.getDueSummary(fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)), fmtDate(now))
-      .then(res => {
-        setMonthRemaining(res.dueAmount || 0);
-        const map = {};
-        (res.byEmployee || []).forEach(b => { map[b.employeeId] = b.amount; });
-        setMonthByEmployee(map);
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -292,7 +280,7 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Employees</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{summary.employeesCount}</p>
@@ -311,11 +299,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
           {summary.partialCount > 0 && (
             <p className="text-xs text-gray-400 mt-0.5">{summary.partialCount} partial payment{summary.partialCount > 1 ? 's' : ''}</p>
           )}
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Remaining Payable (This Month)</p>
-          <p className="text-2xl font-bold text-violet-600 mt-1">{formatINR(monthRemaining || 0)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Unpaid + partial balance</p>
         </div>
       </div>
 
@@ -353,7 +336,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                   <th className="table-header text-right">Advance Deduction</th>
                   <th className="table-header text-right">Partial Payment</th>
                   <th className="table-header text-right">Total Payable</th>
-                  <th className="table-header text-right">Remaining</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -383,7 +365,12 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                           >View Details</span>
                         ) : `₹${(r.hourlyRate / 100).toFixed(2)}/hr`}
                       </td>
-                      <td className="table-cell text-right font-medium text-gray-900">{formatINR(r.dueAmount)}</td>
+                      <td className="table-cell text-right">
+                        <span className="font-medium text-gray-900">{formatINR(r.dueAmount)}</span>
+                        {r.partialDue > 0 && (
+                          <span className="block text-[10px] text-violet-500 ml-auto">partial due</span>
+                        )}
+                      </td>
                       <td className="table-cell text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <input type="text" inputMode="decimal" value={deductionInput[r.employeeId] ?? (adv / 100).toFixed(2)}
@@ -417,14 +404,11 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                           <span className="block text-[9px] font-normal text-violet-500">Remaining {formatINR(fullPayable - partial)}</span>
                         )}
                       </td>
-                      <td className="table-cell text-right">
-                        <span className="font-medium text-gray-600">{formatINR(monthByEmployee[r.employeeId] || 0)}</span>
-                      </td>
                     </tr>
                   );
                 })}
                 {visibleRuns.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-8 text-sm text-gray-400">
+                  <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-400">
                     {selectedIds.size === 0 ? 'No employees match your search' : 'No employees found'}
                   </td></tr>
                 )}

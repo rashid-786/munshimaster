@@ -411,6 +411,16 @@ exports.previewPayroll = async (req, res) => {
       let totalHours = 0, dueHours = 0, totalQuantity = 0, dueQuantity = 0;
       let pieceEntries = [];
 
+      // Outstanding from prior partially-paid payrolls overlapping this period is still owed.
+      const [partialRows] = await db.execute(
+        `SELECT id, net_salary, paid_amount FROM payroll
+         WHERE tenant_id = ? AND employee_id = ? AND status = 'partial'
+           AND pay_period_end >= ? AND pay_period_start <= ?`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      const partialDue = partialRows.reduce((s, r) => s + Math.max(0, Number(r.net_salary || 0) - Number(r.paid_amount || 0)), 0);
+      const partialPayrollIds = partialRows.map(r => r.id);
+
       if (isPieceWorker) {
         const [entries] = await db.execute(
           `SELECT id, work_type, unit_label, rate_per_piece, quantity, calculated_amount, date, is_paid
@@ -419,24 +429,48 @@ exports.previewPayroll = async (req, res) => {
            ORDER BY date ASC, work_type ASC`,
           [tenantId, emp.id, startDate, endDate]
         );
+        // When nothing is currently unpaid but there is a partial-paid remainder, show the
+        // work types/qty/rates from the partially-paid payroll so the columns have context.
+        if (partialDue > 0 && partialPayrollIds.length > 0) {
+          const ph = partialPayrollIds.map(() => '?').join(',');
+          const [covered] = await db.execute(
+            `SELECT id, work_type, unit_label, rate_per_piece, quantity, calculated_amount, date, is_paid
+             FROM piece_work_entries
+             WHERE tenant_id = ? AND payroll_id IN (${ph})
+             ORDER BY date ASC, work_type ASC`,
+            [tenantId, ...partialPayrollIds]
+          );
+          pieceEntries = covered.map(e => ({
+            workType: e.work_type,
+            unitLabel: e.unit_label || 'pcs',
+            ratePerPiece: e.rate_per_piece,
+            quantity: e.quantity,
+            calculatedAmount: e.calculated_amount,
+            date: e.date,
+          }));
+          actualHours = dueHours = covered.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+          totalQuantity = dueQuantity = actualHours;
+        }
         const unpaidEntries = entries.filter(e => Number(e.is_paid) !== 1);
         const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
         const dueQty = unpaidEntries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
         const totalAmount = unpaidEntries.reduce((s, e) => s + parseInt(e.calculated_amount || 0), 0);
         hourlyRate = emp.piece_rate || 0;
         grossSalary = totalAmount;
-        actualHours = dueQty;
-        totalQuantity = totalQty;
-        dueQuantity = dueQty;
+        actualHours = actualHours || dueQty;
+        totalQuantity = totalQuantity || totalQty;
+        dueQuantity = dueQuantity || dueQty;
         deductions = 0;
-        pieceEntries = unpaidEntries.map(e => ({
-          workType: e.work_type,
-          unitLabel: e.unit_label || 'pcs',
-          ratePerPiece: e.rate_per_piece,
-          quantity: e.quantity,
-          calculatedAmount: e.calculated_amount,
-          date: e.date,
-        }));
+        if (unpaidEntries.length > 0) {
+          pieceEntries = unpaidEntries.map(e => ({
+            workType: e.work_type,
+            unitLabel: e.unit_label || 'pcs',
+            ratePerPiece: e.rate_per_piece,
+            quantity: e.quantity,
+            calculatedAmount: e.calculated_amount,
+            date: e.date,
+          }));
+        }
       } else if (isPayPerHour) {
         const [total] = await db.execute(
           `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
@@ -497,15 +531,7 @@ exports.previewPayroll = async (req, res) => {
         deductions = Math.round(hourlyRate * deductionHours);
       }
 
-      // Outstanding from prior partially-paid payrolls overlapping this period is
-      // still owed to the staff — include it in the unpaid amount.
-      const [pr] = await db.execute(
-        `SELECT COALESCE(SUM(net_salary - paid_amount), 0) as remaining
-         FROM payroll WHERE tenant_id = ? AND employee_id = ? AND status = 'partial'
-         AND pay_period_end >= ? AND pay_period_start <= ?`,
-        [tenantId, emp.id, startDate, endDate]
-      );
-      const partialDue = parseInt(pr[0].remaining || 0);
+      // Outstanding partial remainders overlapping this period are included in the unpaid amount.
       if (partialDue > 0) grossSalary += partialDue;
 
       // Employees with no valid work still show in the preview (₹0) so the
@@ -536,6 +562,7 @@ exports.previewPayroll = async (req, res) => {
         grossSalary,
         deductions,
         dueAmount: netBeforeAdvance,
+        partialDue,
         outstandingAdvance,
         suggestedAdvanceDeduction,
         advanceDeduction,
