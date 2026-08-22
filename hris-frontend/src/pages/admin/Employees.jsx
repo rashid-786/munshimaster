@@ -565,7 +565,11 @@ const Employees = () => {
                     setForm(f => ({
                       ...f,
                       salaryType: t,
-                      pieceRates: t === 'piece' && f.pieceRates.length === 0 ? [{ workType: '', unitLabel: 'pcs', ratePerPiece: '' }] : t !== 'piece' ? [] : f.pieceRates,
+                      // Retain saved piece rates across type toggles; only seed a blank row
+                      // when first enabling Per Piece with nothing configured yet.
+                      pieceRates: t === 'piece' && f.pieceRates.length === 0
+                        ? [{ workType: '', unitLabel: 'pcs', ratePerPiece: '' }]
+                        : f.pieceRates,
                     }));
                   }} className="input-field">
                     <option value="fixed">Monthly/Hourly</option>
