@@ -23,14 +23,15 @@ function fmtDate(d) {
   return `${y}-${m}-${day}`;
 }
 
-// Excludes attendance days already covered by a paid payroll record for the same employee,
-// so already-paid hours are never counted again in future payroll runs. Only records that
-// actually have hours (>0) are considered, so a broken/empty paid record can't block recomputation.
+// Excludes attendance days already covered by a paid/partial payroll record for the same
+// employee, so already-paid hours are never counted again in future payroll runs. Only
+// records that actually have hours (>0) are considered, so a broken/empty record can't
+// block recomputation.
 function paidExclusionClause() {
   return ` AND NOT EXISTS (
     SELECT 1 FROM payroll p
     WHERE p.tenant_id = a.tenant_id AND p.employee_id = a.employee_id
-      AND p.status = 'paid' AND p.total_hours_worked > 0
+      AND p.status IN ('paid', 'partial') AND p.total_hours_worked > 0
       AND a.date >= p.pay_period_start AND a.date <= p.pay_period_end
   )`;
 }
@@ -55,7 +56,7 @@ function buildLeaveDeductionClause(paidTypes) {
 }
 
 exports.calculatePayroll = async (req, res) => {
-  const { startDate, endDate, employeeIds, workingDays: manualDays, advanceDeductions } = req.body;
+  const { startDate, endDate, employeeIds, workingDays: manualDays, advanceDeductions, partialPayments } = req.body;
   const tenantId = req.tenantId;
 
   if (req.user.role !== 'tenant_admin') {
@@ -164,9 +165,25 @@ exports.calculatePayroll = async (req, res) => {
         netSalary = Math.max(0, grossSalary - deductions);
       }
 
-      // Skip employees with no valid work records in the period
-      if (isPieceWorker && pieceEntryIdsByEmployee[emp.id]?.length === 0) continue;
-      if (!isPieceWorker && actualHours <= 0) continue;
+      // Outstanding from prior partially-paid payrolls overlapping this period is still owed
+      // to the staff — include it so it can be paid via this run.
+      const [pr] = await db.execute(
+        `SELECT COALESCE(SUM(net_salary - paid_amount), 0) as remaining
+         FROM payroll WHERE tenant_id = ? AND employee_id = ? AND status = 'partial'
+         AND pay_period_end >= ? AND pay_period_start <= ?`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      const partialDue = parseInt(pr[0].remaining || 0);
+      if (partialDue > 0) {
+        grossSalary += partialDue;
+        netSalary += partialDue;
+      }
+
+      const hasWork = isPieceWorker
+        ? (pieceEntryIdsByEmployee[emp.id]?.length || 0) > 0
+        : actualHours > 0;
+      // Skip employees with no payable amount at all (no work and no partial remainder).
+      if (!hasWork && partialDue <= 0) continue;
 
       let advanceDeduction = 0;
 
@@ -246,17 +263,59 @@ exports.calculatePayroll = async (req, res) => {
       const seq = String(seqRows[0]?.next_seq || 1).padStart(6, '0');
       const slipNumber = `SS-${periodTag}-${seq}`;
 
+      // Partial payment support: if a partial amount is provided (and it's less than the
+      // calculated net salary), the record is created as a partial payment.
+      const partialCents = partialPayments ? Number(partialPayments[emp.id]) || 0 : 0;
+      let status = 'paid';
+      let paidAmountCents = netSalary;
+      let paymentType = 'full';
+      if (partialCents > 0) {
+        if (partialCents > netSalary) {
+          return res.status(400).json({ error: `Partial payment for ${emp.first_name} cannot exceed total payable salary.` });
+        }
+        if (partialCents < netSalary) {
+          status = 'partial';
+          paidAmountCents = partialCents;
+          paymentType = 'partial';
+        }
+      }
+
+      // If a partially-paid record already exists for this exact period, settle it with the
+      // new payment instead of overwriting the salary history (preserves what was already paid).
+      const [existingPeriod] = await db.execute(
+        `SELECT id, net_salary, paid_amount, status, payment_type FROM payroll
+         WHERE tenant_id = ? AND employee_id = ? AND pay_period_start = ? AND pay_period_end = ?`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      if (existingPeriod.length > 0 && (existingPeriod[0].status === 'partial' || existingPeriod[0].payment_type === 'partial')) {
+        const cur = existingPeriod[0];
+        const curNet = Number(cur.net_salary) || 0;
+        const curPaid = Number(cur.paid_amount) || 0;
+        const extra = partialCents > 0 ? partialCents : Math.max(0, curNet - curPaid);
+        const newPaid = Math.min(curNet, curPaid + extra);
+        const newStatus = newPaid >= curNet ? 'paid' : 'partial';
+        const newType = newStatus === 'paid' ? 'full' : 'partial';
+        await db.execute(
+          'UPDATE payroll SET paid_amount = ?, status = ?, payment_type = ? WHERE id = ? AND tenant_id = ?',
+          [newPaid, newStatus, newType, cur.id, tenantId]
+        );
+        continue;
+      }
+
       await db.execute(
         `INSERT INTO payroll (id, tenant_id, employee_id, pay_period_start, pay_period_end,
-          hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, advance_deduction, net_salary, status, slip_number, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'paid', $13, NOW())
+          hourly_rate, total_hours_worked, standard_hours, gross_salary, deductions, advance_deduction, net_salary, status, paid_amount, payment_type, slip_number, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $13, NOW())
          ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end) DO UPDATE SET
           hourly_rate = EXCLUDED.hourly_rate, total_hours_worked = EXCLUDED.total_hours_worked,
           standard_hours = EXCLUDED.standard_hours, gross_salary = EXCLUDED.gross_salary,
           deductions = EXCLUDED.deductions, advance_deduction = EXCLUDED.advance_deduction,
-          net_salary = EXCLUDED.net_salary, slip_number = EXCLUDED.slip_number, created_at = NOW()`,
+          net_salary = EXCLUDED.net_salary, paid_amount = EXCLUDED.paid_amount,
+          payment_type = EXCLUDED.payment_type, status = EXCLUDED.status,
+          slip_number = EXCLUDED.slip_number, created_at = NOW()`,
         [payrollId, tenantId, emp.id, startDate, endDate,
-          hourlyRate, actualHours, standardHours, grossSalary, deductions, advanceDeduction, netSalary, slipNumber]
+          hourlyRate, actualHours, standardHours, grossSalary, deductions, advanceDeduction, netSalary, slipNumber,
+          status, paidAmountCents, paymentType]
       );
 
       // Mark piece work entries as paid
@@ -438,10 +497,19 @@ exports.previewPayroll = async (req, res) => {
         deductions = Math.round(hourlyRate * deductionHours);
       }
 
-      // Skip employees with no valid work records in the period
-      if (isPieceWorker && pieceEntries.length === 0) continue;
-      if (!isPieceWorker && actualHours <= 0) continue;
+      // Outstanding from prior partially-paid payrolls overlapping this period is
+      // still owed to the staff — include it in the unpaid amount.
+      const [pr] = await db.execute(
+        `SELECT COALESCE(SUM(net_salary - paid_amount), 0) as remaining
+         FROM payroll WHERE tenant_id = ? AND employee_id = ? AND status = 'partial'
+         AND pay_period_end >= ? AND pay_period_start <= ?`,
+        [tenantId, emp.id, startDate, endDate]
+      );
+      const partialDue = parseInt(pr[0].remaining || 0);
+      if (partialDue > 0) grossSalary += partialDue;
 
+      // Employees with no valid work still show in the preview (₹0) so the
+      // run-payroll table always lists staff; creation below skips them.
       const netBeforeAdvance = Math.max(0, grossSalary - deductions);
 
       const [advances] = await db.execute(
@@ -496,6 +564,7 @@ exports.getPayrollHistory = async (req, res) => {
     to_char(p.pay_period_end, 'YYYY-MM-DD') as pay_period_end,
     p.hourly_rate, p.total_hours_worked, p.standard_hours,
     p.gross_salary, p.deductions, p.advance_deduction, p.net_salary,
+    p.paid_amount, p.payment_type,
     p.status, p.slip_number, p.created_at`;
   const queryTarget = req.user.role === 'tenant_admin'
     ? `SELECT ${COLS}, e.first_name, e.last_name, e.email, e.salary_type,
@@ -620,11 +689,10 @@ exports.downloadPayslip = async (req, res) => {
     doc.text(`To: ${fmtD(data.pay_period_end)}`, rightX, empY2);
     doc.moveDown(0.8);
     const empY3 = doc.y;
-    doc.text(`Status: ${data.status === 'paid' ? 'Paid' : 'Due'}`, rightX, empY3, { continued: false });
-
-    const payStatus = data.status === 'paid' ? 'Paid' : 'Due';
-    const statusX = rightX + doc.widthOfString(`Status: `);
-    doc.font(RF(true)).fontSize(9).text(payStatus, statusX, empY3, { continued: false });
+    const isPartial = data.status === 'partial' || data.payment_type === 'partial';
+    const payStatus = data.status === 'paid' ? 'Paid' : isPartial ? 'Partial Paid' : 'Due';
+    doc.font(RF(false)).fontSize(9).text('Status: ', rightX, empY3, { continued: true });
+    doc.font(RF(true)).fontSize(9).text(payStatus, { continued: false });
 
     doc.moveDown(1.5);
 
@@ -652,6 +720,8 @@ exports.downloadPayslip = async (req, res) => {
     const dedAmt = (data.deductions / 100).toFixed(2);
     const advDedAmt = (data.advance_deduction / 100).toFixed(2);
     const netAmt = (data.net_salary / 100).toFixed(2);
+    const paidAmt = (((isPartial ? (data.paid_amount || 0) : data.net_salary)) / 100).toFixed(2);
+    const remainingAmt = ((data.net_salary || 0) - (data.paid_amount || 0)) / 100;
 
     doc.font(RF(false)).fontSize(9);
     let yPos = doc.y;
@@ -707,15 +777,23 @@ exports.downloadPayslip = async (req, res) => {
     yPos += 5;
     doc.font(RF(true)).fontSize(11);
     doc.text('NET PAYABLE', col[0], yPos, { width: colW[0] });
-    doc.text(`₹${netAmt}`, col[3], yPos, { width: colW[3], align: 'right' });
+    doc.text(`₹${paidAmt}`, col[3], yPos, { width: colW[3], align: 'right' });
     yPos += 25;
 
     // Status badge
     doc.font(RF(false)).fontSize(9);
-    const statusColor = data.status === 'paid' ? '#059669' : '#d97706';
+    const statusColor = data.status === 'paid' ? '#059669' : isPartial ? '#8b5cf6' : '#d97706';
     doc.fillColor(statusColor).font('Helvetica-Bold').fontSize(10);
     doc.text(`Payment Status: ${payStatus.toUpperCase()}`, col[0], yPos);
     doc.fillColor('black');
+
+    // Outstanding balance for partial payments
+    if (isPartial && remainingAmt > 0) {
+      yPos += 20;
+      doc.fillColor('#8b5cf6').font(RF(true)).fontSize(10);
+      doc.text(`Outstanding Balance: ₹${remainingAmt.toFixed(2)}`, col[0], yPos);
+      doc.fillColor('black');
+    }
 
     // Summary section at bottom
     yPos += 30;
@@ -745,17 +823,48 @@ exports.downloadPayslip = async (req, res) => {
 
 exports.markPayrollPaid = async (req, res) => {
   const { payrollId } = req.params;
+  const { amount } = req.body; // optional amount in rupees; omit for full payment
   const tenantId = req.tenantId;
 
   try {
-    const [result] = await db.execute(
-      'UPDATE payroll SET status = ? WHERE id = ? AND tenant_id = ?',
-      ['paid', payrollId, tenantId]
+    const [rows] = await db.execute(
+      'SELECT net_salary, paid_amount, status, payment_type FROM payroll WHERE id = ? AND tenant_id = ?',
+      [payrollId, tenantId]
     );
-    if (result.affectedRows === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ error: 'Payroll record not found.' });
     }
-    res.json({ message: 'Payroll marked as paid.' });
+    const rec = rows[0];
+    const netSalary = Number(rec.net_salary) || 0;
+
+    let paidAmountCents = netSalary;
+    let status = 'paid';
+    let paymentType = 'full';
+
+    if (amount != null && amount !== '' && !isNaN(Number(amount))) {
+      const cents = Math.round(Number(amount) * 100);
+      if (cents < 0) {
+        return res.status(400).json({ error: 'Payment amount cannot be negative.' });
+      }
+      if (cents > netSalary) {
+        return res.status(400).json({ error: 'Payment amount cannot exceed the total payable salary.' });
+      }
+      if (cents < netSalary) {
+        paidAmountCents = cents;
+        status = 'partial';
+        paymentType = 'partial';
+      }
+    }
+
+    await db.execute(
+      'UPDATE payroll SET status = ?, paid_amount = ?, payment_type = ? WHERE id = ? AND tenant_id = ?',
+      [status, paidAmountCents, paymentType, payrollId, tenantId]
+    );
+    res.json({
+      message: status === 'partial' ? 'Partial payment recorded.' : 'Payroll marked as paid.',
+      paymentType,
+      paidAmount: paidAmountCents,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update payroll status.' });
@@ -934,7 +1043,7 @@ exports.getDueSummary = async (req, res) => {
 
   try {
     const [employees] = await db.execute(
-      `SELECT id, base_salary, pay_per_hour, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')`,
+      `SELECT id, first_name, last_name, base_salary, pay_per_hour, salary_type, piece_rate FROM employees WHERE tenant_id = ? AND status = 'active' AND (role IS NULL OR role != 'tenant_admin')`,
       [tenantId]
     );
     const paidLeaveTypes = await getPaidLeaveTypes(tenantId);
@@ -942,6 +1051,16 @@ exports.getDueSummary = async (req, res) => {
 
     let dueAmount = 0;
     let dueHours = 0;
+    const byEmployee = {};
+
+    const addToEmployee = (emp, amount, hours) => {
+      const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Staff';
+      if (!byEmployee[emp.id]) {
+        byEmployee[emp.id] = { employeeId: emp.id, name, amount: 0, hours: 0 };
+      }
+      byEmployee[emp.id].amount += amount;
+      byEmployee[emp.id].hours += hours;
+    };
 
     for (const emp of employees) {
       const isPayPerHour = emp.pay_per_hour && emp.pay_per_hour > 0;
@@ -955,8 +1074,11 @@ exports.getDueSummary = async (req, res) => {
            WHERE tenant_id = ? AND employee_id = ? AND date >= ? AND date <= ? AND is_paid = 0`,
           [tenantId, emp.id, rangeStart, rangeEnd]
         );
-        dueAmount += parseInt(entries[0].total_amount || 0);
-        dueHours += parseFloat(entries[0].total_qty || 0);
+        const amt = parseInt(entries[0].total_amount || 0);
+        const qty = parseFloat(entries[0].total_qty || 0);
+        dueAmount += amt;
+        dueHours += qty;
+        addToEmployee(emp, amt, qty);
         continue;
       }
 
@@ -1001,9 +1123,40 @@ exports.getDueSummary = async (req, res) => {
 
       dueAmount += netSalary;
       dueHours += actualHours;
+      addToEmployee(emp, netSalary, actualHours);
     }
 
-    res.json({ dueAmount, dueHours, employees: employees.length, start: rangeStart, end: rangeEnd });
+    // Add outstanding remainders of partially-paid payroll records within the range.
+    const [partials] = await db.execute(
+      `SELECT p.employee_id, e.first_name, e.last_name, COALESCE(SUM(p.net_salary - p.paid_amount), 0) as remaining
+       FROM payroll p
+       LEFT JOIN employees e ON p.employee_id = e.id
+       WHERE p.tenant_id = ? AND p.status = 'partial'
+         AND p.pay_period_end >= ? AND p.pay_period_start <= ?
+       GROUP BY p.employee_id, e.first_name, e.last_name`,
+      [tenantId, rangeStart, rangeEnd]
+    );
+    let partialRemaining = 0;
+    for (const p of partials) {
+      const rem = parseInt(p.remaining || 0);
+      partialRemaining += rem;
+      const eid = p.employee_id;
+      if (!byEmployee[eid]) {
+        byEmployee[eid] = { employeeId: eid, name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Staff', amount: 0, hours: 0 };
+      }
+      byEmployee[eid].amount += rem;
+    }
+    dueAmount += partialRemaining;
+
+    res.json({
+      dueAmount,
+      dueHours,
+      employees: employees.length,
+      start: rangeStart,
+      end: rangeEnd,
+      partialRemaining,
+      byEmployee: Object.values(byEmployee).sort((a, b) => b.amount - a.amount),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to compute due summary.' });

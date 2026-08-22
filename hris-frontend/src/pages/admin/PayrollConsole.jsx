@@ -208,12 +208,18 @@ const PayrollConsole = () => {
     return hours;
   }, [monthPayrollByEmployee]);
 
+  const fullPaymentCount = history.filter(r => r.status === 'paid' && r.payment_type !== 'partial').length;
+  const partialPaymentCount = history.filter(r => r.status === 'partial' || r.payment_type === 'partial').length;
+
   const handlePeriod = (key) => {
     setPeriod(key);
     if (key !== 'custom') setCustom({ start: '', end: '' });
   };
 
-  const statusBadge = (status) => {
+  const statusBadge = (status, paymentType) => {
+    if (status === 'partial' || paymentType === 'partial') {
+      return <span className="bg-violet-100 text-violet-700 text-xs font-medium px-2 py-0.5 rounded-full">Partial paid</span>;
+    }
     if (status === 'paid') return <span className="badge-success">Paid</span>;
     return <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">Unpaid</span>;
   };
@@ -255,6 +261,13 @@ const PayrollConsole = () => {
         <div className="card-header flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-gray-900">Records</h3>
+            {history.length > 0 && (
+              <span className="text-[11px] text-gray-400 font-medium">
+                <span className="text-emerald-600">{fullPaymentCount} full</span>
+                <span className="mx-1">·</span>
+                <span className="text-violet-600">{partialPaymentCount} partial</span>
+              </span>
+            )}
             {selectedIds.size > 0 && (
               <button
                 onClick={() => confirmDelete([...selectedIds])}
@@ -358,8 +371,8 @@ const PayrollConsole = () => {
                   </td>
                   <td className="table-cell">{formatINR(r.gross_salary)}</td>
                   <td className="table-cell">{r.advance_deduction ? <span className="text-orange-600">{formatINR(r.advance_deduction)}</span> : <span className="text-gray-300">—</span>}</td>
-                  <td className="table-cell font-bold text-emerald-600">{formatINR(r.net_salary)}</td>
-                  <td className="table-cell">{statusBadge(r.status)}</td>
+                  <td className="table-cell font-bold text-emerald-600">{formatINR(r.status === 'partial' || r.payment_type === 'partial' ? r.paid_amount : r.net_salary)}</td>
+                  <td className="table-cell">{statusBadge(r.status, r.payment_type)}</td>
                   <td className="table-cell text-right" onClick={e => e.stopPropagation()}>
                     <button
                       onClick={() => hrService.downloadPayslipFile(r.id)}
@@ -401,8 +414,8 @@ const PayrollConsole = () => {
                   <DetailRow label="Rate" value={selected.salary_type === 'piece' ? formatINR(selected.hourly_rate)+'/pc' : `₹${(selected.hourly_rate / 100).toFixed(2)}/hr`} />
               <DetailRow label="Gross" value={formatINR(selected.gross_salary)} />
               <DetailRow label="Adv. Deduction" value={selected.advance_deduction ? formatINR(selected.advance_deduction) : '—'} />
-              <DetailRow label="Net"><span className="font-bold text-emerald-600">{formatINR(selected.net_salary)}</span></DetailRow>
-              <DetailRow label="Status">{statusBadge(selected.status)}</DetailRow>
+              <DetailRow label="Net"><span className="font-bold text-emerald-600">{formatINR(selected.status === 'partial' || selected.payment_type === 'partial' ? selected.paid_amount : selected.net_salary)}</span>{selected.status === 'partial' || selected.payment_type === 'partial' ? <p className="text-xs text-violet-600">Outstanding {formatINR((selected.net_salary || 0) - (selected.paid_amount || 0))}</p> : null}</DetailRow>
+              <DetailRow label="Status">{statusBadge(selected.status, selected.payment_type)}</DetailRow>
               <div className="pt-2 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => hrService.downloadPayslipFile(selected.id)}

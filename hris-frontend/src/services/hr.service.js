@@ -116,8 +116,9 @@ export const hrService = {
     const response = await api.get('/core/payroll/due-summary', { params });
     return response.data;
   },
-  markPayrollPaid: async (payrollId) => {
-    const response = await api.patch(`/core/payroll/${payrollId}/pay`);
+  markPayrollPaid: async (payrollId, amount) => {
+    const body = amount != null ? { amount } : {};
+    const response = await api.patch(`/core/payroll/${payrollId}/pay`, body);
     return response.data;
   },
   deletePayrollHistory: async (ids) => {

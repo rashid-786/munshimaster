@@ -4,6 +4,7 @@ import { hrService } from '../../services/hr.service';
 import { formatINR } from '../../utils/currency';
 import Loading from '../../components/Loading';
 import PieceWorkModal from '../../components/PieceWorkModal';
+import CalendarDateRangePicker from '../../components/CalendarDateRangePicker';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const PERIOD_OPTIONS = [
@@ -51,12 +52,16 @@ const RunPayroll = ({ onSwitchToHistory }) => {
   const [allRuns, setAllRuns] = useState([]);
   const [deductions, setDeductions] = useState({});
   const [deductionInput, setDeductionInput] = useState({});
+  const [partialInput, setPartialInput] = useState({});
+  const [partialCents, setPartialCents] = useState({});
   const [search, setSearch] = useState('');
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState('');
   const [processed, setProcessed] = useState(null);
+  const [monthRemaining, setMonthRemaining] = useState(null);
+  const [monthByEmployee, setMonthByEmployee] = useState({});
   const [pieceModal, setPieceModal] = useState(null);
   const messageRef = useRef(null);
 
@@ -74,6 +79,16 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       setEmployees(emps);
       setSelectedIds(new Set());
     }).catch(() => {});
+    // Remaining payable for the current month (unpaid + partial remainders).
+    const now = new Date();
+    hrService.getDueSummary(fmtDate(new Date(now.getFullYear(), now.getMonth(), 1)), fmtDate(now))
+      .then(res => {
+        setMonthRemaining(res.dueAmount || 0);
+        const map = {};
+        (res.byEmployee || []).forEach(b => { map[b.employeeId] = b.amount; });
+        setMonthByEmployee(map);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -116,16 +131,23 @@ const RunPayroll = ({ onSwitchToHistory }) => {
   };
 
   const summary = useMemo(() => {
-    let employeesCount = 0, payroll = 0, deductionsSum = 0, payable = 0;
+    let employeesCount = 0, payroll = 0, deductionsSum = 0, payable = 0, partialCount = 0;
     for (const r of selectedRuns) {
       const adv = clampedDeduction(r);
+      const fullPayable = Math.max(0, r.dueAmount - adv);
       employeesCount += 1;
       payroll += r.dueAmount;
       deductionsSum += adv;
-      payable += Math.max(0, r.dueAmount - adv);
+      const partial = Number(partialCents[r.employeeId]) || 0;
+      if (partial > 0 && partial < fullPayable) {
+        payable += partial;
+        partialCount += 1;
+      } else {
+        payable += fullPayable;
+      }
     }
-    return { employeesCount, payroll, deductionsSum, payable };
-  }, [selectedRuns, deductions]);
+    return { employeesCount, payroll, deductionsSum, payable, partialCount };
+  }, [selectedRuns, deductions, partialCents]);
 
   const handlePeriodChange = (key) => {
     setPeriodType(key);
@@ -140,7 +162,12 @@ const RunPayroll = ({ onSwitchToHistory }) => {
   };
 
   const handleCustomChange = (field, value) => {
-    const next = { ...customRange, [field]: value };
+    let next;
+    if (field === 'range') {
+      next = { startDate: value.startDate, endDate: value.endDate };
+    } else {
+      next = { ...customRange, [field]: value };
+    }
     setCustomRange(next);
     if (next.startDate && next.endDate) {
       setStartDate(next.startDate);
@@ -155,9 +182,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       return n;
     });
   }, []);
-
-  const allSelected = employees.length > 0 && selectedIds.size === employees.length;
-  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(employees.map(e => e.id)));
 
   const visibleIds = visibleRuns.map(r => r.employeeId);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
@@ -183,6 +207,21 @@ const RunPayroll = ({ onSwitchToHistory }) => {
     setDeductions(prev => ({ ...prev, [run.employeeId]: Math.round(v * 100) }));
   };
 
+  const handlePartialChange = (run, valueStr) => {
+    let sanitized = valueStr.replace(/[^0-9.]/g, '');
+    const firstDot = sanitized.indexOf('.');
+    if (firstDot !== -1) {
+      sanitized = sanitized.slice(0, firstDot + 1) + sanitized.slice(firstDot + 1).replace(/\./g, '');
+    }
+    const max = Math.max(0, run.dueAmount - clampedDeduction(run)) / 100;
+    let v = parseFloat(sanitized) || 0;
+    if (v < 0) v = 0;
+    let display = sanitized;
+    if (v > max) { v = max; display = max.toFixed(2); }
+    setPartialInput(prev => ({ ...prev, [run.employeeId]: display }));
+    setPartialCents(prev => ({ ...prev, [run.employeeId]: Math.round(v * 100) }));
+  };
+
   const handleProcess = async () => {
     if (selectedIds.size === 0) { setMessage('Select at least one employee.'); return; }
     if (endDate > fmtDate(new Date())) { setMessage('Pay period end date cannot be in the future.'); return; }
@@ -192,7 +231,9 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       const employeeIds = [...selectedIds];
       const advanceDeductions = {};
       for (const id of employeeIds) advanceDeductions[id] = deductions[id] ?? 0;
-      const res = await hrService.runPayroll({ startDate, endDate, employeeIds, advanceDeductions });
+      const partialPayments = {};
+      for (const id of employeeIds) partialPayments[id] = Number(partialCents[id]) || 0;
+      const res = await hrService.runPayroll({ startDate, endDate, employeeIds, advanceDeductions, partialPayments });
       setProcessed(res);
       setMessage(res.message || 'Payroll processed successfully.');
     } catch (err) {
@@ -234,17 +275,12 @@ const RunPayroll = ({ onSwitchToHistory }) => {
           ))}
         </div>
         {periodType === 'custom' && (
-          <div className="flex flex-col sm:flex-row gap-3 mt-3">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">Start Date</label>
-              <input type="date" value={customRange.startDate} max={customRange.endDate || endDate}
-                onChange={e => handleCustomChange('startDate', e.target.value)} className="input-field" />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">End Date</label>
-              <input type="date" value={customRange.endDate} min={customRange.startDate} max={fmtDate(new Date())}
-                onChange={e => handleCustomChange('endDate', e.target.value)} className="input-field" />
-            </div>
+          <div className="flex flex-wrap items-end gap-3 mt-3">
+            <CalendarDateRangePicker
+              start={customRange.startDate}
+              end={customRange.endDate}
+              onChange={(s, e) => handleCustomChange('range', { startDate: s, endDate: e })}
+            />
           </div>
         )}
         {startDate && endDate && (
@@ -256,7 +292,7 @@ const RunPayroll = ({ onSwitchToHistory }) => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="card p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Employees</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{summary.employeesCount}</p>
@@ -272,6 +308,14 @@ const RunPayroll = ({ onSwitchToHistory }) => {
         <div className="card p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Payable</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">{formatINR(summary.payable)}</p>
+          {summary.partialCount > 0 && (
+            <p className="text-xs text-gray-400 mt-0.5">{summary.partialCount} partial payment{summary.partialCount > 1 ? 's' : ''}</p>
+          )}
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Remaining Payable (This Month)</p>
+          <p className="text-2xl font-bold text-violet-600 mt-1">{formatINR(monthRemaining || 0)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Unpaid + partial balance</p>
         </div>
       </div>
 
@@ -282,9 +326,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
             Employees {selectedIds.size > 0 && <span className="text-gray-400 font-normal">({selectedIds.size} selected)</span>}
           </h3>
           <div className="flex items-center gap-2">
-            <button onClick={toggleAll} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
-              {allSelected ? 'Deselect All' : 'Select All'}
-            </button>
             <div className="relative max-w-xs w-full sm:w-56">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <input type="text" placeholder="Search employees..." value={search} onChange={e => setSearch(e.target.value)}
@@ -310,13 +351,17 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                   <th className="table-header text-right">Rate</th>
                   <th className="table-header text-right">Unpaid Amount</th>
                   <th className="table-header text-right">Advance Deduction</th>
+                  <th className="table-header text-right">Partial Payment</th>
                   <th className="table-header text-right">Total Payable</th>
+                  <th className="table-header text-right">Remaining</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {visibleRuns.map(r => {
                   const adv = clampedDeduction(r);
-                  const payable = Math.max(0, r.dueAmount - adv);
+                  const fullPayable = Math.max(0, r.dueAmount - adv);
+                  const partial = Number(partialCents[r.employeeId]) || 0;
+                  const payable = partial > 0 && partial < fullPayable ? partial : fullPayable;
                   return (
                     <tr key={r.employeeId} className="table-row-hover">
                       <td className="px-3 py-2.5">
@@ -350,12 +395,36 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                           </span>
                         </div>
                       </td>
-                      <td className="table-cell text-right font-bold text-emerald-600">{formatINR(payable)}</td>
+                      <td className="table-cell text-right">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={partialInput[r.employeeId] ?? ''}
+                            onChange={e => handlePartialChange(r, e.target.value)}
+                            placeholder="Optional"
+                            title="Enter a partial amount to pay now instead of the full salary"
+                            className="w-24 text-xs border border-gray-300 rounded px-1.5 py-1 text-right placeholder:text-gray-300"
+                          />
+                          {partial > 0 && partial < fullPayable && (
+                            <span className="text-[10px] text-violet-600">Partial ({Math.round((partial / fullPayable) * 100)}%)</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="table-cell text-right font-bold text-emerald-600">
+                        {formatINR(payable)}
+                        {partial > 0 && partial < fullPayable && (
+                          <span className="block text-[9px] font-normal text-violet-500">Remaining {formatINR(fullPayable - partial)}</span>
+                        )}
+                      </td>
+                      <td className="table-cell text-right">
+                        <span className="font-medium text-gray-600">{formatINR(monthByEmployee[r.employeeId] || 0)}</span>
+                      </td>
                     </tr>
                   );
                 })}
                 {visibleRuns.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">
+                  <tr><td colSpan={9} className="text-center py-8 text-sm text-gray-400">
                     {selectedIds.size === 0 ? 'No employees match your search' : 'No employees found'}
                   </td></tr>
                 )}

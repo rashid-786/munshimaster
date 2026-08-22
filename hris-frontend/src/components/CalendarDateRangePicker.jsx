@@ -110,6 +110,15 @@ export default function CalendarDateRangePicker({ start, end, onChange, maxDate 
         <span className="text-[11px] text-gray-500">
           {start || end ? `${start || '—'}  →  ${end || '…'}` : 'Select From then To'}
         </span>
+        {(start || end) && (
+          <button
+            type="button"
+            onClick={() => onChange('', '')}
+            className="text-[11px] font-medium text-gray-500 hover:text-red-600 underline"
+          >
+            Reset
+          </button>
+        )}
       </div>
     </div>
   );
