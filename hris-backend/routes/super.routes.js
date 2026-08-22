@@ -172,6 +172,9 @@ router.put('/referrals/:referralId', authenticateSuperAdmin,
 router.get('/settings', authenticateSuperAdmin, superController.getSystemSettings);
 router.put('/settings', authenticateSuperAdmin,
   auditSuperAdminAction('system.settings_updated', 'system'), superController.updateSystemSettings);
+router.get('/razorpay-settings', authenticateSuperAdmin, superController.getRazorpaySettings);
+router.put('/razorpay-settings', authenticateSuperAdmin,
+  auditSuperAdminAction('razorpay.settings_updated', 'system'), superController.updateRazorpaySettings);
 
 // ─── Unit Master ─────────────────────────────────────────────────
 router.get('/units', authenticateSuperAdmin, unitMasterController.list);

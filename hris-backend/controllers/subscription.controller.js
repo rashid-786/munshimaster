@@ -1,12 +1,12 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
-const Razorpay = require('razorpay');
 const { getSubscriptionStatus, invalidateCache, planRank } = require('../utils/subscription');
 const { getTenantFeatureLimit } = require('../utils/featureAccess');
 const TenantUsageRepository = require('../repositories/TenantUsageRepository');
 const { LIMIT_KEY_MAP, resolvePlan } = require('../config/planLimits');
 const { USAGE_QUERIES } = require('../services/usage.service');
+const { getRazorpay, getRazorpayCredentials } = require('../services/razorpay.service');
 
 const usageRepo = new TenantUsageRepository(db);
 const lifecycle = require('../services/subscriptionLifecycle.service');
@@ -20,10 +20,7 @@ const USAGE_DIMENSIONS = [
   { key: 'entities',         dbColumn: 'entityCount',        limitDim: 'entities',         pfKey: 'max_branches' },
 ];
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_00000000000000',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'test_secret',
-});
+const razorpayPromise = getRazorpay();
 
 // =============================================
 // Plan listing
@@ -115,7 +112,9 @@ exports.getUsage = async (req, res) => {
       try {
         const query = USAGE_QUERIES[key];
         if (query) {
-          const [rows] = await db.execute(query, [req.tenantId]);
+          const placeholderCount = (query.match(/\?/g) || []).length;
+          const params = Array(placeholderCount).fill(req.tenantId);
+          const [rows] = await db.execute(query, params);
           current = parseInt(rows[0]?.count ?? 0, 10);
           if (key === 'entities' && current === 0) {
             const [fallback] = await db.execute('SELECT COUNT(*)::int as count FROM tenants WHERE id = ?', [req.tenantId]);
@@ -291,7 +290,7 @@ exports.createOrder = async (req, res) => {
     const amount = Math.round(plan[0].price_inr * 100); // in paise
     const receipt = `bahi_${tenantId.slice(0, 8)}_${Date.now()}`;
 
-    const order = await razorpay.orders.create({
+    const order = await (await getRazorpay()).orders.create({
       amount,
       currency: 'INR',
       receipt,
@@ -323,10 +322,11 @@ exports.createOrder = async (req, res) => {
       [tenantId]
     );
 
+    const creds = await getRazorpayCredentials();
     res.json({
       orderId: order.id,
       amount: order.amount,
-      keyId: process.env.RAZORPAY_KEY_ID,
+      keyId: creds.keyId,
       tenantName: tenant[0]?.company_name || '',
       email: admin[0]?.email || '',
       contact: admin[0]?.phone || '',
@@ -347,8 +347,9 @@ exports.verifyPayment = async (req, res) => {
 
   // Verify signature
   const body = razorpay_order_id + '|' + razorpay_payment_id;
+  const creds = await getRazorpayCredentials();
   const expectedSig = crypto
-    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .createHmac('sha256', creds.keySecret)
     .update(body)
     .digest('hex');
 
@@ -780,7 +781,7 @@ exports.downgradePlan = async (req, res) => {
 
     // Create new subscription for target plan
     const subId = uuidv4();
-    const periodEnd = targetPlan === 'free' ? '2099-12-31' : "NOW() + INTERVAL '1 year'";
+    const periodEnd = targetPlan === 'free' ? "'2099-12-31'" : "NOW() + INTERVAL '1 year'";
     await db.execute(
       `INSERT INTO subscriptions (id, tenant_id, plan_id, status, current_period_start, current_period_end)
        VALUES (?, ?, ?, 'active', NOW(), ${periodEnd})`,

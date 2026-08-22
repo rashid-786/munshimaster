@@ -2034,3 +2034,68 @@ exports.updateTenantNotes = async (req, res) => {
     res.status(500).json({ error: 'Failed to update tenant notes.' });
   }
 };
+
+// =============================================
+// RAZORPAY SETTINGS — centrally managed gateway
+// credentials (Test / Production) with masked
+// secrets and secure storage in system_settings.
+// =============================================
+function maskSecret(value) {
+  if (!value) return '';
+  return `\u2022\u2022\u2022\u2022${String(value).slice(-4)}`;
+}
+
+function parseGlobalConfig(row) {
+  return row?.global_config
+    ? (typeof row.global_config === 'string' ? JSON.parse(row.global_config) : row.global_config)
+    : {};
+}
+
+exports.getRazorpaySettings = async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT global_config FROM system_settings WHERE id = 1');
+    const gc = parseGlobalConfig(rows[0]);
+    const rp = gc.razorpay || {};
+    const t = rp.test || {};
+    const p = rp.production || {};
+    res.json({
+      environment: rp.environment === 'production' ? 'production' : 'test',
+      test: { mid: t.mid || '', apiKey: maskSecret(t.apiKey), secret: maskSecret(t.secret) },
+      production: { mid: p.mid || '', apiKey: maskSecret(p.apiKey), secret: maskSecret(p.secret) },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch Razorpay settings.' });
+  }
+};
+
+exports.updateRazorpaySettings = async (req, res) => {
+  const { environment, test, production } = req.body;
+  try {
+    const [rows] = await db.execute('SELECT global_config FROM system_settings WHERE id = 1');
+    const gc = parseGlobalConfig(rows[0]);
+
+    const resolve = (sent, existing) => {
+      const base = existing || {};
+      const isUnchanged = (val) => !val || String(val).startsWith('\u2022\u2022\u2022\u2022');
+      return {
+        mid: (sent && sent.mid !== undefined) ? String(sent.mid || '') : (base.mid || ''),
+        apiKey: (sent && sent.apiKey !== undefined && !isUnchanged(sent.apiKey)) ? String(sent.apiKey || '') : (base.apiKey || ''),
+        secret: (sent && sent.secret !== undefined && !isUnchanged(sent.secret)) ? String(sent.secret || '') : (base.secret || ''),
+      };
+    };
+
+    const existing = gc.razorpay || {};
+    gc.razorpay = {
+      environment: environment === 'production' ? 'production' : 'test',
+      test: resolve(test, existing.test),
+      production: resolve(production, existing.production),
+    };
+
+    await db.execute('UPDATE system_settings SET global_config = ? WHERE id = 1', [JSON.stringify(gc)]);
+    res.json({ message: 'Razorpay settings saved.', environment: gc.razorpay.environment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to save Razorpay settings.' });
+  }
+};

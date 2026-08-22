@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api, { setUnauthorizedHandler } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -81,11 +81,16 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('tenant_data', JSON.stringify(updated));
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setTenant(null);
     localStorage.clear();
-  };
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ user, tenant, login, updateUser, updateTenantPlan, logout, loading, refreshTenant }}>

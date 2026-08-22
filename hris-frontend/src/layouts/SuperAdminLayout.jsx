@@ -15,7 +15,7 @@ const PAGE_TITLES = {
   '/super/analytics/usage': 'Usage Analytics',
   '/super/audit-logs': 'Audit Logs',
   '/super/global-config': 'Global Configuration',
-
+  '/super/razorpay-settings': 'Razorpay Settings',
 };
 
 export default function SuperAdminLayout() {

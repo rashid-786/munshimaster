@@ -58,9 +58,11 @@ exports.registerTenant = async (req, res) => {
     return res.status(400).json({ error: 'Invalid phone number format.' });
   }
 
-  // Ensure OTP was verified before registration
+  // Ensure the phone was OTP-verified before registration. Once verified, allow
+  // completion even if the OTP record has since expired — onboarding + plan
+  // selection can take longer than the 5-minute OTP validity window.
   const [otpCheck] = await db.execute(
-    'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = true AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+    'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = true ORDER BY created_at DESC LIMIT 1',
     [phone, 'registration']
   );
   if (otpCheck.length === 0) {
@@ -149,7 +151,7 @@ exports.loginEmployee = async (req, res) => {
 
     if (subdomain) {
       const [rows] = await db.execute(
-        'SELECT id, company_name, subdomain, subscription_plan, phone, settings FROM tenants WHERE subdomain = ?',
+        'SELECT id, company_name, subdomain, subscription_plan, subscription_status, start_date, expiry_date, phone, settings FROM tenants WHERE subdomain = ?',
         [subdomain]
       );
       if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials.' });
@@ -160,7 +162,7 @@ exports.loginEmployee = async (req, res) => {
       if (isEmail) return res.status(400).json({ error: 'Please provide your Company ID (Business ID).' });
       const normalizedPhone = normalizePhone(email, countryCode);
       const [rows] = await db.execute(
-        'SELECT id, company_name, subdomain, subscription_plan, phone, settings FROM tenants WHERE phone = ?',
+        'SELECT id, company_name, subdomain, subscription_plan, subscription_status, start_date, expiry_date, phone, settings FROM tenants WHERE phone = ?',
         [normalizedPhone]
       );
       if (rows.length === 0) return res.status(401).json({ error: 'No account found with this phone number.' });
@@ -217,6 +219,9 @@ exports.loginEmployee = async (req, res) => {
         name: tenant.company_name,
         subdomain: tenant.subdomain || subdomain,
         subscriptionPlan: tenant.subscription_plan || 'free',
+        subscriptionStatus: tenant.subscription_status || 'active',
+        startDate: tenant.start_date || null,
+        expiryDate: tenant.expiry_date || null,
         phone: tenant.phone || null,
         settings: parsedSettings || { primaryColor: '#0052cc' }
       },

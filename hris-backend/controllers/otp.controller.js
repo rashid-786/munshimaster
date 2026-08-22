@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { validateE164 } = require('../utils/phone');
 
 async function getDefaultCountryCode() {
@@ -143,6 +144,63 @@ exports.verifyOtp = async (req, res) => {
       'UPDATE otp_verifications SET verified = true WHERE id = ?',
       [rows[0].id]
     );
+
+    // If this phone belongs to an existing account, issue a token so the OTP
+    // acts as a proper login (mirrors the /auth/login response shape).
+    const [tenants] = await db.execute(
+      'SELECT id, company_name, subdomain, subscription_plan, subscription_status, start_date, expiry_date, phone, settings FROM tenants WHERE phone = ?',
+      [phone]
+    );
+
+    if (tenants.length > 0) {
+      const tenant = tenants[0];
+      const [users] = await db.execute(
+        'SELECT * FROM employees WHERE phone = ? AND tenant_id = ? LIMIT 1',
+        [phone, tenant.id]
+      );
+      if (users.length > 0) {
+        const user = users[0];
+        if (user.status !== 'deactivated') {
+          const userName = `${user.first_name} ${user.last_name}`.trim() || 'User';
+          const token = jwt.sign(
+            { id: user.id, tenantId: user.tenant_id, role: user.role, name: userName },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+          );
+          const parsedSettings = typeof tenant.settings === 'string'
+            ? JSON.parse(tenant.settings)
+            : (tenant.settings || {});
+          const defaultCountryCode = await getDefaultCountryCode();
+
+          return res.json({
+            message: 'OTP verified successfully.',
+            verified: true,
+            token,
+            user: {
+              id: user.id,
+              email: user.email,
+              phone: user.phone,
+              role: user.role,
+              name: `${user.first_name} ${user.last_name}`.trim() || 'User',
+              firstName: user.first_name,
+              lastName: user.last_name,
+            },
+            tenant: {
+              id: user.tenant_id,
+              name: tenant.company_name,
+              subdomain: tenant.subdomain || null,
+              subscriptionPlan: tenant.subscription_plan || 'free',
+              subscriptionStatus: tenant.subscription_status || 'active',
+              startDate: tenant.start_date || null,
+              expiryDate: tenant.expiry_date || null,
+              phone: tenant.phone || null,
+              settings: parsedSettings || { primaryColor: '#0052cc' },
+            },
+            defaultCountryCode,
+          });
+        }
+      }
+    }
 
     res.json({ message: 'OTP verified successfully.', verified: true });
   } catch (error) {

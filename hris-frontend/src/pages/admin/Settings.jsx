@@ -76,6 +76,7 @@ const Settings = () => {
   const [sidebarMode, setSidebarMode] = useState('light');
   const [sidebarColor, setSidebarColor] = useState('#0B3C5D');
   const [weekendDays, setWeekendDays] = useState([0]);
+  const [paidLeaveTypes, setPaidLeaveTypes] = useState([]);
   const [advanceDeductionPct, setAdvanceDeductionPct] = useState('10');
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [hiddenItems, setHiddenItems] = useState({});
@@ -92,7 +93,7 @@ const Settings = () => {
   const [workingDaysPerMonth, setWorkingDaysPerMonth] = useState('30');
   const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [employeeFormFields, setEmployeeFormFields] = useState({
-    email: true, role: true, jobType: true, baseSalary: true, payPerHour: true, profession: true, password: true,
+    email: false, role: false, jobType: false, baseSalary: true, payPerHour: true, profession: false, password: false,
   });
   const [seller, setSeller] = useState({
     sellerGstin: '', sellerLegalName: '', sellerAddress: '', sellerCity: '',
@@ -126,6 +127,7 @@ const Settings = () => {
       if (res.settings?.sidebarMode) setSidebarMode(res.settings.sidebarMode);
       if (res.settings?.sidebarColor) setSidebarColor(res.settings.sidebarColor);
       if (res.settings?.weekendDays) setWeekendDays(res.settings.weekendDays);
+      if (res.settings?.paidLeaveTypes) setPaidLeaveTypes(res.settings.paidLeaveTypes);
       if (res.settings?.advanceDeductionPct !== undefined) setAdvanceDeductionPct(String(res.settings.advanceDeductionPct));
       if (res.settings?.hiddenGroups) setHiddenGroups(res.settings.hiddenGroups);
       if (res.settings?.hiddenItems) setHiddenItems(res.settings.hiddenItems);
@@ -175,7 +177,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, workHoursInDay: parseDecimal(workHoursInDay, 8), workingDaysPerMonth: parseDecimal(workingDaysPerMonth, 30), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, paidLeaveTypes, workHoursInDay: parseDecimal(workHoursInDay, 8), workingDaysPerMonth: parseDecimal(workingDaysPerMonth, 30), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));
@@ -777,6 +779,26 @@ const Settings = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction (% of Net Salary)</label>
                 <input type="text" inputMode="decimal" value={advanceDeductionPct} onChange={e => setAdvanceDeductionPct(sanitizeDecimal(e.target.value))} className="input-field" />
                 <p className="text-xs text-gray-400 mt-1">Percentage deducted per pay period from net salary to repay advances.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5 pb-1.5 border-b border-gray-100">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span className="text-sm font-semibold text-gray-900">Paid Leave Types</span>
+              </div>
+              <p className="text-xs text-gray-400">Leave types that should not result in salary deduction.</p>
+              <div className="flex flex-wrap gap-2">
+                {['Annual', 'Sick', 'Casual', 'Unpaid', 'Absent'].map((type) => (
+                  <label key={type} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
+                    paidLeaveTypes.includes(type) ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}>
+                    <input type="checkbox" checked={paidLeaveTypes.includes(type)}
+                      onChange={() => setPaidLeaveTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])}
+                      className="sr-only" />
+                    {type}
+                  </label>
+                ))}
               </div>
             </div>
 

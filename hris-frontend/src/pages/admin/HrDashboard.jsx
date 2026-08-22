@@ -8,6 +8,7 @@ const HrDashboard = () => {
   const navigate = useNavigate();
   const groupLabels = JSON.parse(localStorage.getItem('group_labels') || '{}');
   const staffLabel = groupLabels['My Staff'] || 'My Staff';
+  const [period, setPeriod] = useState('month');
   const [employees, setEmployees] = useState([]);
   const [calendarData, setCalendarData] = useState(null);
   const [pieceCalendarData, setPieceCalendarData] = useState(null);
@@ -17,24 +18,57 @@ const HrDashboard = () => {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const absentTypes = ['absent'];
   const leaveTypes = ['sick', 'annual', 'casual', 'unpaid'];
 
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; };
+
+  const getPeriodRange = (p) => {
+    switch (p) {
+      case 'last_month': {
+        const firstThis = new Date(now.getFullYear(), now.getMonth(), 1);
+        const first = new Date(firstThis.getFullYear(), firstThis.getMonth() - 1, 1);
+        const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+        return { start: fmtDay(first), end: fmtDay(last) };
+      }
+      case 'week': {
+        const s = startOfWeek(now);
+        return { start: fmtDay(s), end: todayStr };
+      }
+      case 'last_week': {
+        const thisMon = startOfWeek(now);
+        return { start: fmtDay(addDays(thisMon, -7)), end: fmtDay(addDays(thisMon, -1)) };
+      }
+      case 'all':
+        return { start: '2000-01-01', end: todayStr };
+      case 'month':
+      default:
+        return { start: `${currentYear}-${pad(currentMonth)}-01`, end: todayStr };
+    }
+  };
+
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const range = getPeriodRange(period);
     Promise.all([
       hrService.getEmployees().catch(() => []),
-      hrService.getEmployeeCalendar({ month: currentMonth, year: currentYear }).catch(() => null),
+      hrService.getEmployeeCalendar({ start: range.start, end: range.end }).catch(() => null),
       hrService.getPayrollHistory().catch(() => []),
-      hrService.getPieceWorkCalendarData({ month: currentMonth, year: currentYear }).catch(() => null),
+      hrService.getPieceWorkCalendarData({ start: range.start, end: range.end }).catch(() => null),
     ]).then(([emps, cal, pay, pCal]) => {
+      if (!active) return;
       setEmployees(emps);
       setCalendarData(cal);
       setPayroll(Array.isArray(pay) ? pay : []);
       setPieceCalendarData(pCal);
-    }).finally(() => setLoading(false));
-  }, []);
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [period]);
 
   const activeEmployees = useMemo(() => employees.filter(e => e.status === 'active'), [employees]);
 
@@ -45,6 +79,8 @@ const HrDashboard = () => {
   }, [employees]);
 
   const totalStaff = employees.length;
+
+  const periodRange = useMemo(() => getPeriodRange(period), [period]);
 
   const todayAttendance = useMemo(() => {
     let present = 0, absent = 0, leave = 0;
@@ -80,21 +116,30 @@ const HrDashboard = () => {
     return map;
   }, [calendarData]);
 
+  const payrollInPeriod = useMemo(() => {
+    const { start, end } = periodRange;
+    return payroll.filter(p => {
+      const ps = String(p.pay_period_start || '').slice(0, 10);
+      const pe = String(p.pay_period_end || '').slice(0, 10);
+      if (!ps && !pe) return true;
+      const pStart = ps || pe;
+      const pEnd = pe || ps;
+      return pStart <= end && pEnd >= start;
+    });
+  }, [payroll, periodRange]);
+
   const monthPayrollByEmployee = useMemo(() => {
     const map = {};
-    for (const p of payroll) {
-      const endDate = new Date(p.pay_period_end);
-      if (endDate.getMonth() + 1 === currentMonth && endDate.getFullYear() === currentYear) {
-        const empId = p.employee_id;
-        map[empId] = {
-          amount: (map[empId]?.amount || 0) + parseFloat(p.net_salary || 0),
-          hours: (map[empId]?.hours || 0) + parseFloat(p.total_hours_worked || 0),
-          status: p.status === 'paid' ? 'paid' : 'due',
-        };
-      }
+    for (const p of payrollInPeriod) {
+      const empId = p.employee_id;
+      map[empId] = {
+        amount: (map[empId]?.amount || 0) + parseFloat(p.net_salary || 0),
+        hours: (map[empId]?.hours || 0) + parseFloat(p.total_hours_worked || 0),
+        status: p.status === 'paid' ? 'paid' : 'due',
+      };
     }
     return map;
-  }, [payroll, currentMonth, currentYear]);
+  }, [payrollInPeriod]);
 
   const calendarPayrollByEmployee = useMemo(() => {
     const map = {};
@@ -135,10 +180,14 @@ const HrDashboard = () => {
   }, [calendarPayrollByEmployee, pieceCalendarByEmployee]);
 
   const totalPaidAmount = useMemo(() => {
-    return payroll
+    return payrollInPeriod
       .filter(p => p.status === 'paid')
       .reduce((s, p) => s + parseFloat(p.net_salary || 0), 0);
-  }, [payroll]);
+  }, [payrollInPeriod]);
+
+  const totalAdvDeduct = useMemo(() => {
+    return payrollInPeriod.reduce((s, p) => s + parseFloat(p.advance_deduction || 0), 0);
+  }, [payrollInPeriod]);
 
   const totalLoggedHours = useMemo(() => {
     return Object.values(monthHoursByEmployee).reduce((s, v) => s + v, 0);
@@ -191,9 +240,34 @@ const HrDashboard = () => {
 
   if (loading) return <Loading />;
 
+  const periodOptions = [
+    { key: 'all', label: 'All' },
+    { key: 'month', label: 'This Month' },
+    { key: 'last_month', label: 'Last Month' },
+    { key: 'week', label: 'This Week' },
+    { key: 'last_week', label: 'Last Week' },
+  ];
+
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900">{staffLabel} Dashboard</h2>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-lg font-semibold text-gray-900">{staffLabel} Dashboard</h2>
+        <div className="flex items-center gap-1.5 flex-wrap bg-white border border-gray-200 rounded-lg p-1">
+          {periodOptions.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setPeriod(opt.key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                period === opt.key
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/employees')}>
@@ -204,7 +278,7 @@ const HrDashboard = () => {
         <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/payroll')}>
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Unpaid Amount</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{formatINR(totalDueAmount)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{formatINR(totalPaidAmount)} paid</p>
+          <p className="text-xs text-gray-400 mt-0.5">{formatINR(totalPaidAmount)} paid · {formatINR(totalAdvDeduct)} adv. deduct</p>
         </div>
         <div className="card p-4 cursor-pointer" onClick={() => navigate('/admin/attendance')}>
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Unpaid Hours</p>

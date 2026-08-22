@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { clockIn, clockOut, adminLogAttendance, deleteAttendance, adminSetStatus, adminCreateLeave, applyLeave, updateLeave, deleteLeave, updateLeaveStatus, getTenantLeaves, getEmployeeCalendar } = require('../controllers/time.controller');
+const { clockIn, clockOut, adminLogAttendance, deleteAttendance, adminSetStatus, adminCreateLeave, applyLeave, updateLeave, deleteLeave, updateLeaveStatus, getTenantLeaves, getEmployeeCalendar, getEmployeePendingDue } = require('../controllers/time.controller');
 const { authenticateToken } = require('../middleware/auth');
 
 // All endpoints require verified multi-tenant contexts
@@ -16,5 +16,6 @@ router.delete('/leaves/:id', authenticateToken, deleteLeave);
 router.patch('/leaves/review', authenticateToken, updateLeaveStatus);
 router.get('/leaves', authenticateToken, getTenantLeaves);
 router.get('/attendance/calendar', authenticateToken, getEmployeeCalendar);
+router.get('/attendance/pending', authenticateToken, getEmployeePendingDue);
 
 module.exports = router;

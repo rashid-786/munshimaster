@@ -469,18 +469,21 @@ exports.getTenantLeaves = async (req, res) => {
 exports.getEmployeeCalendar = async (req, res) => {
   const tenantId = req.tenantId;
 
-  let { month, year, employeeId } = req.query;
+  let { month, year, employeeId, start, end } = req.query;
 
   if (req.user.role !== 'tenant_admin') {
     employeeId = req.user.id;
   }
   const m = parseInt(month) || (new Date().getMonth() + 1);
   const y = parseInt(year) || new Date().getFullYear();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   const lastDate = new Date(y, m, 0);
-  const pad = (n) => String(n).padStart(2, '0');
-  const firstDay = `${y}-${pad(m)}-01`;
-  const lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
+  let firstDay = `${y}-${pad(m)}-01`;
+  let lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
+  if (start) firstDay = String(start).slice(0, 10);
+  if (end) lastDay = String(end).slice(0, 10);
 
   const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -536,8 +539,6 @@ exports.getEmployeeCalendar = async (req, res) => {
       paidMap[p.employee_id].push({ start: p.ps, end: p.pe });
     });
 
-    const daysInMonth = new Date(y, m, 0).getDate();
-
     const fmtDate = (d) => {
       if (!d) return '';
       if (d instanceof Date) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -573,9 +574,12 @@ exports.getEmployeeCalendar = async (req, res) => {
 
     const result = employees.map(emp => {
       const days = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const dayOfWeek = new Date(y, m - 1, d).getDay();
+      const dStart = new Date(`${firstDay}T00:00:00`);
+      const dEnd = new Date(`${lastDay}T00:00:00`);
+      for (let dt = new Date(dStart); dt <= dEnd; dt.setDate(dt.getDate() + 1)) {
+        const dateStr = fmtDay(dt);
+        const dayNum = dt.getDate();
+        const dayOfWeek = dt.getDay();
         const isWeekend = weekendDays.includes(dayOfWeek);
 
         const att = attendanceMap[emp.id]?.[dateStr];
@@ -607,7 +611,7 @@ exports.getEmployeeCalendar = async (req, res) => {
 
         const periods = paidMap[emp.id] || [];
         const isPaid = hours != null && hours > 0 && periods.some(pp => dateStr >= pp.start && dateStr <= pp.end);
-        days.push({ date: dateStr, day: d, type, label, hours, isWeekend, paid: isPaid, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
+        days.push({ date: dateStr, day: dayNum, type, label, hours, isWeekend, paid: isPaid, clockIn: att?.clockIn || null, clockOut: att?.clockOut || null });
       }
       return { employee: { id: emp.id, firstName: emp.first_name, lastName: emp.last_name, role: emp.role, payPerHour: emp.pay_per_hour, salaryType: emp.salary_type }, paidPeriods: paidMap[emp.id] || [], days };
     });
@@ -616,5 +620,54 @@ exports.getEmployeeCalendar = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to generate calendar data.' });
+  }
+};
+
+/**
+ * Per-employee pending payroll due (all-time).
+ * Non-piece: unpaid worked hours (attendance not covered by a paid payroll run)
+ *            × pay-per-hour. Piece: sum of unpaid piece work entries.
+ */
+exports.getEmployeePendingDue = async (req, res) => {
+  const tenantId = req.tenantId;
+  const { employeeId } = req.query;
+  if (!employeeId) return res.status(400).json({ error: 'employeeId is required' });
+  try {
+    const [empRows] = await db.execute(
+      `SELECT id, pay_per_hour, salary_type FROM employees WHERE tenant_id = ? AND id = ?`,
+      [tenantId, employeeId]
+    );
+    const emp = empRows[0];
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    let hours = 0;
+    let amount = 0;
+    if (emp.salary_type === 'piece') {
+      const [rows] = await db.execute(
+        `SELECT COALESCE(SUM(calculated_amount), 0) as total FROM piece_work_entries
+         WHERE tenant_id = ? AND employee_id = ? AND is_paid = 0`,
+        [tenantId, employeeId]
+      );
+      amount = (parseInt(rows[0]?.total, 10) || 0) / 100;
+    } else {
+      const [rows] = await db.execute(
+        `SELECT COALESCE(SUM(a.total_hours), 0) as h FROM attendance a
+         WHERE a.tenant_id = ? AND a.employee_id = ? AND a.total_hours > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM payroll p
+           WHERE p.tenant_id = a.tenant_id AND p.employee_id = a.employee_id
+             AND p.status = 'paid' AND p.total_hours_worked > 0
+             AND a.date >= p.pay_period_start AND a.date <= p.pay_period_end
+         )`,
+        [tenantId, employeeId]
+      );
+      hours = parseFloat(rows[0]?.h) || 0;
+      amount = hours * (Number(emp.pay_per_hour) || 0);
+    }
+
+    res.json({ employeeId, hours, amount });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to compute pending due.' });
   }
 };

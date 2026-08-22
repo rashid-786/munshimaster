@@ -25,6 +25,15 @@ const Login = () => {
   const [error, setError] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionMsg, setSessionMsg] = useState('');
+
+  useEffect(() => {
+    const msg = sessionStorage.getItem('session_expired_message');
+    if (msg) {
+      setSessionMsg(msg);
+      sessionStorage.removeItem('session_expired_message');
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.removeItem('auth_token');
@@ -252,6 +261,7 @@ const Login = () => {
             <p className="text-gray-500 mt-1">Sign in to your account</p>
           </div>
         <div className="card p-6 md:p-8">
+          {sessionMsg && <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">{sessionMsg}</div>}
           {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">

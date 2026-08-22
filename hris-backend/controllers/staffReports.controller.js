@@ -55,22 +55,35 @@ exports.getSummary = async (req, res) => {
     const [paidStats] = await db.execute(paidQ, paidP);
     const totalSalaryPaid = paidStats[0].total;
 
+    let advDedQ = `SELECT COALESCE(SUM(p.advance_deduction), 0) as total FROM payroll p JOIN employees e ON p.employee_id = e.id AND e.status = '${empStatus}' WHERE p.tenant_id = ?`;
+    const advDedP = [tenantId];
+    if (startDate) { advDedQ += ' AND p.pay_period_end >= ?'; advDedP.push(startDate); }
+    if (endDate) { advDedQ += ' AND p.pay_period_end <= ?'; advDedP.push(endDate); }
+    if (search) { advDedQ += searchClause; advDedP.push(...searchParams); }
+    const [advDedStats] = await db.execute(advDedQ, advDedP);
+    const totalAdvanceDeduction = advDedStats[0].total;
+
     // Salary Pending = unpaid worked hours × pay-per-hour (attendance not yet covered by a paid payroll) + unpaid piece work entries.
     const dateParams = [];
     let pendingDateClause = '';
     if (startDate) { pendingDateClause += ' AND a.date >= ?'; dateParams.push(startDate); }
     if (endDate) { pendingDateClause += ' AND a.date <= ?'; dateParams.push(endDate); }
+    let pieceDateClause = '';
+    const pieceDateParams = [];
+    if (startDate) { pieceDateClause += ' AND date >= ?'; pieceDateParams.push(startDate); }
+    if (endDate) { pieceDateClause += ' AND date <= ?'; pieceDateParams.push(endDate); }
     const [pendingEmps] = await db.execute(
       `SELECT id, pay_per_hour, salary_type FROM employees WHERE tenant_id = ? AND status = '${empStatus}' AND (role IS NULL OR role != 'tenant_admin')${empSearchClause}`,
       [tenantId, ...empSearchParams]
     );
     let totalSalaryPending = 0;
+    let totalUnpaidHours = 0;
     for (const emp of pendingEmps) {
       if (emp.salary_type === 'piece') {
         const [p] = await db.execute(
           `SELECT COALESCE(SUM(calculated_amount), 0) as total
            FROM piece_work_entries
-           WHERE tenant_id = ? AND employee_id = ? AND is_paid = 0`, [tenantId, emp.id]
+           WHERE tenant_id = ? AND employee_id = ? AND is_paid = 0${pieceDateClause}`, [tenantId, emp.id, ...pieceDateParams]
         );
         totalSalaryPending += parseInt(p[0].total || 0);
         continue;
@@ -86,7 +99,9 @@ exports.getSummary = async (req, res) => {
          )`,
         [tenantId, emp.id, ...dateParams]
       );
-      totalSalaryPending += (parseFloat(ph[0].h) || 0) * (Number(emp.pay_per_hour) || 0);
+      const h = parseFloat(ph[0].h) || 0;
+      totalUnpaidHours += h;
+      totalSalaryPending += h * (Number(emp.pay_per_hour) || 0) * 100;
     }
 
     let attQ = `SELECT COALESCE(SUM(a.total_hours), 0) as total_hours
@@ -139,8 +154,6 @@ exports.getSummary = async (req, res) => {
     const totalAdvancesIssued = advanceStats[0].total_issued;
     const outstandingBalance = advanceStats[0].outstanding;
 
-    const totalUnpaidHours = Math.max(0, totalHoursLogged - totalPaidHours);
-
     let qtyLoggedQ = `SELECT COALESCE(SUM(pwe.quantity), 0) as total FROM piece_work_entries pwe JOIN employees e ON pwe.employee_id = e.id AND e.status = '${empStatus}' AND (e.role IS NULL OR e.role != 'tenant_admin') WHERE pwe.tenant_id = ?`;
     const qtyLoggedP = [tenantId];
     if (startDate) { qtyLoggedQ += ' AND pwe.date >= ?'; qtyLoggedP.push(startDate); }
@@ -161,6 +174,7 @@ exports.getSummary = async (req, res) => {
       totalEmployees,
       totalSalaryPaid,
       totalSalaryPending,
+      totalAdvanceDeduction,
       totalHoursWorked: totalHoursLogged,
       totalPaidHours,
       totalHoursLogged,
@@ -248,7 +262,8 @@ exports.getSalaryReport = async (req, res) => {
         );
         const hours = parseFloat(ph[0].h) || 0;
         if (hours <= 0) continue;
-        const due = Math.round(hours * (Number(emp.pay_per_hour) || 0));
+        const ratePerHour = Number(emp.pay_per_hour) || 0;
+        const due = Math.round(hours * ratePerHour * 100);
         rows.push({
           id: null,
           employee_id: emp.id,
@@ -257,7 +272,7 @@ exports.getSalaryReport = async (req, res) => {
           email: emp.email,
           base_salary: emp.base_salary,
           pay_per_hour: emp.pay_per_hour,
-          hourly_rate: emp.pay_per_hour,
+          hourly_rate: Math.round(ratePerHour * 100),
           total_hours_worked: hours,
           gross_salary: due,
           advance_deduction: 0,

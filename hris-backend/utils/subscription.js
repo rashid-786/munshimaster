@@ -42,6 +42,67 @@ async function canAccess(tenantId, featureKey, currentValue = 0) {
 /**
  * Get current subscription with feature limits + usage counters.
  */
+const LEGACY_KEY_MAP = {
+  monthly_transactions: 'monthly_txns',
+  max_monthly_txns: 'monthly_txns',
+  customers: 'ledger_customers',
+  max_customers: 'ledger_customers',
+  staff_members: 'staff_members',
+  max_staff: 'staff_members',
+  branches: 'branches',
+  max_branches: 'branches',
+  suppliers: 'suppliers',
+  max_suppliers: 'suppliers',
+  products: 'products',
+  max_products: 'products',
+};
+
+async function computeUsage(tenantId) {
+  const [customerCount] = await db.execute(
+    'SELECT COUNT(*) as c FROM customers WHERE tenant_id = ?', [tenantId]
+  );
+  const [staffCount] = await db.execute(
+    "SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND COALESCE(status,'active') != 'deactivated'",
+    [tenantId]
+  );
+  const [txnCount] = await db.execute(
+    `SELECT (
+       (SELECT COUNT(*) FROM kirana_transactions WHERE tenant_id = ? AND entry_date >= date_trunc('month', NOW())::date)
+       + (SELECT COUNT(*) FROM kirana_cashbook WHERE tenant_id = ? AND entry_date >= date_trunc('month', NOW())::date)
+       + (SELECT COUNT(*) FROM kirana_invoices WHERE tenant_id = ? AND invoice_date >= date_trunc('month', NOW())::date)
+     ) as c`,
+    [tenantId, tenantId, tenantId]
+  );
+  return {
+    customers: customerCount[0].c,
+    staff: staffCount[0].c,
+    transactions: txnCount[0].c,
+  };
+}
+
+async function mergePlanFeatures(planId, baseFeatures) {
+  const merged = { ...(baseFeatures || {}) };
+  const [planFeatures] = await db.execute(
+    'SELECT feature_key, feature_type, enabled, max_value, config FROM hris_saas.plan_features WHERE plan_id = ?',
+    [planId]
+  );
+  for (const pf of planFeatures) {
+    const val = pf.feature_type === 'boolean' || pf.feature_type === 'section'
+      ? !!pf.enabled
+      : pf.feature_type === 'limit'
+        ? pf.enabled ? (pf.max_value !== null ? pf.max_value : -1) : 0
+        : pf.feature_type === 'config' && pf.config
+          ? pf.config
+          : !!pf.enabled;
+    merged[pf.feature_key] = val;
+    const legacyKey = LEGACY_KEY_MAP[pf.feature_key];
+    if (legacyKey && legacyKey !== pf.feature_key) {
+      merged[legacyKey] = val;
+    }
+  }
+  return merged;
+}
+
 async function getSubscriptionStatus(tenantId) {
   const [sub] = await db.execute(
     `SELECT s.*, p.name as plan_name, p.price_inr, p.features
@@ -53,53 +114,26 @@ async function getSubscriptionStatus(tenantId) {
   );
 
   if (sub.length === 0) {
-    return { plan: 'free', status: 'active', features: {}, usage: {} };
+    // No active/trialing subscription → free plan with real features + usage.
+    const [freePlan] = await db.execute(
+      "SELECT name, price_inr, features FROM subscription_plans WHERE id = 'free'",
+    );
+    const plan = freePlan.length > 0 ? freePlan[0] : { name: 'Free', price_inr: 0, features: {} };
+    const base = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || {});
+    const features = await mergePlanFeatures('free', base);
+    const usage = await computeUsage(tenantId);
+    return {
+      plan: 'free',
+      planName: plan.name || 'Free',
+      price: plan.price_inr || 0,
+      status: 'active',
+      features,
+      usage,
+    };
   }
 
-  // Count current usage across key metrics
-  const [customerCount] = await db.execute(
-    'SELECT COUNT(*) as c FROM customers WHERE tenant_id = ?', [tenantId]
-  );
-  const [staffCount] = await db.execute(
-    'SELECT COUNT(*) as c FROM employees WHERE tenant_id = ? AND COALESCE(status,\'active\') != \'deactivated\'',
-    [tenantId]
-  );
-
-  // Merge plan_features into the JSONB features column
-  const LEGACY_KEY_MAP = {
-    monthly_transactions: 'monthly_txns',
-    max_monthly_txns: 'monthly_txns',
-    customers: 'ledger_customers',
-    max_customers: 'ledger_customers',
-    staff_members: 'staff_members',
-    max_staff: 'staff_members',
-    branches: 'branches',
-    max_branches: 'branches',
-    suppliers: 'suppliers',
-    max_suppliers: 'suppliers',
-    products: 'products',
-    max_products: 'products',
-  };
-  const baseFeatures = sub[0].features || {};
-  const [planFeatures] = await db.execute(
-    'SELECT feature_key, feature_type, enabled, max_value, config FROM hris_saas.plan_features WHERE plan_id = ?',
-    [sub[0].plan_id]
-  );
-  const mergedFeatures = { ...baseFeatures };
-  for (const pf of planFeatures) {
-    const val = pf.feature_type === 'boolean' || pf.feature_type === 'section'
-      ? !!pf.enabled
-      : pf.feature_type === 'limit'
-        ? pf.enabled ? (pf.max_value !== null ? pf.max_value : -1) : 0
-        : pf.feature_type === 'config' && pf.config
-          ? pf.config
-          : !!pf.enabled;
-    mergedFeatures[pf.feature_key] = val;
-    const legacyKey = LEGACY_KEY_MAP[pf.feature_key];
-    if (legacyKey && legacyKey !== pf.feature_key) {
-      mergedFeatures[legacyKey] = val;
-    }
-  }
+  const features = await mergePlanFeatures(sub[0].plan_id, sub[0].features);
+  const usage = await computeUsage(tenantId);
 
   return {
     plan: sub[0].plan_id,
@@ -108,11 +142,8 @@ async function getSubscriptionStatus(tenantId) {
     status: sub[0].status,
     trialEndsAt: sub[0].trial_ends_at,
     validUntil: sub[0].current_period_end,
-    features: mergedFeatures,
-    usage: {
-      customers: customerCount[0].c,
-      staff: staffCount[0].c,
-    },
+    features,
+    usage,
   };
 }
 

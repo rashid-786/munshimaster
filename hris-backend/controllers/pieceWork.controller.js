@@ -239,14 +239,17 @@ exports.saveDayEntries = async (req, res) => {
 
 exports.getCalendarData = async (req, res) => {
   const tenantId = req.tenantId;
-  const { month, year, employeeId } = req.query;
-  if (!month || !year) return res.status(400).json({ error: 'month and year are required.' });
+  const { month, year, employeeId, start, end } = req.query;
+  const pad = (n) => String(n).padStart(2, '0');
+  const mm = parseInt(month) || (new Date().getMonth() + 1);
+  const yy = parseInt(year) || new Date().getFullYear();
+
+  let startDate = (start && String(start).slice(0, 10)) || `${yy}-${pad(mm)}-01`;
+  let endDate = (end && String(end).slice(0, 10)) || `${yy}-${pad(mm)}-${pad(new Date(yy, mm, 0).getDate())}`;
+  if (start && !end) endDate = startDate;
+  if (startDate > endDate) [startDate, endDate] = [endDate, startDate];
+
   try {
-    const m = parseInt(month);
-    const y = parseInt(year);
-    const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
-    const lastDay = new Date(y, m, 0).getDate();
-    const endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     let empQuery = 'SELECT id, first_name, last_name, piece_unit_label FROM employees WHERE tenant_id = ? AND salary_type = ? AND status = ?';
     const empParams = [tenantId, 'piece', 'active'];
@@ -284,8 +287,10 @@ exports.getCalendarData = async (req, res) => {
 
     const result = employees.map(emp => {
       const days = [];
-      for (let d = 1; d <= lastDay; d++) {
-        const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dStart = new Date(`${startDate}T00:00:00`);
+      const dEnd = new Date(`${endDate}T00:00:00`);
+      for (let dt = new Date(dStart); dt <= dEnd; dt.setDate(dt.getDate() + 1)) {
+        const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
         const dayKey = `${emp.id}|${dateStr}`;
         const dayEntries = entriesByEmpDate[dayKey] || [];
         const totalQty = dayEntries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
@@ -295,7 +300,6 @@ exports.getCalendarData = async (req, res) => {
         let type = 'none';
         if (dayEntries.length > 0 && isPaid) type = 'paid';
         else if (dayEntries.length > 0) type = 'unpaid';
-        // Zero qty on a day with entries means the employee was absent
         if (dayEntries.length > 0 && totalQty === 0) type = 'absent';
         days.push({
           date: dateStr,
@@ -337,8 +341,8 @@ exports.getEmployeeEntries = async (req, res) => {
                  JOIN employees e ON p.employee_id = e.id
                  WHERE p.tenant_id = ? AND p.employee_id = ?`;
     const params = [tenantId, employeeId];
-    if (startDate) { query += ' AND p.date >= ?'; params.push(startDate); }
-    if (endDate) { query += ' AND p.date <= ?'; params.push(endDate); }
+    if (startDate) { query += ' AND DATE(p.date) >= ?'; params.push(startDate); }
+    if (endDate) { query += ' AND DATE(p.date) <= ?'; params.push(endDate); }
     query += ' ORDER BY p.date ASC, p.work_type ASC';
     const [rows] = await db.execute(query, params);
     res.json(rows);

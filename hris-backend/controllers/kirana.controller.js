@@ -317,20 +317,24 @@ exports.createInvoice = async (req, res) => {
 };
 
 exports.getInvoices = async (req, res) => {
-  const { search, status, page = 1, limit = 35 } = req.query;
+  const { search, status, page = 1, limit = 35, startDate, endDate } = req.query;
   try {
     let query = 'SELECT * FROM kirana_invoices WHERE tenant_id = ?';
     const params = [req.tenantId];
     if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
     if (search) { query += ' AND (invoice_number ILIKE ? OR party_name ILIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    if (startDate) { query += ' AND invoice_date >= ?'; params.push(startDate); }
+    if (endDate) { query += ' AND invoice_date <= ?'; params.push(endDate); }
     query += ' ORDER BY created_at DESC';
     const offset = (parseInt(page) - 1) * parseInt(limit);
     query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
     const [rows] = await db.execute(query, params);
-    const [countRows] = await db.execute(
-      `SELECT COUNT(*) as total FROM kirana_invoices WHERE tenant_id = ?${status && status !== 'all' ? ' AND status = ?' : ''}`,
-      status && status !== 'all' ? [req.tenantId, status] : [req.tenantId]
-    );
+    let countQuery = 'SELECT COUNT(*) as total FROM kirana_invoices WHERE tenant_id = ?';
+    const countParams = [req.tenantId];
+    if (status && status !== 'all') { countQuery += ' AND status = ?'; countParams.push(status); }
+    if (startDate) { countQuery += ' AND invoice_date >= ?'; countParams.push(startDate); }
+    if (endDate) { countQuery += ' AND invoice_date <= ?'; countParams.push(endDate); }
+    const [countRows] = await db.execute(countQuery, countParams);
     res.json({ data: rows, total: parseInt(countRows[0].total), page: parseInt(page), limit: parseInt(limit) });
   } catch (error) {
     console.error(error);
@@ -430,8 +434,18 @@ async function fetchKiranaParties(tenantId, { partyType, startDate, endDate } = 
     if (startDate) { txnQuery += ' AND entry_date >= ?'; txnParams.push(startDate); }
     if (endDate) { txnQuery += ' AND entry_date <= ?'; txnParams.push(endDate); }
     const [txns] = await db.execute(txnQuery, txnParams);
+    let transactions = [];
+    if (startDate || endDate) {
+      let tq = 'SELECT id, type, amount, note, entry_date FROM kirana_transactions WHERE party_id = ?';
+      const tp = [p.id];
+      if (startDate) { tq += ' AND entry_date >= ?'; tp.push(startDate); }
+      if (endDate) { tq += ' AND entry_date <= ?'; tp.push(endDate); }
+      tq += ' ORDER BY entry_date DESC, created_at DESC';
+      const [trows] = await db.execute(tq, tp);
+      transactions = trows;
+    }
     const ob = Number(p.opening_balance || 0);
-    result.push({ ...p, openingBalance: ob, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: ob + Number(txns[0].g) - Number(txns[0].r) });
+    result.push({ ...p, openingBalance: ob, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: ob + Number(txns[0].g) - Number(txns[0].r), transactions });
   }
   return result;
 }
@@ -470,6 +484,113 @@ exports.downloadReportExcel = async (req, res) => {
   try {
     const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
     const companyName = tenantRow[0]?.company_name || 'Company';
+
+    if (type === 'summary') {
+      const ExcelJS = require('exceljs');
+
+      const [cashbookRows, partyRows] = await Promise.all([
+        fetchKiranaCashbook(tenantId, { startDate, endDate }),
+        fetchKiranaParties(tenantId, { startDate, endDate }),
+      ]);
+
+      let totalIn = 0, totalOut = 0;
+      for (const r of cashbookRows) {
+        if (r.type === 'IN') totalIn += Number(r.amount || 0);
+        else if (r.type === 'OUT') totalOut += Number(r.amount || 0);
+      }
+
+      let youWillGet = 0, youWillGive = 0, partyTxnCount = 0;
+      for (const p of partyRows) {
+        const ob = Number(p.opening_balance || 0);
+        const bal = ob + Number(p.totalGiven || 0) - Number(p.totalReceived || 0);
+        if (bal > 0) youWillGive += bal;
+        else youWillGet += Math.abs(bal);
+        partyTxnCount += Array.isArray(p.transactions) ? p.transactions.length : 0;
+      }
+
+      let invCount = 0;
+      if (startDate || endDate) {
+        let iq = 'SELECT COUNT(*) as c FROM kirana_invoices WHERE tenant_id = ?';
+        const ip = [tenantId];
+        if (startDate) { iq += ' AND invoice_date >= ?'; ip.push(startDate); }
+        if (endDate) { iq += ' AND invoice_date <= ?'; ip.push(endDate); }
+        const [irows] = await db.execute(iq, ip);
+        invCount = Number(irows[0].c || 0);
+      }
+
+      const periodLabel = `${startDate || 'Earliest'} to ${endDate || 'Today'}`;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = companyName;
+
+      const summarySheet = workbook.addWorksheet('Summary');
+      summarySheet.mergeCells('A1', 'B1');
+      summarySheet.getCell('A1').value = `${companyName} - Bahi Book Report`;
+      summarySheet.getCell('A1').font = { size: 14, bold: true };
+      summarySheet.addRow([]);
+      summarySheet.addRow(['Period', periodLabel]);
+      summarySheet.addRow([]);
+      const summaryRows = [
+        ['Total Receivable', `Rs.${(youWillGet / 100).toFixed(2)}`],
+        ['Total Payable', `Rs.${(youWillGive / 100).toFixed(2)}`],
+        ['Cash In', `Rs.${(totalIn / 100).toFixed(2)}`],
+        ['Cash Out', `Rs.${(totalOut / 100).toFixed(2)}`],
+        ['Net Cash Balance', `Rs.${((totalIn - totalOut) / 100).toFixed(2)}`],
+        ['Party Transactions', String(partyTxnCount)],
+        ['Cash Entries', String(cashbookRows.length)],
+        ['Invoices', String(invCount)],
+      ];
+      summaryRows.forEach((r) => summarySheet.addRow(r));
+      summarySheet.getRow(1).eachCell(cell => { cell.alignment = { horizontal: 'center' }; });
+      summarySheet.columns = [
+        { header: 'Metric', key: 'm', width: 22 },
+        { header: 'Value', key: 'v', width: 20 },
+      ];
+
+      const cashSheet = workbook.addWorksheet('Cashbook');
+      cashSheet.addRow(['Date', 'Type', 'Category', 'Amount', 'Note']);
+      for (const r of cashbookRows) {
+        cashSheet.addRow([
+          r.entry_date ? String(r.entry_date).slice(0, 10) : '-',
+          r.type || '-',
+          r.category || '-',
+          `Rs.${((r.amount || 0) / 100).toFixed(2)}`,
+          r.note || '-',
+        ]);
+      }
+      cashSheet.columns = [
+        { header: 'Date', key: 'd', width: 14 },
+        { header: 'Type', key: 't', width: 10 },
+        { header: 'Category', key: 'c', width: 18 },
+        { header: 'Amount', key: 'a', width: 16 },
+        { header: 'Note', key: 'n', width: 30 },
+      ];
+
+      const partySheet = workbook.addWorksheet('Parties');
+      partySheet.addRow(['Type', 'Name', 'Received', 'Given', 'Balance']);
+      for (const p of partyRows) {
+        const bal = Number(p.opening_balance || 0) + Number(p.totalGiven || 0) - Number(p.totalReceived || 0);
+        partySheet.addRow([
+          p.type || '-',
+          p.name || '-',
+          `Rs.${((p.totalReceived || 0) / 100).toFixed(2)}`,
+          `Rs.${((p.totalGiven || 0) / 100).toFixed(2)}`,
+          `Rs.${(bal / 100).toFixed(2)}`,
+        ]);
+      }
+      partySheet.columns = [
+        { header: 'Type', key: 't', width: 10 },
+        { header: 'Name', key: 'n', width: 26 },
+        { header: 'Received', key: 'r', width: 16 },
+        { header: 'Given', key: 'g', width: 16 },
+        { header: 'Balance', key: 'b', width: 16 },
+      ];
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=bahi_book_report.xlsx`);
+      await workbook.xlsx.write(res);
+      res.end();
+      return;
+    }
 
     let data, title, columns;
     if (type === 'parties') {
@@ -578,5 +699,38 @@ exports.getCashflow = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to load cash flow.' });
+  }
+};
+
+// ── WhatsApp reminders ──
+
+exports.createReminder = async (req, res) => {
+  const { partyId, partyName, phone, amount, note } = req.body;
+  if (!partyId || !partyName) return res.status(400).json({ error: 'partyId and partyName required.' });
+  try {
+    const id = uuidv4();
+    const amountCents = Math.round(parseFloat(amount || 0) * 100);
+    await db.execute(
+      'INSERT INTO kirana_reminders (id, tenant_id, party_id, party_name, phone, amount, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.tenantId, partyId, partyName, phone || null, amountCents, note || null, req.user.id]
+    );
+    res.status(201).json({ message: 'Reminder logged.', id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to log reminder.' });
+  }
+};
+
+exports.getReminders = async (req, res) => {
+  const { limit = 20 } = req.query;
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM kirana_reminders WHERE tenant_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
+      [req.tenantId, parseInt(limit)]
+    );
+    res.json({ data: rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch reminders.' });
   }
 };

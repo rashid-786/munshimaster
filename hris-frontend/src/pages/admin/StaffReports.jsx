@@ -6,9 +6,11 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import Loading from '../../components/Loading';
 import PieceWorkModal from '../../components/PieceWorkModal';
+import StaffCalendarDrawer from '../../components/StaffCalendarDrawer';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useAuth } from '../../context/AuthContext';
 import SearchableSelect from '../../components/SearchableSelect';
+import CalendarDateRangePicker from '../../components/CalendarDateRangePicker';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -17,8 +19,6 @@ const today = (() => { const n=new Date(); return n.getFullYear()+'-'+String(n.g
 const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'salary',    label: 'Salary' },
-  { key: 'hours',     label: 'Working Hours' },
-  { key: 'piece-work', label: 'Piece Work' },
   { key: 'leaves',    label: 'Leaves' },
   { key: 'advances',  label: 'Advances' },
 ];
@@ -107,6 +107,7 @@ export default function StaffReports() {
   const [showDatePopup, setShowDatePopup] = useState(false);
   const [extraFilter, setExtraFilter] = useState({});
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [calendarDrawer, setCalendarDrawer] = useState(null);
   const [showDeactivated, setShowDeactivated] = useState(() => localStorage.getItem('staff_reports_show_deactivated') === 'true');
 
   const search = useMemo(() => {
@@ -223,20 +224,19 @@ export default function StaffReports() {
     { key: 'rateLabel', label: 'Pay Rate', render: (_, r) => {
       if (r.salary_type === 'piece') return (
         <span
-          onClick={async () => {
-            const startDate = r.pay_period_start ? r.pay_period_start.split('T')[0] : null;
-            const endDate = r.pay_period_end ? r.pay_period_end.split('T')[0] : null;
-            const key = r.employee_id + startDate + endDate;
+          onClick={async (e) => {
+            e.stopPropagation();
+            const key = r.employee_id + (dateRange.startDate || '') + (dateRange.endDate || '');
             if (!pieceCache.current[key]) {
               try {
-                const entries = await hrService.getPieceWorkEmployeeEntries({ employeeId: r.employee_id, startDate, endDate });
+                const entries = await hrService.getPieceWorkEmployeeEntries({ employeeId: r.employee_id, startDate: dateRange.startDate, endDate: dateRange.endDate });
                 pieceCache.current[key] = entries;
               } catch { pieceCache.current[key] = []; }
             }
             setPieceModal({ entries: pieceCache.current[key], employeeName: `${r.first_name} ${r.last_name}`, unitLabel: r.piece_unit_label || 'pcs', actualHours: r.total_hours_worked });
           }}
           className="text-indigo-500 hover:text-indigo-700 text-xs font-medium cursor-pointer"
-        >View Details</span>
+        >View Items</span>
       );
       return <span>₹{(r.hourly_rate / 100).toFixed(2)}/hr</span>;
     } },
@@ -258,7 +258,7 @@ export default function StaffReports() {
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
       </button>
     ) },
-  ], []);
+  ], [dateRange]);
 
   const payStatusBadge = (status) => {
     if (status === 'paid') return <span className="badge-success text-xs">Paid</span>;
@@ -347,7 +347,7 @@ export default function StaffReports() {
     const totalDueHours = summary.totalUnpaidHours || 0;
     const cards = [
       { label: 'Total Staff', value: summary.totalEmployees, subtitle: null, accent: 'indigo', icon: <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg> },
-      { label: 'Unpaid Amount', value: formatINR(summary.totalSalaryPending), subtitle: `${formatINR(summary.totalSalaryPaid)} paid`, accent: 'amber', icon: <span className="text-base font-bold">₹</span> },
+      { label: 'Unpaid Amount', value: formatINR(summary.totalSalaryPending), subtitle: `${formatINR(summary.totalSalaryPaid)} paid · ${formatINR(summary.totalAdvanceDeduction)} adv. deduct`, accent: 'amber', icon: <span className="text-base font-bold">₹</span> },
       { label: 'Unpaid Hours', value: `${totalDueHours.toFixed(1)}h`, subtitle: `${(summary.totalPaidHours || 0).toFixed(1)}h paid`, accent: 'amber', icon: <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { label: 'Hours Logged', value: `${(summary.totalHoursLogged || 0).toFixed(1)}h`, subtitle: null, accent: 'sky', icon: <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg> },
       { label: 'Unpaid Qty', value: totalDueQty.toFixed(1), subtitle: `${(summary.totalQtyPaid || 0).toFixed(1)} paid`, accent: 'amber', icon: <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg> },
@@ -437,7 +437,7 @@ export default function StaffReports() {
     );
   }
 
-  function renderTable(data, columns) {
+  function renderTable(data, columns, onRowClick) {
     return (
       <ResponsiveTable
         columns={columns}
@@ -446,12 +446,22 @@ export default function StaffReports() {
         searchKeys={['first_name', 'last_name', 'email']}
         mobilePrimary="name"
         searchable={false}
-        onRowClick={(r) => setSelectedRecord(r)}
+        onRowClick={onRowClick || ((r) => setSelectedRecord(r))}
         emptyMessage="No records found for the selected period."
         loading={loading}
       />
     );
   }
+
+  const openSalaryCalendar = (r) => {
+    setCalendarDrawer({
+      employeeId: r.employee_id,
+      name: `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+      salaryType: r.salary_type,
+      hourlyRate: r.hourly_rate,
+      advanceDeduction: r.advance_deduction,
+    });
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -533,43 +543,44 @@ export default function StaffReports() {
 
           <span className="w-px h-6 bg-gray-200 shrink-0" />
 
-          {/* Date range */}
-          <div className="flex items-center gap-2">
-            <select value={datePreset === 'Custom' ? '' : datePreset} onChange={e => handlePresetClick(e.target.value)}
-              className="input-field max-w-[135px] text-sm">
-              <option value="" disabled>Select</option>
-              {DATE_PRESETS.map(p => (
-                <option key={p.label} value={p.label}>{p.label}</option>
-              ))}
-            </select>
-            <div className="relative">
-              <button onClick={() => { setDatePreset('Custom'); setShowDatePopup(true); }}
-                className={`text-xs font-medium rounded-lg transition-colors whitespace-nowrap border px-2.5 py-1.5 shrink-0 ${
-                  datePreset === 'Custom'
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-50 border-gray-300'
-                }`}>
-                <svg className="w-3.5 h-3.5 inline mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                Custom
-              </button>
-              {showDatePopup && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowDatePopup(false)} />
-                  <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 w-[260px]">
-                    <p className="text-xs font-semibold text-gray-700 mb-3">Select Date Range</p>
-                    <label className="block text-xs text-gray-500 mb-1">From Date</label>
-                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={today} className="input-field text-sm w-full mb-3" />
-                    <label className="block text-xs text-gray-500 mb-1">To Date</label>
-                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} max={today} className="input-field text-sm w-full mb-3" />
-                    <div className="flex gap-2">
-                      <button onClick={() => { setShowDatePopup(false); }} className="btn-primary !py-1.5 text-xs flex-1">Apply</button>
-                      <button onClick={() => { setDatePreset('Current Month'); setCustomStart(''); setCustomEnd(''); setShowDatePopup(false); }} className="btn-secondary !py-1.5 text-xs">Reset</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+          {/* Date range chips */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { key: 'Today', label: 'Today' },
+              { key: 'Yesterday', label: 'Yesterday' },
+              { key: 'Current Week', label: 'This Week' },
+              { key: 'Last Week', label: 'Last Week' },
+              { key: 'Current Month', label: 'This Month' },
+              { key: 'Custom', label: 'Custom' },
+            ].map(opt => {
+              const active = datePreset === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => handlePresetClick(opt.key)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors whitespace-nowrap ${
+                    active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 hover:bg-gray-100 border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
+
+          {datePreset === 'Custom' && (
+            <div className="flex flex-wrap items-end gap-2 w-full">
+              <div className="w-full sm:w-auto">
+                <CalendarDateRangePicker
+                  start={customStart}
+                  end={customEnd}
+                  onChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
+                  maxDate={today}
+                />
+              </div>
+              <button onClick={clearFilters} className="btn-secondary !py-1.5 !px-2.5 text-xs">Reset</button>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 ml-auto shrink-0">
             {isFiltered && (
@@ -610,7 +621,7 @@ export default function StaffReports() {
             <SumCard label="Hours Logged" value={`${(summary?.totalHoursLogged || 0).toFixed(1)}h`} subtitle={`${(summary?.totalPaidHours || 0).toFixed(1)}h paid`} accent="sky" icon={<svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
             <SumCard label="Qty Logged" value={(summary?.totalQtyLogged || 0).toFixed(1)} subtitle={`${(summary?.totalQtyPaid || 0).toFixed(1)} paid`} accent="violet" icon={<svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>} />
           </div>
-          {renderTable(salaryData, salaryColumns)}
+          {renderTable(salaryData, salaryColumns, openSalaryCalendar)}
         </>
       )}
       {!loading && tab === 'hours' && (
@@ -691,6 +702,14 @@ export default function StaffReports() {
         employeeName={pieceModal?.employeeName || ''}
         actualHours={pieceModal?.actualHours || 0}
         unitLabel={pieceModal?.unitLabel || 'pcs'}
+      />
+
+      <StaffCalendarDrawer
+        open={!!calendarDrawer}
+        onClose={() => setCalendarDrawer(null)}
+        employee={calendarDrawer}
+        startDate={dateRange.startDate}
+        endDate={dateRange.endDate}
       />
 
       {/* Mobile detail sheet */}

@@ -77,6 +77,7 @@ import SuperAuditLogs from './pages/super/SuperAuditLogs';
 import GlobalConfig from './pages/super/GlobalConfig';
 import GstTaxConfig from './pages/super/GstTaxConfig';
 import UnitMasterConfig from './pages/super/UnitMasterConfig';
+import RazorpaySettings from './pages/super/RazorpaySettings';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -140,6 +141,7 @@ function App() {
             <Route path="global-config" element={<GlobalConfig />} />
             <Route path="units" element={<UnitMasterConfig />} />
             <Route path="gst-tax" element={<GstTaxConfig />} />
+            <Route path="razorpay-settings" element={<RazorpaySettings />} />
 
           </Route>
 

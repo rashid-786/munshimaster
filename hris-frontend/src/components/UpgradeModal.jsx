@@ -91,6 +91,17 @@ export default function UpgradeModal({ open, onClose, onUpgraded, feature, requi
           contact: order.contact,
         },
         theme: { color: '#0B3C5D' },
+        // Show only UPI payment methods (UPI App + UPI QR); hide everything else.
+        method: {
+          upi: true,
+          upi_intent: true,
+          card: false,
+          netbanking: false,
+          wallet: false,
+          emi: false,
+          paylater: false,
+          banktransfer: false,
+        },
         modal: {
           ondismiss: () => {
             subscriptionService.cancelOrder(currentOrderId).catch(() => {});

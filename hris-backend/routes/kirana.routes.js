@@ -18,6 +18,10 @@ router.delete('/transactions/:id', authenticateToken, ctrl.deleteTransaction);
 // Summary
 router.get('/summary', authenticateToken, ctrl.getSummary);
 
+// WhatsApp reminders
+router.post('/reminders', authenticateToken, ctrl.createReminder);
+router.get('/reminders', authenticateToken, ctrl.getReminders);
+
 // Cash flow (monthly trend)
 router.get('/cashflow', authenticateToken, ctrl.getCashflow);
 

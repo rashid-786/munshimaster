@@ -26,10 +26,11 @@ const USAGE_QUERIES = {
       AND status = 'active'
   `,
   transactions: `
-    SELECT COUNT(*)::int as count
-    FROM kirana_transactions
-    WHERE tenant_id = ?
-      AND created_at >= date_trunc('month', NOW())
+    SELECT (
+      (SELECT COUNT(*) FROM kirana_transactions WHERE tenant_id = ? AND entry_date >= date_trunc('month', NOW())::date)
+      + (SELECT COUNT(*) FROM kirana_cashbook WHERE tenant_id = ? AND entry_date >= date_trunc('month', NOW())::date)
+      + (SELECT COUNT(*) FROM kirana_invoices WHERE tenant_id = ? AND invoice_date >= date_trunc('month', NOW())::date)
+    )::int as count
   `,
   cashbook_entries: `
     SELECT COUNT(*)::int as count
@@ -72,7 +73,9 @@ async function checkUsage({ tenantId, plan, limitKey }) {
   let currentUsage = 0;
 
   try {
-    const [rows] = await db.execute(query, [tenantId]);
+    const placeholderCount = (query.match(/\?/g) || []).length;
+    const params = Array(placeholderCount).fill(tenantId);
+    const [rows] = await db.execute(query, params);
     currentUsage = parseInt(rows[0]?.count ?? 0, 10);
 
     if (limitKey === 'entities' && currentUsage === 0) {

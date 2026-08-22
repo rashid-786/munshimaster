@@ -100,7 +100,18 @@ export default function AdminLayout() {
         return acc;
       }, []);
     }
-    return result;
+    // Store management moved into the header switcher — remove its sidebar link.
+    const stripStore = (items) => items.reduce((acc, node) => {
+      if (node.route === '/admin/entities') return acc;
+      if (node.items) {
+        const children = stripStore(node.items);
+        acc.push({ ...node, items: children });
+      } else {
+        acc.push(node);
+      }
+      return acc;
+    }, []).filter(node => node.type !== 'group' || (node.items && node.items.length > 0));
+    return stripStore(result);
   }, [currentPlan, disabledFeatures, HIDDEN_ROUTES]);
 
   const DEFAULT_LABEL_OVERRIDES = { Entities: { FREE: 'Store', MANAGE: 'Store', BUSINESS: 'Store', BUSINESS_PRO: 'Store' } };
@@ -664,6 +675,15 @@ export default function AdminLayout() {
                           </button>
                         );
                       })}
+                      <div className="border-t border-gray-100 mt-1 pt-1">
+                        <button
+                          onClick={() => { setEntityDropdownOpen(false); navigate('/admin/entities'); }}
+                          className="w-full text-left px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M4 18h16M5 18V7a1 1 0 011-1h12a1 1 0 011 1v11M9 10h2m2 0h2M9 14h2m2 0h2" /></svg>
+                          Manage Stores
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

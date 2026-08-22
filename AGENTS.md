@@ -17,6 +17,16 @@ Build full notification system, add "Load More" + search across tables, fix Post
 - `is_read` is SMALLINT not boolean — `= 0/1` comparisons are fine for that column
 - Global config (hidePayments, hideSubscription, hideUsage, hideReferEarn, hideSubscriptionLabels) stored in system_settings.global_config JSONB, fetched via public endpoint, cached in localStorage, consumed across all components
 - **Timezone date shift**: Never use `d.toISOString().split('T')[0]` for local date formatting — it converts to UTC and shifts dates in positive timezones. Use `\`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}\`` instead.
+- **Mobile attendanceService `mapDay()`**: `typeMap` must include `"idle"` for no-entry cells; default fallback must be `"idle"` not `"absent"` to prevent all idle cells showing red. The `AttendanceDayType` union type must also include `"idle"`.
+- **Mobile calendar cells**: `canTap`/`clickable` should use `!isFuture` only (not `!isIdle && past && !future`) so idle cells and today are tappable.
+- **Web `formatINR(cents)`** divides by 100 — values passed to it must be in paise, not rupees. Pay-per-hour calculations (`hours * payPerHour`) are in rupees, so multiply by 100 before passing to `formatINR`.
+- **`pay_per_hour` is stored in rupees** (not paise). The payroll controller multiplies by 100 (`emp.pay_per_hour * 100`) internally to convert to paise for computation. Never multiply by 100 in the employee controller.
+- **Slip number format**: `SS-YYYYMM-XXXXXX` generated in backend `calculatePayroll` via `SUBSTRING(slip_number FROM 11 FOR 6)` (position 11, not 10, because format is `SS-YYYYMM-XXXXXX`).
+- **`invalidateQueries` key must match query key exactly** — if the query key includes `selectedEmployeeId`, the invalidation key must also include it, otherwise React Query can't match them.
+- **Payroll advance deduction**: Removed `isPieceWorker` guard from both `calculatePayroll` and `previewPayroll` so piece workers can also have advance deductions.
+- **Recent Activity** on Attendance Dashboard: combines advances, payroll runs, today's hourly attendance, and today's piece work entries into a unified feed.
+- **Backend numeric fields come as strings** (e.g., `total_hours_worked`, `quantity`). Always wrap with `Number(...) || 0` before arithmetic — `paidHours += "10.00"` does string concatenation, turning the accumulator into a string and crashing `.toFixed()` with "undefined is not a function" (silently swallowed by `.catch(() => null)` patterns, making cards show 0).
+- **Home Dashboard sections**: BahiBook (receivable/payable/cashbook) via `getBahibookSummary`; My Staff (due/paid amounts + hours, piece qty, logged hours) via payroll history + `pieceWorkService.getEntries({})` (overall, all-time).
 
 ## Done
 - **Loading component** (`src/components/Loading.jsx`): SVG arc spinner using `var(--primary-600)`, used by `ResponsiveTable.jsx`

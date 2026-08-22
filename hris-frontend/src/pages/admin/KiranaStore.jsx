@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrService } from '../../services/hr.service';
 import { formatINR, formatPhone } from '../../utils/currency';
@@ -8,6 +9,7 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import BottomSheet from '../../components/BottomSheet';
 import useIsMobile from '../../hooks/useIsMobile';
 import UpgradeBanner from '../../components/UpgradeBanner';
+import CalendarDateRangePicker from '../../components/CalendarDateRangePicker';
 import { ActionView, ActionEdit, ActionDelete } from '../../components/ActionIcons';
 
 const INNER_TABS = [
@@ -15,6 +17,16 @@ const INNER_TABS = [
   { key: 'sellers', label: 'Sellers' },
   { key: 'cashbook', label: 'Cashbook' },
   { key: 'reports', label: 'Reports' },
+];
+
+const REPORT_PRESETS = [
+  { key: 'all', label: 'All' },
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: 'this_week', label: 'This Week' },
+  { key: 'last_week', label: 'Last Week' },
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
 ];
 
 const DetailRow = ({ label, value, children }) => (
@@ -293,12 +305,14 @@ const KiranaStore = () => {
   const renderCashDetail = () => {
     if (!selectedCash) return null;
     const entry = selectedCash;
-    return (
-      <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/30">
-        <div className="bg-white w-full max-w-xl h-full overflow-y-auto" onClick={ev => ev.stopPropagation()}>
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex items-stretch justify-end bg-black/40 backdrop-blur-sm">
+        <div className="bg-white w-full max-w-2xl h-screen overflow-y-auto shadow-2xl animate-slide-in-right" onClick={ev => ev.stopPropagation()}>
           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
             <h3 className="text-lg font-semibold text-gray-900">Entry Details</h3>
-            <button onClick={() => setSelectedCash(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            <button onClick={() => setSelectedCash(null)} className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" aria-label="Close drawer">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
           <div className="p-6 space-y-4">
             <DetailRow label="Date" value={entry.entry_date ? entry.entry_date.split('T')[0] : '-'} />
@@ -326,11 +340,25 @@ const KiranaStore = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
-  const handleReportRowClick = (r) => {
+  const handleReportRowClick = async (r) => {
+    if (reportTab === 'parties') {
+      try {
+        const data = await hrService.kirana.getPartyDetails(r.id);
+        if (!isMobile) {
+          setDetail(data);
+        } else {
+          setSelectedParty(data);
+          const defaultTxType = r.type === 'buyer' ? 'received' : 'given';
+          setMobileTxForm({ type: defaultTxType, amount: '', note: '', entryDate: new Date().toISOString().split('T')[0] });
+        }
+      } catch {}
+      return;
+    }
     if (!isMobile) return;
     setSelectedReport(r);
   };
@@ -419,15 +447,17 @@ const KiranaStore = () => {
   const renderDetail = () => {
     if (!detail) return null;
     const { party, transactions, totalReceived, totalGiven, balance } = detail;
-    return (
-      <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/30">
-        <div className="bg-white w-full max-w-xl h-full overflow-y-auto" onClick={e => e.stopPropagation()}>
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex items-stretch justify-end bg-black/40 backdrop-blur-sm">
+        <div className="bg-white w-full max-w-2xl h-screen overflow-y-auto shadow-2xl animate-slide-in-right" onClick={e => e.stopPropagation()}>
           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">{party.name}</h3>
               <p className="text-sm text-gray-500">{formatPhone(party.phone) || 'No phone'} &middot; {party.address || 'No address'}</p>
             </div>
-            <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            <button onClick={() => setDetail(null)} className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" aria-label="Close drawer">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
 
           <div className="p-6 space-y-4">
@@ -501,7 +531,8 @@ const KiranaStore = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -743,11 +774,12 @@ const KiranaStore = () => {
   const [reportData, setReportData] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportDownloading, setReportDownloading] = useState('');
-  const [reportPeriod, setReportPeriod] = useState('this_month');
+  const [reportPeriod, setReportPeriod] = useState('all');
   const [reportStart, setReportStart] = useState('');
   const [reportEnd, setReportEnd] = useState('');
   const [reportEntryType, setReportEntryType] = useState('');
   const [reportPartyType, setReportPartyType] = useState('');
+  const [reportDateOpen, setReportDateOpen] = useState(false);
 
   const fmtDate = (d) => d.toISOString().split('T')[0];
 
@@ -758,6 +790,34 @@ const KiranaStore = () => {
     const y = now.getFullYear();
     const m = now.getMonth();
     switch (value) {
+      case 'all':
+        setReportStart('');
+        setReportEnd('');
+        break;
+      case 'today':
+        setReportStart(fmtDate(now));
+        setReportEnd(fmtDate(now));
+        break;
+      case 'this_week': {
+        const mondayOffset = (now.getDay() + 6) % 7;
+        const s = new Date(now);
+        s.setDate(s.getDate() - mondayOffset);
+        setReportStart(fmtDate(s));
+        setReportEnd(fmtDate(now));
+        break;
+      }
+      case 'last_week': {
+        const mondayOffset = (now.getDay() + 6) % 7;
+        const thisMon = new Date(now);
+        thisMon.setDate(thisMon.getDate() - mondayOffset);
+        const s = new Date(thisMon);
+        s.setDate(s.getDate() - 7);
+        const e = new Date(thisMon);
+        e.setDate(e.getDate() - 1);
+        setReportStart(fmtDate(s));
+        setReportEnd(fmtDate(e));
+        break;
+      }
       case 'this_year':
         setReportStart(`${y}-01-01`);
         setReportEnd(`${y}-12-31`);
@@ -794,7 +854,7 @@ const KiranaStore = () => {
   };
 
   useEffect(() => {
-    handleReportPeriod('this_month');
+    handleReportPeriod('all');
   }, []);
 
   const reportParams = {
@@ -804,6 +864,13 @@ const KiranaStore = () => {
     entryType: reportEntryType || undefined,
     partyType: reportPartyType || undefined,
   };
+
+  const reportDateLabel = (() => {
+    if (reportStart && reportEnd && reportStart !== reportEnd) return `${reportStart} → ${reportEnd}`;
+    if (reportStart) return `${reportStart} → …`;
+    if (reportEnd) return `… → ${reportEnd}`;
+    return 'Date Range';
+  })();
 
   useEffect(() => {
     if (tab !== 'reports') return;
@@ -851,47 +918,100 @@ const KiranaStore = () => {
 
       <div className="card">
         <div className="border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-2 text-sm p-3">
-          <div className="w-full sm:w-auto flex items-center gap-2">
-            <span className="text-gray-500 shrink-0">Period:</span>
-            <select value={reportPeriod} onChange={e => handleReportPeriod(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[150px]">
-              <option value="">Custom</option>
-              <option value="this_year">This Year</option>
-              <option value="this_quarter">This Quarter</option>
-              <option value="this_month">This Month</option>
-              <option value="last_month">Last Month</option>
-              <option value="yesterday">Yesterday</option>
-            </select>
-          </div>
-          <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap">
-            <span className="text-gray-500 shrink-0">From:</span>
-            <input type="date" value={reportStart} onChange={e => { setReportPeriod(''); setReportStart(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
-            <span className="text-gray-500 shrink-0">To:</span>
-            <input type="date" value={reportEnd} onChange={e => { setReportPeriod(''); setReportEnd(e.target.value); }} className="input-field min-w-0 flex-1 sm:max-w-[150px]" />
-          </div>
+          {/* Type chips */}
           {reportTab === 'parties' ? (
-            <div className="w-full sm:w-auto flex items-center gap-1">
-              <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
-              <select value={reportPartyType} onChange={e => setReportPartyType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
-                <option value="">All Parties</option>
-                <option value="buyer">Buyers</option>
-                <option value="seller">Sellers</option>
-              </select>
-              {reportPartyType && (
-                <button onClick={() => setReportPartyType('')} className="text-gray-400 hover:text-gray-600 p-1" title="Clear party filter">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-gray-400 text-xs font-medium mr-1">Type:</span>
+              {[
+                { key: '', label: 'All' },
+                { key: 'buyer', label: 'Buyers' },
+                { key: 'seller', label: 'Sellers' },
+              ].map(opt => (
+                <button
+                  key={opt.key || 'all'}
+                  onClick={() => setReportPartyType(opt.key)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                    reportPartyType === opt.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 hover:bg-gray-100 border-gray-300'
+                  }`}
+                >
+                  {opt.label}
                 </button>
-              )}
+              ))}
             </div>
           ) : (
-            <div className="w-full sm:w-auto flex items-center gap-2">
-              <span className="text-gray-500 shrink-0 hidden sm:inline">Type:</span>
-              <select value={reportEntryType} onChange={e => setReportEntryType(e.target.value)} className="input-field min-w-0 flex-1 sm:max-w-[130px]">
-                <option value="">All Types</option>
-                <option value="IN">IN</option>
-                <option value="OUT">OUT</option>
-              </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-gray-400 text-xs font-medium mr-1">Type:</span>
+              {[
+                { key: '', label: 'All' },
+                { key: 'IN', label: 'IN' },
+                { key: 'OUT', label: 'OUT' },
+              ].map(opt => (
+                <button
+                  key={opt.key || 'all'}
+                  onClick={() => setReportEntryType(opt.key)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                    reportEntryType === opt.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 hover:bg-gray-100 border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           )}
+
+          <span className="w-px h-5 bg-gray-200 shrink-0" />
+
+          {/* Period chips */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-gray-400 text-xs font-medium mr-1">Period:</span>
+            {REPORT_PRESETS.map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => { setReportDateOpen(false); handleReportPeriod(opt.key); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                  reportPeriod === opt.key && !reportStart
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 border-gray-300'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date range (last filter) */}
+          <div className="relative">
+            <button
+              onClick={() => setReportDateOpen(o => !o)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors flex items-center gap-1.5 ${
+                reportStart || reportEnd ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+              }`}
+              title="Pick a custom date range"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              {reportDateLabel}
+              <svg className={`w-3 h-3 transition-transform ${reportDateOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {reportDateOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setReportDateOpen(false)} />
+                <div className="absolute top-full left-0 z-50 mt-1.5">
+                  <CalendarDateRangePicker
+                    start={reportStart}
+                    end={reportEnd}
+                    onChange={(s, e) => { setReportPeriod(''); setReportStart(s); setReportEnd(e); }}
+                  />
+                  <button
+                    onClick={() => { setReportStart(''); setReportEnd(''); setReportPeriod('all'); setReportDateOpen(false); }}
+                    className="mt-2 w-full text-center text-xs font-medium text-gray-500 hover:text-red-600 underline"
+                  >
+                    Clear date range
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <div className="ml-auto flex items-center gap-4 shrink-0 pl-2">
             <span className="flex items-center gap-1.5 text-red-600">
               <span className="w-2 h-2 rounded-full bg-red-500"></span>
@@ -950,6 +1070,7 @@ const KiranaStore = () => {
       {tab === 'buyers' || tab === 'sellers' ? renderDashboard() : null}
       {tab === 'cashbook' && renderCashbook()}
       {tab === 'reports' && renderReports()}
+      {detail && tab === 'reports' && !isMobile && renderDetail()}
 
       {/* Cash detail overlay (desktop) */}
       {renderCashDetail()}

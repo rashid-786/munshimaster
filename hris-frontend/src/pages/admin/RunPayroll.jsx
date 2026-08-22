@@ -342,11 +342,11 @@ const RunPayroll = ({ onSwitchToHistory }) => {
                       <td className="table-cell text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <input type="text" inputMode="decimal" value={deductionInput[r.employeeId] ?? (adv / 100).toFixed(2)}
-                            disabled={r.outstandingAdvance <= 0 || r.salaryType === 'piece'}
+                            disabled={r.outstandingAdvance <= 0}
                             onChange={e => handleDeductionChange(r, e.target.value)}
                             className="w-24 text-xs border border-gray-300 rounded px-1.5 py-1 text-right disabled:bg-gray-100 disabled:text-gray-400" />
                           <span className="text-[10px] text-gray-400">
-                            {r.salaryType === 'piece' ? 'No advance' : r.outstandingAdvance > 0 ? `Bal: ${formatINR(r.outstandingAdvance)}` : 'No advance'}
+                            {r.outstandingAdvance > 0 ? `Bal: ${formatINR(r.outstandingAdvance)}` : 'No advance'}
                           </span>
                         </div>
                       </td>

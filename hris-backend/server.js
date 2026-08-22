@@ -30,6 +30,7 @@ const reportRoutes = require('./routes/report.routes');
 const kiranaRoutes = require('./routes/kirana.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
+const subscriptionController = require('./controllers/subscription.controller');
 const retentionRoutes = require('./routes/retention.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const emailLogRoutes = require('./routes/emailLog.routes');
@@ -63,10 +64,8 @@ const { planGate } = require('./middleware/planGate');
 const { attachTenant } = require('./middleware/attachTenant');
 const { requireFeature } = require('./middleware/requireFeature');
 const { startLifecycleCron } = require('./cron/subscriptionLifecycle');
-const { startRecurringInvoiceCron } = require('./cron/recurringInvoices');
-const { startWhatsAppCron } = require('./cron/whatsappReminders');
 const { startAuditCleanupCron } = require('./cron/auditCleanup');
-const { startOverdueCron } = require('./cron/overdueCheck');
+const { startNotificationCron } = require('./cron/notificationGenerator');
 const { apiLimiter, paymentLimiter, superLimiter, publicLimiter, notificationsLimiter } = require('./middleware/rateLimiter');
 const db = require('./config/db');
 require('dotenv').config();
@@ -87,6 +86,9 @@ app.use('/api/v1/auth', authRoutes);
 // Public endpoints with generous rate limit
 app.use('/api/v1/public', publicLimiter);
 app.use('/api/v1/public/portal', portalRoutes);
+
+// Public plan catalog — global, no tenant context required
+app.get('/api/v1/core/subscription/plans', subscriptionController.getPlans);
 
 // Public settings endpoint (no auth required)
 app.get('/api/v1/public/settings', async (req, res) => {
@@ -315,9 +317,7 @@ app.listen(PORT, () => {
   // Start subscription expiry checker (every 10 minutes)
   if (process.env.NODE_ENV !== 'test') {
     startLifecycleCron(10 * 60 * 1000);
-    startRecurringInvoiceCron(86400000);
-    startWhatsAppCron(86400000);
     startAuditCleanupCron(86400000);
-   startOverdueCron(3600000);
+   startNotificationCron(3600000);
   }
 });

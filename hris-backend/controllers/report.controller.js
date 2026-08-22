@@ -57,7 +57,7 @@ async function fetchBalance(tenantId, { startDate, endDate, type, paymentMethod,
   return rows;
 }
 
-async function fetchKiranaParties(tenantId, { partyType } = {}) {
+async function fetchKiranaParties(tenantId, { partyType, startDate, endDate } = {}) {
   let query = 'SELECT id, type, name, phone FROM kirana_parties WHERE tenant_id = ?';
   const params = [tenantId];
   if (partyType) { query += ' AND type = ?'; params.push(partyType); }
@@ -69,7 +69,17 @@ async function fetchKiranaParties(tenantId, { partyType } = {}) {
       "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END),0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END),0) as g FROM kirana_transactions WHERE party_id=?",
       [p.id]
     );
-    result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g });
+    let transactions = [];
+    if (startDate || endDate) {
+      let tq = 'SELECT id, type, amount, note, entry_date FROM kirana_transactions WHERE party_id = ?';
+      const tp = [p.id];
+      if (startDate) { tq += ' AND entry_date >= ?'; tp.push(startDate); }
+      if (endDate) { tq += ' AND entry_date <= ?'; tp.push(endDate); }
+      tq += ' ORDER BY entry_date DESC, created_at DESC';
+      const [trows] = await db.execute(tq, tp);
+      transactions = trows;
+    }
+    result.push({ ...p, totalReceived: txns[0].r, totalGiven: txns[0].g, balance: txns[0].r - txns[0].g, transactions });
   }
   return result;
 }

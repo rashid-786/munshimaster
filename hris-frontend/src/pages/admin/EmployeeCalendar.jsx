@@ -412,6 +412,7 @@ const EmployeeCalendar = () => {
                       <div className="flex flex-col">
                         <span className="text-xs font-medium text-gray-800">
                           {emp.employee.firstName} {emp.employee.lastName}
+                          {empPay > 0 && <span className="text-gray-500"> ({empPay}/hr)</span>}
                         </span>
                         {empHours > 0 ? (
                           empMissingPay ? (
