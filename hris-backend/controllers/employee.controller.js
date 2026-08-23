@@ -30,8 +30,8 @@ const { firstName, lastName, email, password, role, baseSalary, phone, professio
       'SELECT id FROM employees WHERE phone = ? AND tenant_id = ?',
       [phone, tenantId]
     );
-    if (phoneExists.length > 0) {
-      return res.status(400).json({ error: 'An employee with this phone number already exists.' });
+    if (phoneExists.length > 0 && (role || 'employee') !== 'employee') {
+      return res.status(400).json({ error: 'Phone number already in use by another staff member.' });
     }
 
     const employeeId = uuidv4();
@@ -110,8 +110,8 @@ exports.updateEmployee = async (req, res) => {
       'SELECT id FROM employees WHERE phone = ? AND tenant_id = ? AND id != ?',
       [phone, tenantId, id]
     );
-    if (phoneExists.length > 0) {
-      return res.status(400).json({ error: 'Phone number already in use by another employee.' });
+    if (phoneExists.length > 0 && (role || 'employee') !== 'employee') {
+      return res.status(400).json({ error: 'Phone number already in use by another staff member.' });
     }
 
     const updates = [];
