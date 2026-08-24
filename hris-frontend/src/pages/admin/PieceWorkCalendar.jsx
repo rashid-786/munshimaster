@@ -343,16 +343,24 @@ const PieceWorkCalendar = () => {
                   const empDays = emp.days || [];
                   return (
                     <tr key={emp.employee.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[140px]">
+                      <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[150px]">
                         <div className="flex flex-col">
                           <span className="text-xs font-medium text-gray-800">
                             {emp.employee.firstName} {emp.employee.lastName}
                           </span>
                           {(() => {
+                            const paidQty = empDays.reduce((s, d) => s + (d.type === 'paid' ? (d.totalQuantity || 0) : 0), 0);
                             const dueQty = empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalQuantity : 0), 0);
+                            const paidAmt = empDays.reduce((s, d) => s + (d.type === 'paid' ? (d.totalAmount || 0) : 0), 0);
                             const dueAmt = empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalAmount : 0), 0);
-                            if (dueQty === 0 && dueAmt === 0) return <span className="text-[10px] text-gray-300 font-medium">No Unpaid</span>;
-                            return <span className="text-[10px] text-gray-400 font-medium">{dueQty} unpaid · {formatINR(dueAmt)}</span>;
+                            return (
+                              <div className="text-[10px] leading-tight mt-0.5 space-y-0.5">
+                                <span className="block text-emerald-600 font-medium">{formatINR(paidAmt)} Paid</span>
+                                <span className="block text-amber-600 font-medium">{formatINR(dueAmt)} Unpaid</span>
+                                <span className="block text-emerald-600 font-medium">{paidQty} Qty Paid</span>
+                                <span className="block text-amber-600 font-medium">{dueQty} Qty Due</span>
+                              </div>
+                            );
                           })()}
                         </div>
                       </td>

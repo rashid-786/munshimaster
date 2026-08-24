@@ -6,10 +6,10 @@ import { formatINR } from '../utils/currency';
 
 const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-function DayCell({ day, hourly, onSelect }) {
+function DayCell({ day, hourly, onSelect, weekendDays, selected }) {
   const dt = new Date(day.date + 'T00:00:00');
   const dow = dt.getDay();
-  const weekend = dow === 0 || dow === 6;
+  const weekend = (weekendDays || [0]).includes(dow);
   const type = day.type;
   const paid = day.paid || day.type === 'paid';
   const absent = type === 'absent';
@@ -26,34 +26,40 @@ function DayCell({ day, hourly, onSelect }) {
   if (hourly) {
     if (weekend) { dot = 'bg-red-300'; cellBg = 'bg-red-50'; border = 'border-red-100'; dayNumCls = 'text-red-400'; }
     else if (type === 'present') { dot = paid ? 'bg-emerald-500' : 'bg-amber-500'; cellBg = paid ? 'bg-emerald-100' : 'bg-amber-100'; border = paid ? 'border-emerald-200' : 'border-amber-200'; dayNumCls = 'text-gray-700'; }
-    else if (absent) { dot = 'bg-rose-500'; cellBg = 'bg-rose-100'; border = 'border-rose-200'; dayNumCls = 'text-gray-700'; }
+    else if (absent) { dot = 'bg-rose-500'; cellBg = 'bg-rose-100'; border = 'border-rose-200'; dayNumCls = 'text-gray-700'; sub = 'Absent'; subCls = 'text-rose-600'; }
     else if (leave) { dot = 'bg-amber-500'; cellBg = 'bg-amber-100'; border = 'border-amber-200'; dayNumCls = 'text-gray-700'; }
     else { cellBg = 'bg-gray-50'; border = 'border-gray-200'; dot = 'bg-gray-300'; dayNumCls = 'text-gray-500'; }
-    sub = day.hours != null && day.hours > 0 ? day.hours : null;
-    subCls = paid ? 'text-emerald-700' : sub != null ? 'text-amber-700' : '';
+    if (sub == null) {
+      sub = day.hours != null && day.hours > 0 ? day.hours : null;
+      subCls = paid ? 'text-emerald-700' : sub != null ? 'text-amber-700' : '';
+    }
   } else {
     if (type === 'paid') { dot = 'bg-emerald-500'; cellBg = 'bg-emerald-100'; border = 'border-emerald-200'; dayNumCls = 'text-gray-700'; }
     else if (type === 'unpaid') { dot = 'bg-amber-500'; cellBg = 'bg-amber-100'; border = 'border-amber-200'; dayNumCls = 'text-gray-700'; }
-    else if (type === 'absent') { dot = 'bg-rose-500'; cellBg = 'bg-rose-100'; border = 'border-rose-200'; dayNumCls = 'text-gray-700'; }
+    else if (absent) { dot = 'bg-rose-500'; cellBg = 'bg-rose-100'; border = 'border-rose-200'; dayNumCls = 'text-gray-700'; sub = 'Absent'; subCls = 'text-rose-600'; }
     else { cellBg = 'bg-gray-50'; border = 'border-gray-200'; dot = 'bg-gray-300'; dayNumCls = 'text-gray-500'; }
-    sub = day.totalQuantity && day.totalQuantity > 0 ? day.totalQuantity : null;
-    subCls = paid ? 'text-emerald-700' : sub != null ? 'text-amber-700' : '';
+    if (sub == null) {
+      sub = day.totalQuantity && day.totalQuantity > 0 ? day.totalQuantity : null;
+      subCls = paid ? 'text-emerald-700' : sub != null ? 'text-amber-700' : '';
+    }
   }
 
-  const clickable = !hourly && day.entries?.length > 0 && !idle;
+  // Item details only for cells with actual piece-work entries (not absent/idle).
+  const clickable = !hourly && !absent && !idle && day.entries?.length > 0;
   const Tag = clickable ? 'button' : 'div';
 
   return (
     <Tag
       type={clickable ? 'button' : undefined}
       onClick={clickable ? () => onSelect?.(day) : undefined}
-      className={`${cellBg} border ${border} rounded-md p-1 flex flex-col items-center ${future ? 'opacity-55' : ''} ${clickable ? 'cursor-pointer hover:ring-1 hover:ring-indigo-400' : ''}`}
+      style={selected ? { borderWidth: 2, borderColor: '#4f46e5' } : undefined}
+      className={`${cellBg} border ${border} rounded-md p-1 flex flex-col items-center transition-colors ${future ? 'opacity-55' : ''} ${clickable ? 'cursor-pointer hover:border-indigo-400' : ''}`}
       title={clickable ? 'View day items' : undefined}
     >
       <span className={`text-[9px] font-medium ${weekend ? 'text-red-400' : idle ? 'text-gray-400' : 'text-gray-300'}`}>{DOW[dow]}</span>
       <span className={`text-xs font-semibold ${dayNumCls}`}>{dt.getDate()}</span>
       <span className={`w-2.5 h-2.5 rounded-full mt-0.5 border border-black/10 ${dot}`} />
-      {sub != null && <span className={`text-[9px] font-semibold mt-0.5 ${subCls}`}>{sub}{hourly ? 'h' : ''}</span>}
+      {sub != null && <span className={`text-[9px] font-semibold mt-0.5 ${subCls}`}>{sub}{!absent && !hourly ? '' : hourly && !absent ? 'h' : ''}</span>}
     </Tag>
   );
 }
@@ -62,8 +68,23 @@ export default function StaffCalendarDrawer({ open, onClose, employee, startDate
   const [loading, setLoading] = useState(false);
   const [days, setDays] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [weekendDays, setWeekendDays] = useState([0]);
   const hourly = employee?.salaryType !== 'piece';
   const rateRs = Number(employee?.hourlyRate || 0) / 100;
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    hrService.getTenantSettings()
+      .then((res) => {
+        if (!active) return;
+        // Respect configured weekend days exactly; an empty array means NO weekends.
+        const wd = res?.settings?.weekendDays;
+        setWeekendDays(Array.isArray(wd) ? wd : [0]);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !employee?.employeeId) return;
@@ -155,7 +176,7 @@ export default function StaffCalendarDrawer({ open, onClose, employee, startDate
       ) : (
         <div className="overflow-x-auto">
           <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(52px, 1fr))' }}>
-            {days.map((day, i) => <DayCell key={day.date || i} day={day} hourly={hourly} onSelect={setSelectedDay} />)}
+            {days.map((day, i) => <DayCell key={day.date || i} day={day} hourly={hourly} onSelect={setSelectedDay} weekendDays={weekendDays} selected={!!selectedDay && selectedDay.date === day.date} />)}
           </div>
         </div>
       )}
@@ -170,6 +191,20 @@ export default function StaffCalendarDrawer({ open, onClose, employee, startDate
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               Close
             </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-gray-100 bg-white">
+            <div className="rounded-lg border border-gray-200 px-3 py-2 text-center">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Total Qty</p>
+              <p className="text-base font-bold text-gray-800">
+                {selectedDay.entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-200 px-3 py-2 text-center">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Total Amount</p>
+              <p className="text-base font-bold text-indigo-600">
+                {formatINR(selectedDay.entries.reduce((s, e) => s + parseInt(e.calculatedAmount || 0, 10), 0))}
+              </p>
+            </div>
           </div>
           <div className="divide-y divide-gray-100">
             {selectedDay.entries.map((e, idx) => (

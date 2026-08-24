@@ -403,30 +403,30 @@ const EmployeeCalendar = () => {
               {calendarEmployees.map(emp => {
                 const empDays = emp.days || [];
                 const empHours = empDays.reduce((sum, day) => sum + (day.paid ? 0 : (day.hours || 0)), 0);
+                const paidHours = empDays.reduce((sum, day) => sum + (day.paid ? (day.hours || 0) : 0), 0);
                 const empPay = Number(emp.employee.payPerHour || 0);
                 const empDue = empHours * empPay * 100;
+                const empPaid = paidHours * empPay * 100;
                 const empMissingPay = empHours > 0 && empPay <= 0;
                 return (
                   <tr key={emp.employee.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[140px]">
+                    <td className="sticky left-0 bg-white z-10 px-2 py-2 whitespace-nowrap border-r border-gray-100 max-w-[150px]">
                       <div className="flex flex-col">
                         <span className="text-xs font-medium text-gray-800">
                           {emp.employee.firstName} {emp.employee.lastName}
                           {empPay > 0 && <span className="text-gray-500"> ({empPay}/hr)</span>}
                         </span>
-                        {empHours > 0 ? (
-                          empMissingPay ? (
-                            <span className="text-[10px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — unpaid amount defaults to ₹0">
-                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
-                              {empHours.toFixed(1)}h · no pay/hr
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-amber-600 font-medium">
-                              {empHours.toFixed(1)}h · {formatINR(empDue)}
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-[10px] text-gray-300">No Unpaid</span>
+                        <div className="text-[10px] leading-tight mt-0.5 space-y-0.5">
+                          <span className="block text-emerald-600 font-medium">{formatINR(empPaid)} Paid</span>
+                          <span className="block text-amber-600 font-medium">{formatINR(empDue)} Unpaid</span>
+                          <span className="block text-emerald-600 font-medium">{paidHours.toFixed(1)}h Paid</span>
+                          <span className="block text-amber-600 font-medium">{empHours.toFixed(1)}h Due</span>
+                        </div>
+                        {empMissingPay && (
+                          <span className="text-[9px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — unpaid amount defaults to ₹0">
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                            no pay/hr
+                          </span>
                         )}
                       </div>
                     </td>
