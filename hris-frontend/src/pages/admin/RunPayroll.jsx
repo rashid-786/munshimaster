@@ -55,6 +55,7 @@ const RunPayroll = ({ onSwitchToHistory }) => {
   const [partialInput, setPartialInput] = useState({});
   const [partialCents, setPartialCents] = useState({});
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -108,8 +109,13 @@ const RunPayroll = ({ onSwitchToHistory }) => {
 
   const visibleRuns = useMemo(() => {
     const q = search.toLowerCase();
-    return allRuns.filter(r => !q || r.employeeName.toLowerCase().includes(q));
-  }, [allRuns, search]);
+    return allRuns.filter(r => {
+      if (q && !r.employeeName.toLowerCase().includes(q)) return false;
+      if (typeFilter === 'piece' && r.salaryType !== 'piece') return false;
+      if (typeFilter === 'hourly' && r.salaryType === 'piece') return false;
+      return true;
+    });
+  }, [allRuns, search, typeFilter]);
 
   const selectedRuns = useMemo(() => allRuns.filter(r => selectedIds.has(r.employeeId)), [allRuns, selectedIds]);
 
@@ -235,9 +241,6 @@ const RunPayroll = ({ onSwitchToHistory }) => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Run Payroll</h2>
-        <button onClick={() => onSwitchToHistory ? onSwitchToHistory() : navigate('/admin/payroll')} className="btn-secondary text-sm self-start">
-          View History
-        </button>
       </div>
 
       {message && (
@@ -308,7 +311,24 @@ const RunPayroll = ({ onSwitchToHistory }) => {
           <h3 className="text-sm font-semibold text-gray-900">
             Employees {selectedIds.size > 0 && <span className="text-gray-400 font-normal">({selectedIds.size} selected)</span>}
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+              {[
+                { key: 'all', label: 'All Types' },
+                { key: 'piece', label: 'Per Piece' },
+                { key: 'hourly', label: 'Monthly/Hourly' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setTypeFilter(opt.key)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    typeFilter === opt.key ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <div className="relative max-w-xs w-full sm:w-56">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <input type="text" placeholder="Search employees..." value={search} onChange={e => setSearch(e.target.value)}

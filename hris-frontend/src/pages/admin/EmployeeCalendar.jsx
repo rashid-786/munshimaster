@@ -417,10 +417,10 @@ const EmployeeCalendar = () => {
                           {empPay > 0 && <span className="text-gray-500"> ({empPay}/hr)</span>}
                         </span>
                         <div className="text-[10px] leading-tight mt-0.5 space-y-0.5">
-                          <span className="block text-emerald-600 font-medium">{formatINR(empPaid)} Paid</span>
-                          <span className="block text-amber-600 font-medium">{formatINR(empDue)} Unpaid</span>
-                          <span className="block text-emerald-600 font-medium">{paidHours.toFixed(1)}h Paid</span>
-                          <span className="block text-amber-600 font-medium">{empHours.toFixed(1)}h Due</span>
+                          {empPaid > 0 && <span className="block text-emerald-600 font-medium">{formatINR(empPaid)} Paid</span>}
+                          {empDue > 0 && <span className="block text-amber-600 font-medium">{formatINR(empDue)} Unpaid</span>}
+                          {paidHours > 0 && <span className="block text-emerald-600 font-medium">{paidHours.toFixed(1)}h Paid</span>}
+                          {empHours > 0 && <span className="block text-amber-600 font-medium">{empHours.toFixed(1)}h Due</span>}
                         </div>
                         {empMissingPay && (
                           <span className="text-[9px] text-amber-500 font-medium flex items-center gap-0.5" title="Pay Per Hour not configured — unpaid amount defaults to ₹0">

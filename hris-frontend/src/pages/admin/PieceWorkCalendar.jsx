@@ -355,10 +355,10 @@ const PieceWorkCalendar = () => {
                             const dueAmt = empDays.reduce((s, d) => s + (d.type !== 'none' && d.type !== 'paid' ? d.totalAmount : 0), 0);
                             return (
                               <div className="text-[10px] leading-tight mt-0.5 space-y-0.5">
-                                <span className="block text-emerald-600 font-medium">{formatINR(paidAmt)} Paid</span>
-                                <span className="block text-amber-600 font-medium">{formatINR(dueAmt)} Unpaid</span>
-                                <span className="block text-emerald-600 font-medium">{paidQty} Qty Paid</span>
-                                <span className="block text-amber-600 font-medium">{dueQty} Qty Due</span>
+                                {paidAmt > 0 && <span className="block text-emerald-600 font-medium">{formatINR(paidAmt)} Paid</span>}
+                                {dueAmt > 0 && <span className="block text-amber-600 font-medium">{formatINR(dueAmt)} Unpaid</span>}
+                                {paidQty > 0 && <span className="block text-emerald-600 font-medium">{paidQty} Qty Paid</span>}
+                                {dueQty > 0 && <span className="block text-amber-600 font-medium">{dueQty} Qty Due</span>}
                               </div>
                             );
                           })()}

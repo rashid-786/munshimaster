@@ -46,6 +46,7 @@ const PayrollConsole = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [period, setPeriod] = useState('monthly');
   const [custom, setCustom] = useState({ start: '', end: '' });
   const [selected, setSelected] = useState(null);
@@ -134,6 +135,8 @@ const PayrollConsole = () => {
     const q = search.toLowerCase();
     return history.filter(r => {
       if (q && !`${r.first_name} ${r.last_name}`.toLowerCase().includes(q)) return false;
+      if (typeFilter === 'piece' && r.salary_type !== 'piece') return false;
+      if (typeFilter === 'hourly' && r.salary_type === 'piece') return false;
       const start = r.pay_period_start;
       const end = r.pay_period_end;
       if (period === 'custom') {
@@ -145,7 +148,7 @@ const PayrollConsole = () => {
       if (!range.start || !range.end) return true;
       return start >= range.start && end <= range.end;
     });
-  }, [history, search, period, custom, range]);
+  }, [history, search, typeFilter, period, custom, range]);
 
   const totalStaff = employees.length;
 
@@ -279,6 +282,20 @@ const PayrollConsole = () => {
             )}
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-100 rounded-lg">
+              {[
+                { key: 'all', label: 'All Types' },
+                { key: 'piece', label: 'Per Piece' },
+                { key: 'hourly', label: 'Monthly/Hourly' },
+              ].map(opt => (
+                <button key={opt.key} onClick={() => setTypeFilter(opt.key)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    typeFilter === opt.key ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-100 rounded-lg">
               {PERIODS.map(p => (
                 <button key={p.key} onClick={() => handlePeriod(p.key)}
