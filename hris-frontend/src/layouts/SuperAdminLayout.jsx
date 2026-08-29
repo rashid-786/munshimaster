@@ -16,6 +16,8 @@ const PAGE_TITLES = {
   '/super/audit-logs': 'Audit Logs',
   '/super/global-config': 'Global Configuration',
   '/super/razorpay-settings': 'Razorpay Settings',
+  '/super/legal': 'Legal Documents',
+  '/super/account-deletion': 'Account Deletion Requests',
 };
 
 export default function SuperAdminLayout() {

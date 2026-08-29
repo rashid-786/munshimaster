@@ -9,6 +9,8 @@ const referralController = require('../controllers/referral.controller');
 const analyticsController = require('../controllers/analytics.controller');
 const gstTaxController = require('../controllers/gstTax.controller');
 const unitMasterController = require('../controllers/unitMaster.controller');
+const legalController = require('../controllers/legalDocument.controller');
+const accountDeletionController = require('../controllers/accountDeletion.controller');
 const { authenticateSuperAdmin, auditSuperAdminAction } = require('../middleware/superAdmin');
 
 // ─── Auth (no middleware) ──────────────────────────────────────────
@@ -202,5 +204,32 @@ router.get('/action-log/actors', authenticateSuperAdmin, superController.getActi
 // ─── Bulk Operations ──────────────────────────────────────────────
 router.post('/bulk/override', authenticateSuperAdmin,
   auditSuperAdminAction('admin.bulk_action', 'bulk'), superController.bulkOverride);
+
+// ─── Legal Documents ─────────────────────────────────────────────
+router.get('/legal', authenticateSuperAdmin, legalController.listDocuments);
+router.get('/legal/:id', authenticateSuperAdmin, legalController.getDocument);
+router.get('/legal/:id/acceptances', authenticateSuperAdmin, legalController.listAcceptances);
+router.post('/legal', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.created', 'legal_document'), legalController.createDocument);
+router.put('/legal/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.updated', 'legal_document'), legalController.updateDocument);
+router.post('/legal/:id/versions', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.version_created', 'legal_document'), legalController.createVersion);
+router.put('/legal/:id/versions/:versionId', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.version_updated', 'legal_document'), legalController.updateDraftVersion);
+router.post('/legal/:id/versions/:versionId/publish', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.version_published', 'legal_document'), legalController.publishVersion);
+router.post('/legal/:id/archive', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.archived', 'legal_document'), legalController.archiveDocument);
+router.delete('/legal/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('legal_document.deleted', 'legal_document'), legalController.deleteDocument);
+
+// ─── Account Deletion Requests ─────────────────────────────────
+router.get('/account-deletion', authenticateSuperAdmin, accountDeletionController.listRequests);
+router.get('/account-deletion/:id', authenticateSuperAdmin, accountDeletionController.getRequest);
+router.post('/account-deletion/:id/approve', authenticateSuperAdmin,
+  auditSuperAdminAction('account_deletion.approved', 'account_deletion'), accountDeletionController.approveRequest);
+router.post('/account-deletion/:id/reject', authenticateSuperAdmin,
+  auditSuperAdminAction('account_deletion.rejected', 'account_deletion'), accountDeletionController.rejectRequest);
 
 module.exports = router;

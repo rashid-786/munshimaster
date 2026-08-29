@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { assertTrialEligible } = require('./trialEligibility.service');
 
 /**
  * Super Admin Service
@@ -899,11 +900,17 @@ async function bulkUpdatePlanFeatures(planId, features) {
  * Change a tenant's plan (with audit trail)
  */
 async function changeTenantPlan(tenantId, newPlan, opts = {}) {
-  const { adminId, adminName, reason, startDate, endDate, trialStartDate, trialEndDate } = opts;
+  const { adminId, adminName, reason, startDate, endDate, trialStartDate, trialEndDate, force } = opts;
 
-  const [tenants] = await db.execute('SELECT id, company_name, subscription_plan, subscription_status FROM hris_saas.tenants WHERE id = ?', [tenantId]);
+  const [tenants] = await db.execute('SELECT id, company_name, subscription_plan, subscription_status, phone FROM hris_saas.tenants WHERE id = ?', [tenantId]);
   if (tenants.length === 0) throw new Error('Tenant not found.');
   const tenant = tenants[0];
+
+  // Granting a trial through a plan change is also a trial activation flow —
+  // enforce the one-trial-per-account rule unless the admin forces it.
+  if (trialEndDate) {
+    await assertTrialEligible(tenantId, tenant.phone, { force: force === true });
+  }
 
   const [planRows] = await db.execute('SELECT * FROM hris_saas.subscription_plans WHERE id = ?', [newPlan.toLowerCase()]);
   if (planRows.length === 0) throw new Error(`Plan "${newPlan}" not found.`);

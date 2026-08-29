@@ -365,4 +365,64 @@ export const superService = {
     const response = await api.get('/super/dashboard/expiring-trials', { params: { days } });
     return response.data;
   },
+
+  // ─── Legal Documents ─────────────────────────────
+  listLegalDocuments: async () => {
+    const response = await api.get('/super/legal');
+    return response.data;
+  },
+  getLegalDocument: async (id) => {
+    const response = await api.get(`/super/legal/${id}`);
+    return response.data;
+  },
+  createLegalDocument: async (data) => {
+    const response = await api.post('/super/legal', data);
+    return response.data;
+  },
+  updateLegalDocument: async (id, data) => {
+    const response = await api.put(`/super/legal/${id}`, data);
+    return response.data;
+  },
+  createLegalVersion: async (id, data) => {
+    const response = await api.post(`/super/legal/${id}/versions`, data);
+    return response.data;
+  },
+  updateLegalDraftVersion: async (id, versionId, data) => {
+    const response = await api.put(`/super/legal/${id}/versions/${versionId}`, data);
+    return response.data;
+  },
+  publishLegalVersion: async (id, versionId) => {
+    const response = await api.post(`/super/legal/${id}/versions/${versionId}/publish`);
+    return response.data;
+  },
+  archiveLegalDocument: async (id) => {
+    const response = await api.post(`/super/legal/${id}/archive`);
+    return response.data;
+  },
+  deleteLegalDocument: async (id) => {
+    const response = await api.delete(`/super/legal/${id}`);
+    return response.data;
+  },
+  listLegalAcceptances: async (id, params = {}) => {
+    const response = await api.get(`/super/legal/${id}/acceptances`, { params });
+    return response.data;
+  },
+
+  // ─── Account Deletion Requests ─────────────────────
+  listAccountDeletionRequests: async (params = {}) => {
+    const response = await api.get('/super/account-deletion', { params });
+    return response.data;
+  },
+  getAccountDeletionRequest: async (id) => {
+    const response = await api.get(`/super/account-deletion/${id}`);
+    return response.data;
+  },
+  approveAccountDeletion: async (id, reviewNote = '') => {
+    const response = await api.post(`/super/account-deletion/${id}/approve`, { reviewNote });
+    return response.data;
+  },
+  rejectAccountDeletion: async (id, reviewNote = '') => {
+    const response = await api.post(`/super/account-deletion/${id}/reject`, { reviewNote });
+    return response.data;
+  },
 };

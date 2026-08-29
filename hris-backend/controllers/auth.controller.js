@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { validateE164 } = require('../utils/phone');
+const { acceptDocumentsForSignup } = require('../services/legalDocument.service');
 
 async function getDefaultCountryCode() {
   try {
@@ -37,7 +38,7 @@ function generatePassword() {
 
 // 1. REGISTER (phone-only, after OTP verification)
 exports.registerTenant = async (req, res) => {
-  let { phone, referralCode } = req.body;
+  let { phone, referralCode, acceptedLegalDocuments, acceptedLegalSlugs } = req.body;
 
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required.' });
@@ -119,6 +120,21 @@ exports.registerTenant = async (req, res) => {
         }
       } catch (refErr) {
         console.error('[Referral] Failed to apply referral code:', refErr.message);
+      }
+    }
+
+    // Record legal document acceptance for the signup consent checkbox
+    // (e.g. Terms & Conditions + Privacy Policy). Best-effort.
+    const agreedSlugs = Array.isArray(acceptedLegalSlugs)
+      ? acceptedLegalSlugs
+      : acceptedLegalDocuments === true
+        ? ['terms-conditions', 'privacy-policy']
+        : [];
+    if (agreedSlugs.length > 0) {
+      try {
+        await acceptDocumentsForSignup(tenantId, employeeId, agreedSlugs);
+      } catch (accErr) {
+        console.error('[Register] Failed to record legal acceptance:', accErr.message);
       }
     }
 

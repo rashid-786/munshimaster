@@ -60,6 +60,8 @@ const consolidatedRoutes = require('./routes/consolidated.routes');
 const invoiceTemplateRoutes = require('./routes/invoiceTemplate.routes');
 const partyTransactionsRoutes = require('./controllers/partyTransactions.controller');
 const transactionsRoutes = require('./routes/transactions.routes');
+const { router: legalRoutes, publicRouter: legalPublicRoutes } = require('./routes/legal.routes');
+const accountDeletionRoutes = require('./routes/accountDeletion.routes');
 const { planGate } = require('./middleware/planGate');
 const { attachTenant } = require('./middleware/attachTenant');
 const { requireFeature } = require('./middleware/requireFeature');
@@ -178,6 +180,34 @@ app.get('/api/v1/public/states', async (req, res) => {
   } catch (e) { console.error('/states error:', e.message); res.status(500).json({ error: 'Failed to fetch states.' }); }
 });
 
+// Realtime platform stats for the welcome/home screen (no auth required).
+// Sources: active tenant accounts + branch (entity) city/location names.
+app.get('/api/v1/public/stats', async (req, res) => {
+  try {
+    const [users] = await db.execute(
+      "SELECT COUNT(*) AS c FROM hris_saas.tenants WHERE status IS DISTINCT FROM 'inactive'"
+    );
+    const [cityRows] = await db.execute(
+      `SELECT COUNT(DISTINCT NULLIF(TRIM(branch_name), '')) AS c
+         FROM hris_saas.tenants
+        WHERE status = 'active'
+          AND branch_name IS NOT NULL
+          AND TRIM(branch_name) <> ''`
+    );
+    // `rating` stays null until a rating system exists.
+    res.json({
+      activeUsers: Number(users[0]?.c || 0),
+      cities: Number(cityRows[0]?.c || 0),
+      rating: null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch stats.' });
+  }
+});
+
+// Public legal document compliance URLs (e.g. /api/v1/public/legal/privacy-policy)
+app.use('/api/v1/public/legal', legalPublicRoutes);
+
 // Contact form endpoint (no auth required)
 app.post('/api/v1/public/contact', async (req, res) => {
   const { name, email, message } = req.body;
@@ -286,6 +316,8 @@ app.use('/api/v1/core/entities', entityRoutes);
 app.use('/api/v1/core/reports/consolidated', planGate(1), consolidatedRoutes);
 app.use('/api/v1/core/transactions', requireFeature('invoices'), transactionsRoutes);
 app.use('/api/v1/core/invoice-templates', invoiceTemplateRoutes);
+app.use('/api/v1/core/legal', legalRoutes);
+app.use('/api/v1/core/account-deletion', accountDeletionRoutes);
 app.get('/api/v1/core/parties/:type/:id/transactions', partyTransactionsRoutes.getTransactions);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/uploads', express.static('uploads'));

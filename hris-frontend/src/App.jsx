@@ -78,6 +78,8 @@ import GlobalConfig from './pages/super/GlobalConfig';
 import GstTaxConfig from './pages/super/GstTaxConfig';
 import UnitMasterConfig from './pages/super/UnitMasterConfig';
 import RazorpaySettings from './pages/super/RazorpaySettings';
+import LegalDocuments from './pages/super/LegalDocuments';
+import AccountDeletionRequests from './pages/super/AccountDeletionRequests';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -142,6 +144,8 @@ function App() {
             <Route path="units" element={<UnitMasterConfig />} />
             <Route path="gst-tax" element={<GstTaxConfig />} />
             <Route path="razorpay-settings" element={<RazorpaySettings />} />
+            <Route path="legal" element={<LegalDocuments />} />
+            <Route path="account-deletion" element={<AccountDeletionRequests />} />
 
           </Route>
 

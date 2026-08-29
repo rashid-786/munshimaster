@@ -21,6 +21,8 @@ const EXPORT_TABLES = [
   { table: 'payroll', query: 'SELECT * FROM payroll WHERE tenant_id = ? ORDER BY created_at' },
   { table: 'employee_advances', query: 'SELECT * FROM employee_advances WHERE tenant_id = ? ORDER BY created_at' },
   { table: 'staff_replacements', query: 'SELECT * FROM staff_replacements WHERE tenant_id = ? ORDER BY created_at' },
+  { table: 'employee_piece_rates', query: 'SELECT * FROM employee_piece_rates WHERE tenant_id = ? ORDER BY created_at' },
+  { table: 'piece_work_entries', query: 'SELECT * FROM piece_work_entries WHERE tenant_id = ? ORDER BY created_at' },
   { table: 'kirana_parties', query: 'SELECT * FROM kirana_parties WHERE tenant_id = ? ORDER BY created_at' },
   { table: 'kirana_transactions', query: 'SELECT * FROM kirana_transactions WHERE tenant_id = ? ORDER BY created_at' },
   { table: 'kirana_staff', query: 'SELECT * FROM kirana_staff WHERE tenant_id = ? ORDER BY created_at' },
@@ -38,12 +40,12 @@ exports.exportData = async (req, res) => {
   const format = req.query.format || 'json'; // json or csv
 
   try {
-    const [tenantRow] = await db.execute('SELECT company_name, email FROM tenants WHERE id = ?', [tenantId]);
+    const [tenantRow] = await db.execute('SELECT company_name FROM tenants WHERE id = ?', [tenantId]);
     if (tenantRow.length === 0) return res.status(404).json({ error: 'Tenant not found.' });
     const companyName = tenantRow[0].company_name;
 
-    const archiver = require('archiver');
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archiver = await import('archiver');
+    const archive = new archiver.ZipArchive({ zlib: { level: 9 } });
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${companyName.replace(/[^a-zA-Z0-9]/g, '_')}_data_export.zip"`);
@@ -97,10 +99,15 @@ async function buildTenantInfo(tenantId) {
     const [rows] = await db.execute('SELECT * FROM tenants WHERE id = ?', [tenantId]);
     if (rows.length === 0) return { tenantId };
     const t = rows[0];
+    // Contact email lives on the tenant admin employee, not the tenants row.
+    const [adminRows] = await db.execute(
+      "SELECT email FROM employees WHERE tenant_id = ? AND role = 'tenant_admin' LIMIT 1",
+      [tenantId]
+    );
     return {
       tenantId: t.id,
       companyName: t.company_name,
-      email: t.email,
+      email: adminRows[0]?.email || null,
       createdAt: t.created_at,
     };
   } catch {

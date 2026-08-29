@@ -11,6 +11,7 @@ const { getRazorpay, getRazorpayCredentials } = require('../services/razorpay.se
 const usageRepo = new TenantUsageRepository(db);
 const lifecycle = require('../services/subscriptionLifecycle.service');
 const audit = require('../services/audit.service');
+const { assertTrialEligible } = require('../services/trialEligibility.service');
 
 // Map tenant_usage DB columns to user-facing usage type keys
 const USAGE_DIMENSIONS = [
@@ -149,6 +150,22 @@ exports.selectPlan = async (req, res) => {
     if (found.length === 0) return res.status(400).json({ error: 'Invalid plan.' });
 
     const trialDays = found[0].trial_days ?? 0;
+
+    // Selecting a paid plan starts a trial — enforce the one-trial-per-account
+    // rule first (the free plan is exempt since it never grants a trial).
+    if (plan !== 'free') {
+      const [tenantRows] = await db.execute(
+        'SELECT phone FROM tenants WHERE id = ?', [tenantId]
+      );
+      try {
+        await assertTrialEligible(tenantId, tenantRows[0]?.phone);
+      } catch (err) {
+        if (err.code === 'TRIAL_RESTRICTED') {
+          return res.status(err.status || 400).json({ error: err.message, code: err.code });
+        }
+        throw err;
+      }
+    }
 
     // Deactivate existing subscription
     await db.execute(
@@ -562,6 +579,21 @@ exports.startTrial = async (req, res) => {
       'SELECT trial_days FROM subscription_plans WHERE id = ?', [planId]
     );
     if (plan.length === 0) return res.status(404).json({ error: 'Plan not found.' });
+
+    // One-trial-per-account rule: a tenant whose trial has already been
+    // consumed (expired, cancelled, converted, ...) — including any other
+    // tenant sharing the same phone — may never start another trial.
+    const [tenantRows] = await db.execute(
+      'SELECT phone FROM tenants WHERE id = ?', [tenantId]
+    );
+    try {
+      await assertTrialEligible(tenantId, tenantRows[0]?.phone);
+    } catch (err) {
+      if (err.code === 'TRIAL_RESTRICTED') {
+        return res.status(err.status || 400).json({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
 
     const trialDays = plan[0].trial_days ?? 14;
     const trialEnd = new Date(Date.now() + trialDays * 86400000);

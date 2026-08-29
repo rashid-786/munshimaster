@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { canTenantAccessFeature, getTenantFeatureLimit } = require('./featureAccess');
+const { resolveTenantIdsByPhone, hasUsedTrial } = require('../services/trialEligibility.service');
 
 const FEATURE_CACHE = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -113,6 +114,22 @@ async function getSubscriptionStatus(tenantId) {
     [tenantId]
   );
 
+  // One-trial-per-account flag for the client: false once ANY trial has been
+  // consumed by this tenant or any tenant sharing the same phone number.
+  let trialEligible = true;
+  try {
+    const [tenantRows] = await db.execute(
+      'SELECT phone FROM tenants WHERE id = ?', [tenantId]
+    );
+    const phone = tenantRows[0]?.phone;
+    const tenantIds = await resolveTenantIdsByPhone(phone);
+    if (!tenantIds.includes(tenantId)) tenantIds.push(tenantId);
+    trialEligible = !(await hasUsedTrial(tenantIds));
+  } catch (err) {
+    // Never fail the subscription fetch because of the eligibility check.
+    trialEligible = true;
+  }
+
   if (sub.length === 0) {
     // No active/trialing subscription → free plan with real features + usage.
     const [freePlan] = await db.execute(
@@ -129,6 +146,7 @@ async function getSubscriptionStatus(tenantId) {
       status: 'active',
       features,
       usage,
+      trialEligible,
     };
   }
 
@@ -144,6 +162,7 @@ async function getSubscriptionStatus(tenantId) {
     validUntil: sub[0].current_period_end,
     features,
     usage,
+    trialEligible,
   };
 }
 

@@ -8,6 +8,7 @@ const whiteLabelService = require('../services/whiteLabel.service');
 const analyticsService = require('../services/subscriptionAnalytics.service');
 const audit = require('../services/audit.service');
 const saService = require('../services/superAdmin.service');
+const { assertTrialEligible } = require('../services/trialEligibility.service');
 
 exports.seedSuperAdmin = async (req, res) => {
   const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -666,9 +667,24 @@ exports.updateSuperEmployee = async (req, res) => {
 // ─── Activate Trial ─────────────────────────────────────────────
 exports.activateTrial = async (req, res) => {
   const { tenantId } = req.params;
-  const { planId, trialDays, reason } = req.body;
+  const { planId, trialDays, reason, force } = req.body;
 
   try {
+    // One-trial-per-account rule. Super admins can override with an explicit
+    // `force: true` for legitimate support cases — every such activation is
+    // recorded in the action log below.
+    const [tenantRows] = await db.execute(
+      'SELECT phone FROM hris_saas.tenants WHERE id = ?', [tenantId]
+    );
+    try {
+      await assertTrialEligible(tenantId, tenantRows[0]?.phone, { force: force === true });
+    } catch (err) {
+      if (err.code === 'TRIAL_RESTRICTED') {
+        return res.status(err.status || 400).json({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
+
     const targetPlan = planId || 'manage';
     const days = trialDays || 14;
     const trialEnd = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -697,7 +713,7 @@ exports.activateTrial = async (req, res) => {
       adminId: req.user?.id, adminName: req.user?.name,
       action: 'tenant.trial_activated',
       entityType: 'tenant', entityId: tenantId,
-      details: { planId: targetPlan, trialDays: days, trialEndsAt: trialEnd, reason },
+      details: { planId: targetPlan, trialDays: days, trialEndsAt: trialEnd, reason, forced: force === true },
       req,
     });
 

@@ -8,6 +8,7 @@ const audit = require('./audit.service');
 
 const eventRepo = new SubscriptionEventRepository(db);
 const tenantRepo = new TenantRepository(db);
+const { assertTrialEligible } = require('./trialEligibility.service');
 
 // ─── State machine ─────────────────────────────────────────────
 
@@ -326,6 +327,13 @@ async function enterGracePeriod(tenantId, gracePeriodEnd, reason = 'Payment over
  * Start a trial for a paid plan.
  */
 async function startTrial(tenantId, planId, trialDays = 14) {
+  // One-trial-per-account rule (defense in depth for any caller of the
+  // lifecycle service, e.g. future signup flows).
+  const [tenantRows] = await db.execute(
+    'SELECT phone FROM hris_saas.tenants WHERE id = ?', [tenantId]
+  );
+  await assertTrialEligible(tenantId, tenantRows[0]?.phone);
+
   const trialEnd = new Date();
   trialEnd.setDate(trialEnd.getDate() + trialDays);
 
