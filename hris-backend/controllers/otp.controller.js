@@ -41,7 +41,7 @@ async function sendOtpSms(phone, otp) {
       const client = require('twilio')(accountSid, authToken);
       const message = await client.messages.create({
         body: `${otp} is the OTP to verify your account on Munshi Master.`,
-        from: '+18604316626',
+        from: fromPhone,
         to: phone
       });
       console.log(`📱 Twilio SMS sent: ${message.sid}`);
@@ -99,7 +99,14 @@ exports.sendOtp = async (req, res) => {
     await sendOtpSms(phone, otp);
 
     const isDev = process.env.NODE_ENV !== 'production';
-    res.json({ message: 'OTP sent successfully.', retryAfter: 30, ...(isDev && { otp }) });
+    // Internal testing: return a fixed test OTP when explicitly enabled.
+    const testOtp = process.env.ENABLE_TEST_OTP === 'true' ? (process.env.OTP_TEST_CODE || null) : null;
+    res.json({
+      message: 'OTP sent successfully.',
+      retryAfter: 30,
+      ...(isDev && { otp }),
+      ...(testOtp && { testOtp }),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to send OTP.' });
@@ -122,28 +129,44 @@ exports.verifyOtp = async (req, res) => {
   }
 
   try {
-    const [rows] = await db.execute(
-      'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [phone, purpose, otp]
-    );
+    // Internal testing: a fixed OTP (from env) lets testers sign in without
+    // real SMS. Only active when ENABLE_TEST_OTP=true AND OTP_TEST_CODE is set,
+    // so a plain production deploy is unaffected.
+    const testOtp = process.env.ENABLE_TEST_OTP === 'true' ? (process.env.OTP_TEST_CODE || null) : null;
+    const isTestOtp = !!testOtp && otp === testOtp;
 
-    if (rows.length === 0) {
-      // Check if expired
-      const [expired] = await db.execute(
-        'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1',
+    if (!isTestOtp) {
+      const [rows] = await db.execute(
+        'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
         [phone, purpose, otp]
       );
-      if (expired.length > 0) {
-        return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
-      }
-      return res.status(400).json({ error: 'Invalid OTP.' });
-    }
 
-    // Mark OTP as verified
-    await db.execute(
-      'UPDATE otp_verifications SET verified = true WHERE id = ?',
-      [rows[0].id]
-    );
+      if (rows.length === 0) {
+        // Check if expired
+        const [expired] = await db.execute(
+          'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1',
+          [phone, purpose, otp]
+        );
+        if (expired.length > 0) {
+          return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+        }
+        return res.status(400).json({ error: 'Invalid OTP.' });
+      }
+
+      // Mark OTP as verified
+      await db.execute(
+        'UPDATE otp_verifications SET verified = true WHERE id = ?',
+        [rows[0].id]
+      );
+    } else {
+      // Record a verified OTP row so the registration flow's verified check passes.
+      await db.execute(
+        `INSERT INTO otp_verifications (phone, otp, purpose, verified, expires_at)
+         VALUES (?, ?, ?, true, NOW() + INTERVAL '10 minutes')
+         ON CONFLICT DO NOTHING`,
+        [phone, testOtp, purpose]
+      );
+    }
 
     // If this phone belongs to an existing account, issue a token so the OTP
     // acts as a proper login (mirrors the /auth/login response shape).
