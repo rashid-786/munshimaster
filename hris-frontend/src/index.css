@@ -247,3 +247,19 @@ body {
 .app-sidebar .border-indigo-200 { border-color: var(--sb-accent-border); }
 .app-sidebar.theme-dark .bg-gradient-primary { background-color: var(--sb-accent); }
 .app-sidebar.theme-dark .sb-plan-badge { background: rgba(255, 255, 255, 0.10); color: #e5e7eb; }
+
+/* ===== CMS page content ===== */
+.cms-prose { color: #374151; font-size: 1.0625rem; line-height: 1.8; }
+.cms-prose h1 { font-size: 1.9rem; font-weight: 700; color: #111827; margin: 1.2em 0 0.4em; }
+.cms-prose h2 { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 1.1em 0 0.4em; }
+.cms-prose h3 { font-size: 1.25rem; font-weight: 600; color: #111827; margin: 1em 0 0.4em; }
+.cms-prose p { margin: 0.8em 0; }
+.cms-prose ul { list-style: disc; padding-left: 1.5em; margin: 0.8em 0; }
+.cms-prose ol { list-style: decimal; padding-left: 1.5em; margin: 0.8em 0; }
+.cms-prose li { margin: 0.3em 0; }
+.cms-prose a { color: #4f46e5; text-decoration: underline; }
+.cms-prose blockquote { border-left: 3px solid #e5e7eb; padding-left: 1em; color: #6b7280; margin: 1em 0; }
+.cms-prose img { max-width: 100%; border-radius: 0.5rem; }
+.cms-prose table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+.cms-prose th, .cms-prose td { border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; text-align: left; }
+.cms-prose th { background: #f9fafb; font-weight: 600; }

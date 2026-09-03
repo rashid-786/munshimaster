@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   '/super/razorpay-settings': 'Razorpay Settings',
   '/super/legal': 'Legal Documents',
   '/super/account-deletion': 'Account Deletion Requests',
+  '/super/cms': 'Content Management',
 };
 
 export default function SuperAdminLayout() {

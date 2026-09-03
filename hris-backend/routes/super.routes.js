@@ -11,6 +11,7 @@ const gstTaxController = require('../controllers/gstTax.controller');
 const unitMasterController = require('../controllers/unitMaster.controller');
 const legalController = require('../controllers/legalDocument.controller');
 const accountDeletionController = require('../controllers/accountDeletion.controller');
+const cmsController = require('../controllers/cms.controller');
 const { authenticateSuperAdmin, auditSuperAdminAction } = require('../middleware/superAdmin');
 
 // ─── Auth (no middleware) ──────────────────────────────────────────
@@ -231,5 +232,78 @@ router.post('/account-deletion/:id/approve', authenticateSuperAdmin,
   auditSuperAdminAction('account_deletion.approved', 'account_deletion'), accountDeletionController.approveRequest);
 router.post('/account-deletion/:id/reject', authenticateSuperAdmin,
   auditSuperAdminAction('account_deletion.rejected', 'account_deletion'), accountDeletionController.rejectRequest);
+
+// ─── CMS ───────────────────────────────────────────────────────
+router.get('/cms/pages', authenticateSuperAdmin, cmsController.listPages);
+router.get('/cms/pages/:id', authenticateSuperAdmin, cmsController.getPage);
+router.post('/cms/pages', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.page_created', 'cms_page'), cmsController.createPage);
+router.put('/cms/pages/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.page_updated', 'cms_page'), cmsController.updatePage);
+router.patch('/cms/pages/:id/status', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.page_status_changed', 'cms_page'), cmsController.setPageStatus);
+router.delete('/cms/pages/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.page_deleted', 'cms_page'), cmsController.deletePage);
+
+router.get('/cms/header-menus', authenticateSuperAdmin, cmsController.listHeaderMenus);
+router.post('/cms/header-menus', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.header_menu_created', 'cms_header_menu'), cmsController.createHeaderMenu);
+router.put('/cms/header-menus/reorder', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.header_menu_reordered', 'cms_header_menu'), cmsController.reorderHeaderMenus);
+router.put('/cms/header-menus/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.header_menu_updated', 'cms_header_menu'), cmsController.updateHeaderMenu);
+router.delete('/cms/header-menus/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.header_menu_deleted', 'cms_header_menu'), cmsController.deleteHeaderMenu);
+
+router.get('/cms/footer', authenticateSuperAdmin, cmsController.listFooter);
+router.post('/cms/footer/categories', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_category_created', 'cms_footer_category'), cmsController.createFooterCategory);
+router.put('/cms/footer/categories/reorder', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_category_reordered', 'cms_footer_category'), cmsController.reorderFooterCategories);
+router.put('/cms/footer/categories/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_category_updated', 'cms_footer_category'), cmsController.updateFooterCategory);
+router.delete('/cms/footer/categories/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_category_deleted', 'cms_footer_category'), cmsController.deleteFooterCategory);
+router.post('/cms/footer/categories/:categoryId/links', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_link_created', 'cms_footer_link'), cmsController.createFooterLink);
+router.put('/cms/footer/links/reorder', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_link_reordered', 'cms_footer_link'), cmsController.reorderFooterLinks);
+router.put('/cms/footer/links/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_link_updated', 'cms_footer_link'), cmsController.updateFooterLink);
+router.delete('/cms/footer/links/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.footer_link_deleted', 'cms_footer_link'), cmsController.deleteFooterLink);
+
+router.get('/cms/social', authenticateSuperAdmin, cmsController.getSocialLinks);
+router.put('/cms/social/:platform', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.social_updated', 'cms_social'), cmsController.updateSocialLink);
+
+router.get('/cms/settings', authenticateSuperAdmin, cmsController.getSettings);
+router.put('/cms/settings', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.settings_updated', 'cms_settings'), cmsController.updateSettings);
+
+// ─── CMS: Help & Support ───────────────────────────────────────
+router.get('/cms/help/topics', authenticateSuperAdmin, cmsController.listHelpTopics);
+router.post('/cms/help/topics', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_topic_created', 'cms_help_topic'), cmsController.createHelpTopic);
+router.put('/cms/help/topics/reorder', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_topic_reordered', 'cms_help_topic'), cmsController.reorderHelpTopics);
+router.put('/cms/help/topics/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_topic_updated', 'cms_help_topic'), cmsController.updateHelpTopic);
+router.delete('/cms/help/topics/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_topic_deleted', 'cms_help_topic'), cmsController.deleteHelpTopic);
+
+router.get('/cms/help/faqs', authenticateSuperAdmin, cmsController.listHelpFaqs);
+router.post('/cms/help/faqs', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_faq_created', 'cms_help_faq'), cmsController.createHelpFaq);
+router.put('/cms/help/faqs/reorder', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_faq_reordered', 'cms_help_faq'), cmsController.reorderHelpFaqs);
+router.put('/cms/help/faqs/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_faq_updated', 'cms_help_faq'), cmsController.updateHelpFaq);
+router.delete('/cms/help/faqs/:id', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_faq_deleted', 'cms_help_faq'), cmsController.deleteHelpFaq);
+
+router.get('/cms/help/settings', authenticateSuperAdmin, cmsController.getHelpSettings);
+router.put('/cms/help/settings', authenticateSuperAdmin,
+  auditSuperAdminAction('cms.help_settings_updated', 'cms_help_settings'), cmsController.updateHelpSettings);
 
 module.exports = router;

@@ -12,15 +12,10 @@ import LandingLayout from './layouts/LandingLayout';
 import AdminLayout from './layouts/AdminLayout';
 import EmpLayout from './layouts/EmpLayout';
 
-import Home from './pages/landing/Home';
-import About from './pages/landing/About';
-import Services from './pages/landing/Services';
-import Faq from './pages/landing/Faq';
-import Blogs from './pages/landing/Blogs';
+import CmsPage from './pages/landing/CmsPage';
 
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
-import Pricing from './pages/landing/Pricing';
 import Employees from './pages/admin/Employees';
 import AdminAttendance from './pages/admin/Attendance';
 import Payroll from './pages/admin/Payroll';
@@ -80,6 +75,7 @@ import UnitMasterConfig from './pages/super/UnitMasterConfig';
 import RazorpaySettings from './pages/super/RazorpaySettings';
 import LegalDocuments from './pages/super/LegalDocuments';
 import AccountDeletionRequests from './pages/super/AccountDeletionRequests';
+import Cms from './pages/super/Cms';
 import PlanRoute from './components/PlanRoute';
 import UsageDashboard from './pages/admin/UsageDashboard';
 import SubscriptionSettings from './pages/admin/SubscriptionSettings';
@@ -146,6 +142,7 @@ function App() {
             <Route path="razorpay-settings" element={<RazorpaySettings />} />
             <Route path="legal" element={<LegalDocuments />} />
             <Route path="account-deletion" element={<AccountDeletionRequests />} />
+            <Route path="cms" element={<Cms />} />
 
           </Route>
 
@@ -216,14 +213,19 @@ function App() {
           </Route>
 
           <Route element={<PublicRoute><LandingLayout /></PublicRoute>}>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/faq" element={<Faq />} />
-            <Route path="/blog" element={<Blogs />} />
+            <Route path="/" element={<CmsPage slug="home" />} />
+            <Route path="/about" element={<CmsPage slug="about" />} />
+            <Route path="/services" element={<CmsPage slug="services" />} />
+            <Route path="/pricing" element={<CmsPage slug="pricing" />} />
+            <Route path="/blog" element={<CmsPage slug="blog" />} />
+            <Route path="/faq" element={<CmsPage slug="faq" />} />
+            <Route path="/privacy-policy" element={<CmsPage slug="privacy-policy" />} />
+            <Route path="/terms-of-service" element={<CmsPage slug="terms-of-service" />} />
+            <Route path="/contact-us" element={<CmsPage slug="contact-us" />} />
+            <Route path="/help-center" element={<CmsPage slug="help-center" />} />
+            <Route path="/onboarding-guide" element={<CmsPage slug="onboarding-guide" />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/pricing" element={<Pricing />} />
           </Route>
 
           <Route path="/portal/:token" element={<CustomerPortal />} />

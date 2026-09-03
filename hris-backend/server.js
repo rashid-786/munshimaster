@@ -62,6 +62,7 @@ const partyTransactionsRoutes = require('./controllers/partyTransactions.control
 const transactionsRoutes = require('./routes/transactions.routes');
 const { router: legalRoutes, publicRouter: legalPublicRoutes } = require('./routes/legal.routes');
 const accountDeletionRoutes = require('./routes/accountDeletion.routes');
+const cmsPublicRoutes = require('./routes/cms.routes');
 const { planGate } = require('./middleware/planGate');
 const { attachTenant } = require('./middleware/attachTenant');
 const { requireFeature } = require('./middleware/requireFeature');
@@ -207,6 +208,9 @@ app.get('/api/v1/public/stats', async (req, res) => {
 
 // Public legal document compliance URLs (e.g. /api/v1/public/legal/privacy-policy)
 app.use('/api/v1/public/legal', legalPublicRoutes);
+
+// Public CMS config + pages for the website
+app.use('/api/v1/public/cms', cmsPublicRoutes);
 
 // Contact form endpoint (no auth required)
 app.post('/api/v1/public/contact', async (req, res) => {

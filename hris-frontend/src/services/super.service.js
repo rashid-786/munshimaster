@@ -425,4 +425,156 @@ export const superService = {
     const response = await api.post(`/super/account-deletion/${id}/reject`, { reviewNote });
     return response.data;
   },
+
+  // ─── CMS ─────────────────────────────────────────
+  listCmsPages: async (params = {}) => {
+    const response = await api.get('/super/cms/pages', { params });
+    return response.data;
+  },
+  getCmsPage: async (id) => {
+    const response = await api.get(`/super/cms/pages/${id}`);
+    return response.data;
+  },
+  createCmsPage: async (data) => {
+    const response = await api.post('/super/cms/pages', data);
+    return response.data;
+  },
+  updateCmsPage: async (id, data) => {
+    const response = await api.put(`/super/cms/pages/${id}`, data);
+    return response.data;
+  },
+  setCmsPageStatus: async (id, status) => {
+    const response = await api.patch(`/super/cms/pages/${id}/status`, { status });
+    return response.data;
+  },
+  deleteCmsPage: async (id) => {
+    const response = await api.delete(`/super/cms/pages/${id}`);
+    return response.data;
+  },
+
+  listHeaderMenus: async () => {
+    const response = await api.get('/super/cms/header-menus');
+    return response.data;
+  },
+  createHeaderMenu: async (data) => {
+    const response = await api.post('/super/cms/header-menus', data);
+    return response.data;
+  },
+  updateHeaderMenu: async (id, data) => {
+    const response = await api.put(`/super/cms/header-menus/${id}`, data);
+    return response.data;
+  },
+  deleteHeaderMenu: async (id) => {
+    const response = await api.delete(`/super/cms/header-menus/${id}`);
+    return response.data;
+  },
+  reorderHeaderMenus: async (orderedIds) => {
+    const response = await api.put('/super/cms/header-menus/reorder', { orderedIds });
+    return response.data;
+  },
+
+  getCmsFooter: async () => {
+    const response = await api.get('/super/cms/footer');
+    return response.data;
+  },
+  createFooterCategory: async (data) => {
+    const response = await api.post('/super/cms/footer/categories', data);
+    return response.data;
+  },
+  updateFooterCategory: async (id, data) => {
+    const response = await api.put(`/super/cms/footer/categories/${id}`, data);
+    return response.data;
+  },
+  deleteFooterCategory: async (id) => {
+    const response = await api.delete(`/super/cms/footer/categories/${id}`);
+    return response.data;
+  },
+  reorderFooterCategories: async (orderedIds) => {
+    const response = await api.put('/super/cms/footer/categories/reorder', { orderedIds });
+    return response.data;
+  },
+  createFooterLink: async (categoryId, data) => {
+    const response = await api.post(`/super/cms/footer/categories/${categoryId}/links`, data);
+    return response.data;
+  },
+  updateFooterLink: async (id, data) => {
+    const response = await api.put(`/super/cms/footer/links/${id}`, data);
+    return response.data;
+  },
+  deleteFooterLink: async (id) => {
+    const response = await api.delete(`/super/cms/footer/links/${id}`);
+    return response.data;
+  },
+  reorderFooterLinks: async (orderedIds) => {
+    const response = await api.put('/super/cms/footer/links/reorder', { orderedIds });
+    return response.data;
+  },
+
+  getCmsSocial: async () => {
+    const response = await api.get('/super/cms/social');
+    return response.data;
+  },
+  updateCmsSocial: async (platform, data) => {
+    const response = await api.put(`/super/cms/social/${platform}`, data);
+    return response.data;
+  },
+
+  getCmsSettings: async () => {
+    const response = await api.get('/super/cms/settings');
+    return response.data;
+  },
+  updateCmsSettings: async (data) => {
+    const response = await api.put('/super/cms/settings', data);
+    return response.data;
+  },
+
+  // ─── CMS: Help & Support ─────────────────────────
+  listHelpTopics: async () => {
+    const response = await api.get('/super/cms/help/topics');
+    return response.data;
+  },
+  createHelpTopic: async (data) => {
+    const response = await api.post('/super/cms/help/topics', data);
+    return response.data;
+  },
+  updateHelpTopic: async (id, data) => {
+    const response = await api.put(`/super/cms/help/topics/${id}`, data);
+    return response.data;
+  },
+  deleteHelpTopic: async (id) => {
+    const response = await api.delete(`/super/cms/help/topics/${id}`);
+    return response.data;
+  },
+  reorderHelpTopics: async (orderedIds) => {
+    const response = await api.put('/super/cms/help/topics/reorder', { orderedIds });
+    return response.data;
+  },
+  listHelpFaqs: async () => {
+    const response = await api.get('/super/cms/help/faqs');
+    return response.data;
+  },
+  createHelpFaq: async (data) => {
+    const response = await api.post('/super/cms/help/faqs', data);
+    return response.data;
+  },
+  updateHelpFaq: async (id, data) => {
+    const response = await api.put(`/super/cms/help/faqs/${id}`, data);
+    return response.data;
+  },
+  deleteHelpFaq: async (id) => {
+    const response = await api.delete(`/super/cms/help/faqs/${id}`);
+    return response.data;
+  },
+  reorderHelpFaqs: async (orderedIds) => {
+    const response = await api.put('/super/cms/help/faqs/reorder', { orderedIds });
+    return response.data;
+  },
+  getHelpSettings: async () => {
+    const response = await api.get('/super/cms/help/settings');
+    return response.data;
+  },
+  updateHelpSettings: async (data) => {
+    const response = await api.put('/super/cms/help/settings', data);
+    return response.data;
+  },
 };
