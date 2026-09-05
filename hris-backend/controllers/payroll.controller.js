@@ -213,7 +213,7 @@ exports.calculatePayroll = async (req, res) => {
           ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
           : {};
     const paidLeaveTypes = tenantSettings.paidLeaveTypes || [];
-    const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 10) / 100;
+    const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 0) / 100;
 
         const [advances] = await db.execute(
           `SELECT id, remaining_balance FROM employee_advances
@@ -398,7 +398,7 @@ exports.previewPayroll = async (req, res) => {
     const tenantSettings = tenantRows[0]?.settings
       ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
       : {};
-    const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 10) / 100;
+    const advanceDeductionPct = (tenantSettings.advanceDeductionPct ?? 0) / 100;
     const paidLeaveTypes = tenantSettings.paidLeaveTypes || [];
 
     const runs = [];
@@ -963,7 +963,7 @@ exports.updateManualAdvanceDeduction = async (req, res) => {
     const tenantSettings = tenantRows[0]?.settings
       ? (typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : tenantRows[0].settings)
       : {};
-    const advanceDeductionPct = tenantSettings.advanceDeductionPct ?? 10;
+    const advanceDeductionPct = tenantSettings.advanceDeductionPct ?? 0;
 
     if (advanceDeductionPct > 0) {
       return res.status(400).json({

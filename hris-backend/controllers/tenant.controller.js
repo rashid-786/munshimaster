@@ -10,7 +10,7 @@ exports.getTenantSettings = async (req, res) => {
     const tenant = rows[0];
     const settings = typeof tenant.settings === 'string' ? JSON.parse(tenant.settings) : tenant.settings;
 
-    res.json({ companyName: tenant.company_name, subscriptionPlan: tenant.subscription_plan || 'free', settings: settings || { primaryColor: '#0052cc', weekendDays: [0], taxRate: 18 } });
+    res.json({ companyName: tenant.company_name, subscriptionPlan: tenant.subscription_plan || 'free', settings: settings || { primaryColor: '#0052cc', weekendDays: [], hourBasedAttendance: true, workHoursInDay: 10, advanceDeductionPct: 0, taxRate: 18 } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to extract organization identity frames.' });
   }

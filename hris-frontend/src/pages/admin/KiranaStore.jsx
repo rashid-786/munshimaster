@@ -147,7 +147,7 @@ const KiranaStore = () => {
     setSaving(true);
     try {
       if (editingParty) {
-        await hrService.kirana.updateParty(editingParty.id, { name: partyForm.name, phone: partyForm.phone, address: partyForm.address });
+        await hrService.kirana.updateParty(editingParty.id, { name: partyForm.name, phone: partyForm.phone, address: partyForm.address, note: partyForm.note });
       } else {
         await hrService.kirana.createParty({ type: partyForm.partyType || partyType, ...partyForm });
       }
@@ -171,7 +171,7 @@ const KiranaStore = () => {
       amount: '',
       direction: party.type === 'seller' ? 'to_give' : 'to_receive',
       entryDate: new Date().toISOString().split('T')[0],
-      note: '',
+      note: party.notes || '',
     });
     setShowPartyForm(true);
   };
@@ -478,6 +478,13 @@ const KiranaStore = () => {
               </div>
             </div>
 
+            {party.notes && (
+              <div className="card">
+                <div className="card-header"><h4 className="font-semibold text-gray-900">Notes</h4></div>
+                <p className="px-5 py-4 text-sm text-gray-700 whitespace-pre-wrap">{party.notes}</p>
+              </div>
+            )}
+
             <div className="card">
               <div className="card-header"><h4 className="font-semibold text-gray-900">Add Transaction</h4></div>
               <form onSubmit={handleAddTx} className="p-5 space-y-4">
@@ -600,7 +607,7 @@ const KiranaStore = () => {
 
       {showPartyForm && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">{editingParty ? 'Edit' : 'Add'} {partyForm.partyType === 'buyer' ? 'Buyer' : partyForm.partyType === 'seller' ? 'Seller' : 'Party'}</h3>
               <button onClick={() => setShowPartyForm(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
@@ -1079,6 +1086,9 @@ const KiranaStore = () => {
       {isMobile && selectedParty && (
         <BottomSheet open={true} onClose={() => setSelectedParty(null)} title={selectedParty.party.name}>
           <p className="text-sm text-gray-500">{formatPhone(selectedParty.party.phone) || 'No phone'} &middot; {selectedParty.party.address || 'No address'}</p>
+          {selectedParty.party.notes && (
+            <p className="text-sm text-gray-600 mt-1.5 whitespace-pre-wrap">Note: {selectedParty.party.notes}</p>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <div className="card text-center p-2">
               <p className="text-xs text-gray-500">Total You Got</p>

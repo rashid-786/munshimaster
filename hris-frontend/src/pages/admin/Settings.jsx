@@ -75,9 +75,9 @@ const Settings = () => {
   const [primaryColor, setPrimaryColor] = useState('#4f46e5');
   const [sidebarMode, setSidebarMode] = useState('light');
   const [sidebarColor, setSidebarColor] = useState('#0B3C5D');
-  const [weekendDays, setWeekendDays] = useState([0]);
+  const [weekendDays, setWeekendDays] = useState([]);
   const [paidLeaveTypes, setPaidLeaveTypes] = useState([]);
-  const [advanceDeductionPct, setAdvanceDeductionPct] = useState('10');
+  const [advanceDeductionPct, setAdvanceDeductionPct] = useState('');
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [hiddenItems, setHiddenItems] = useState({});
   const [groupLabels, setGroupLabels] = useState({
@@ -89,9 +89,9 @@ const Settings = () => {
   });
   const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [countryCode, setCountryCode] = useState(localStorage.getItem('default_country_code') || '+965');
-  const [workHoursInDay, setWorkHoursInDay] = useState('8');
+  const [workHoursInDay, setWorkHoursInDay] = useState('10');
   const [workingDaysPerMonth, setWorkingDaysPerMonth] = useState('30');
-  const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
+  const [hourBasedAttendance, setHourBasedAttendance] = useState(true);
   const [employeeFormFields, setEmployeeFormFields] = useState({
     email: false, role: false, jobType: false, baseSalary: true, payPerHour: true, profession: false, password: false,
   });
@@ -177,7 +177,7 @@ const Settings = () => {
     try {
       const res = await hrService.updateTenantSettings({
         companyName,
-        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, paidLeaveTypes, workHoursInDay: parseDecimal(workHoursInDay, 8), workingDaysPerMonth: parseDecimal(workingDaysPerMonth, 30), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
+        settings: { primaryColor, sidebarMode, sidebarColor, weekendDays, paidLeaveTypes, workHoursInDay: parseDecimal(workHoursInDay, 10), workingDaysPerMonth: parseDecimal(workingDaysPerMonth, 30), hourBasedAttendance, advanceDeductionPct: parseDecimal(advanceDeductionPct, 0), hiddenGroups, hiddenItems, groupLabels, employeeFormFields, currencySymbol, countryCode, ...seller, ...whatsapp }
       });
       localStorage.setItem('hidden_groups', JSON.stringify(hiddenGroups));
       localStorage.setItem('hidden_items', JSON.stringify(hiddenItems));

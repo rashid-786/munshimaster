@@ -9,7 +9,7 @@ const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 function DayCell({ day, hourly, onSelect, weekendDays, selected }) {
   const dt = new Date(day.date + 'T00:00:00');
   const dow = dt.getDay();
-  const weekend = (weekendDays || [0]).includes(dow);
+  const weekend = (weekendDays || []).includes(dow);
   const type = day.type;
   const paid = day.paid || day.type === 'paid';
   const absent = type === 'absent';
@@ -68,7 +68,7 @@ export default function StaffCalendarDrawer({ open, onClose, employee, startDate
   const [loading, setLoading] = useState(false);
   const [days, setDays] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [weekendDays, setWeekendDays] = useState([0]);
+  const [weekendDays, setWeekendDays] = useState([]);
   const hourly = employee?.salaryType !== 'piece';
   const rateRs = Number(employee?.hourlyRate || 0) / 100;
 

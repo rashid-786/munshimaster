@@ -489,10 +489,10 @@ exports.getEmployeeCalendar = async (req, res) => {
 
   try {
     const [tenantRows] = await db.execute('SELECT settings FROM tenants WHERE id = ?', [tenantId]);
-    let weekendDays = [0];
+    let weekendDays = [];
     if (tenantRows.length > 0) {
       const s = typeof tenantRows[0].settings === 'string' ? JSON.parse(tenantRows[0].settings) : (tenantRows[0].settings || {});
-      weekendDays = s.weekendDays || [0];
+      weekendDays = s.weekendDays || [];
     }
 
     const [attendance] = await db.execute(

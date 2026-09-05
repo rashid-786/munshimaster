@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { hrService } from '../../services/hr.service';
 import { formatPhone } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
@@ -78,16 +78,36 @@ const Employees = () => {
     }).catch(() => {});
   }, []);
 
+  const lastEditedSalaryField = useRef('salary');
+
   useEffect(() => {
     if (editingEmployee || form.salaryType !== 'fixed') return;
     const salary = parseFloat(form.baseSalary);
-    if (salary && salary > 0 && workHoursInDay > 0 && workingDaysPerMonth > 0) {
-      const calculated = salary / (workingDaysPerMonth * workHoursInDay);
-      setForm(prev => ({ ...prev, payPerHour: calculated.toFixed(2) }));
-    } else if (!form.baseSalary) {
-      setForm(prev => ({ ...prev, payPerHour: '' }));
+    const rate = parseFloat(form.payPerHour);
+    const hours = workHoursInDay;
+    const days = workingDaysPerMonth;
+    if (days > 0 && hours > 0) {
+      if (lastEditedSalaryField.current === 'payPerHour') {
+        if (rate && rate > 0) {
+          const calculated = rate * days * hours;
+          const rounded = Math.round(calculated);
+          if (String(rounded) !== form.baseSalary) {
+            setForm(prev => ({ ...prev, baseSalary: String(rounded) }));
+          }
+        } else if (!form.payPerHour && form.baseSalary !== '') {
+          setForm(prev => ({ ...prev, baseSalary: '' }));
+        }
+      } else if (salary && salary > 0) {
+        const calculated = salary / (days * hours);
+        const formatted = calculated.toFixed(2);
+        if (formatted !== form.payPerHour) {
+          setForm(prev => ({ ...prev, payPerHour: formatted }));
+        }
+      } else if (!form.baseSalary && form.payPerHour !== '') {
+        setForm(prev => ({ ...prev, payPerHour: '' }));
+      }
     }
-  }, [form.baseSalary, workHoursInDay, workingDaysPerMonth, editingEmployee, form.salaryType]);
+  }, [form.baseSalary, form.payPerHour, workHoursInDay, workingDaysPerMonth, editingEmployee, form.salaryType]);
 
   const fetchRoster = async () => {
     setLoading(true);
@@ -646,14 +666,14 @@ const Employees = () => {
                     {fieldVisible('baseSalary') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">{form.salaryType === 'hourly' ? 'Monthly Base Salary' : 'Monthly Salary'} ({currencySymbol})</label>
-                        <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => setForm({ ...form, baseSalary: e.target.value })} required={form.salaryType !== 'hourly'} className="input-field" />
+                        <input type="number" min="0" step="0.01" value={form.baseSalary} onChange={e => { lastEditedSalaryField.current = 'salary'; setForm({ ...form, baseSalary: e.target.value }); }} required={form.salaryType !== 'hourly'} className="input-field" />
                       </div>
                     )}
                     {fieldVisible('payPerHour') && form.salaryType === 'fixed' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Pay Per Hour ({currencySymbol})</label>
-                        <input type="number" min="0" step="0.01" value={form.payPerHour} disabled className="input-field bg-gray-100 cursor-not-allowed" />
-                        <p className="text-xs text-gray-400 mt-1">Auto-calculated from Monthly Salary / (30 × Work Hours in a Day). Set in Staff Settings.</p>
+                        <input type="number" min="0" step="0.01" value={form.payPerHour} onChange={e => { lastEditedSalaryField.current = 'payPerHour'; setForm({ ...form, payPerHour: e.target.value }); }} className="input-field" />
+                        <p className="text-xs text-gray-400 mt-1">Either field auto-calculates the other: Salary / (30 × Work Hours in a Day). Set in Staff Settings.</p>
                       </div>
                     )}
                     {form.salaryType === 'hourly' && fieldVisible('payPerHour') && (

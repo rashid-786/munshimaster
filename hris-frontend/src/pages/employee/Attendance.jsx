@@ -20,7 +20,7 @@ const Attendance = () => {
   const [year, setYear] = useState(now.getFullYear());
   const [calendarData, setCalendarData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [weekendDays, setWeekendDays] = useState([0]);
+  const [weekendDays, setWeekendDays] = useState([]);
 
   const fetchCalendar = async () => {
     setLoading(true);

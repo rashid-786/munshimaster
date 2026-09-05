@@ -65,7 +65,7 @@ const EmployeeCalendar = () => {
   const cellRefs = useRef({});
   const hoursRef = useRef(null);
   const statusRef = useRef(null);
-  const [weekendDays, setWeekendDays] = useState([0]);
+  const [weekendDays, setWeekendDays] = useState([]);
   const [hourBasedAttendance, setHourBasedAttendance] = useState(false);
   const [workHoursInDay, setWorkHoursInDay] = useState(8);
   const [refreshKey, setRefreshKey] = useState(0);

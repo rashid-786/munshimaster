@@ -51,7 +51,7 @@ const PieceWorkCalendar = () => {
   const [tooltip, setTooltip] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [dayEntries, setDayEntries] = useState([]);
-  const [weekendDays, setWeekendDays] = useState([0]);
+  const [weekendDays, setWeekendDays] = useState([]);
 
   const cellRefs = useRef({});
 

@@ -18,14 +18,19 @@ exports.authLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 });
 
-// OTP send limiter: prevent SMS bombing
-exports.otpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: parseInt(process.env.OTP_RATE_LIMIT || '10'),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many OTP requests. Please wait before requesting a new code.' },
-});
+// OTP send limiter: prevent SMS bombing.
+// Bypassed during internal testing (ENABLE_TEST_OTP=true) so testers using the
+// fixed OTP never hit the per-IP limit. Production (no test flag) keeps the limit.
+exports.otpLimiter =
+  process.env.ENABLE_TEST_OTP === 'true'
+    ? (req, res, next) => next()
+    : rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: parseInt(process.env.OTP_RATE_LIMIT || '10'),
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: 'Too many OTP requests. Please wait before requesting a new code.' },
+      });
 
 // Payment / subscription limiter
 exports.paymentLimiter = rateLimit({
