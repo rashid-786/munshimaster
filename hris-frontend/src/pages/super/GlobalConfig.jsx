@@ -23,6 +23,12 @@ const DEFAULT_CONFIG = {
   hideReferEarn: false,
   hideSubscriptionLabels: false,
   defaultCountry: 'IN',
+  appVersions: {
+    android: {
+      minVersionCode: 0,
+      playStoreUrl: 'https://play.google.com/store/apps/details?id=com.bahi360.app',
+    },
+  },
 };
 
 const TOGGLE_FIELDS = [
@@ -44,7 +50,17 @@ export default function GlobalConfig() {
     api.get('/super/settings')
       .then(({ data }) => {
         const gc = data.globalConfig || {};
-        const merged = { ...DEFAULT_CONFIG, ...gc };
+        const merged = {
+          ...DEFAULT_CONFIG,
+          ...gc,
+          appVersions: {
+            android: {
+              minVersionCode: DEFAULT_CONFIG.appVersions.android.minVersionCode,
+              playStoreUrl: DEFAULT_CONFIG.appVersions.android.playStoreUrl,
+              ...(gc.appVersions?.android || {}),
+            },
+          },
+        };
         setConfig(merged);
         setInitial(merged);
         // Auto-save if backend is missing defaultCountry
@@ -61,6 +77,16 @@ export default function GlobalConfig() {
 
   const handleToggle = (key) => {
     setConfig(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const setAndroidAppVersion = (patch) => {
+    setConfig(prev => ({
+      ...prev,
+      appVersions: {
+        ...prev.appVersions,
+        android: { ...(prev.appVersions?.android || {}), ...patch },
+      },
+    }));
   };
 
   const handleSave = async () => {
@@ -113,6 +139,37 @@ export default function GlobalConfig() {
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
+        </div>
+      </div>
+
+      {/* Force Update (Mobile App) */}
+      <div className="card p-5">
+        <div className="mb-4">
+          <p className="text-sm font-medium text-gray-900">Force Update — Mobile App (Android)</p>
+          <p className="text-xs text-gray-500 mt-0.5">Installed app versions below the minimum version code will be forced to update on next launch. Set to 0 to disable.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Minimum Version Code</label>
+            <input
+              type="number"
+              min="0"
+              value={config.appVersions?.android?.minVersionCode ?? 0}
+              onChange={e => setAndroidAppVersion({ minVersionCode: parseInt(e.target.value, 10) || 0 })}
+              className="input-field"
+            />
+            <p className="text-xs text-gray-400 mt-1">The current release build's version code (e.g. 2, 3, 4…).</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Play Store URL</label>
+            <input
+              type="text"
+              value={config.appVersions?.android?.playStoreUrl || ''}
+              onChange={e => setAndroidAppVersion({ playStoreUrl: e.target.value })}
+              className="input-field"
+              placeholder="https://play.google.com/store/apps/details?id=com.bahi360.app"
+            />
+          </div>
         </div>
       </div>
 

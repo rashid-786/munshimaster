@@ -212,6 +212,9 @@ app.use('/api/v1/public/legal', legalPublicRoutes);
 // Public CMS config + pages for the website
 app.use('/api/v1/public/cms', cmsPublicRoutes);
 
+// Public app version check for the mobile app (force update)
+app.use('/api/v1/public/app', require('./routes/app.routes'));
+
 // Contact form endpoint (no auth required)
 app.post('/api/v1/public/contact', async (req, res) => {
   const { name, email, message } = req.body;
