@@ -155,26 +155,50 @@ exports.getTransactions = async (req, res) => {
 exports.getSummary = async (req, res) => {
   const { type } = req.query;
   try {
-    let partyQuery = 'SELECT id, opening_balance FROM kirana_parties WHERE tenant_id = ?';
-    const params = [req.tenantId];
-    if (type) { partyQuery += ' AND type = ?'; params.push(type); }
-    const [parties] = await db.execute(partyQuery, params);
+    // Single-pass aggregate instead of one query per party (N+1).
+    const aggParams = [req.tenantId];
+    const outerParams = [req.tenantId];
+    let typeClause = '';
+    if (type) { typeClause = ' AND p.type = ?'; outerParams.push(type); }
 
-    let youWillGet = 0, youWillGive = 0;
-    for (const p of parties) {
-      const [txns] = await db.execute(
-        "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END), 0) as r, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END), 0) as g FROM kirana_transactions WHERE party_id = ?",
-        [p.id]
-      );
-      const ob = Number(p.opening_balance || 0);
-      const tg = Number(txns[0].g || 0);
-      const tr = Number(txns[0].r || 0);
-      const balance = ob + tg - tr;
-      if (balance > 0) youWillGive += balance;
-      else youWillGet += Math.abs(balance);
-    }
+    const [balanceRows] = await db.execute(
+      `SELECT
+         COALESCE(SUM(CASE WHEN bal > 0 THEN bal ELSE 0 END), 0) as give_total,
+         COALESCE(SUM(CASE WHEN bal < 0 THEN -bal ELSE 0 END), 0) as get_total
+       FROM (
+         SELECT p.opening_balance + COALESCE(agg.g, 0) - COALESCE(agg.r, 0) as bal
+         FROM kirana_parties p
+         LEFT JOIN (
+           SELECT party_id,
+             COALESCE(SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END), 0) as g,
+             COALESCE(SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END), 0) as r
+           FROM kirana_transactions
+           WHERE tenant_id = ?
+           GROUP BY party_id
+         ) agg ON agg.party_id = p.id
+         WHERE p.tenant_id = ?${typeClause}
+       ) bal_q`,
+      [...aggParams, ...outerParams]
+    );
 
-    res.json({ youWillGet, youWillGive, net: youWillGet - youWillGive });
+    const youWillGet = Number(balanceRows[0]?.get_total) || 0;
+    const youWillGive = Number(balanceRows[0]?.give_total) || 0;
+
+    // Counts so the app doesn't need to fetch full lists just to count rows.
+    const [txnCount] = await db.execute('SELECT COUNT(*) as c FROM kirana_transactions WHERE tenant_id = ?', [req.tenantId]);
+    const [cashCount] = await db.execute('SELECT COUNT(*) as c FROM kirana_cashbook WHERE tenant_id = ?', [req.tenantId]);
+    const [invCount] = await db.execute('SELECT COUNT(*) as c FROM kirana_invoices WHERE tenant_id = ?', [req.tenantId]);
+
+    res.json({
+      youWillGet,
+      youWillGive,
+      net: youWillGet - youWillGive,
+      counts: {
+        partyTransactions: Number(txnCount[0]?.c) || 0,
+        cashbookEntries: Number(cashCount[0]?.c) || 0,
+        invoices: Number(invCount[0]?.c) || 0,
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to get summary.' });

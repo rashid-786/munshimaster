@@ -354,8 +354,8 @@ exports.calculatePayroll = async (req, res) => {
       runs: payrollRuns
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Payroll calculation failed.' });
+    console.error('Payroll calculation error:', error);
+    res.status(500).json({ error: `Payroll calculation failed: ${error?.message || 'unknown error'}` });
   }
 };
 
@@ -579,8 +579,8 @@ exports.previewPayroll = async (req, res) => {
       runs
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Payroll preview failed.' });
+    console.error('Payroll preview error:', error);
+    res.status(500).json({ error: `Payroll preview failed: ${error?.message || 'unknown error'}` });
   }
 };
 
