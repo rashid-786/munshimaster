@@ -110,7 +110,7 @@ exports.calculatePayroll = async (req, res) => {
         );
         const totalQty = entries.reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
         const totalAmount = entries.reduce((s, e) => s + parseInt(e.calculated_amount || 0), 0);
-        hourlyRate = emp.piece_rate || 0;
+        hourlyRate = Math.round(emp.piece_rate || 0);
         grossSalary = totalAmount;
         actualHours = totalQty;
         deductions = 0;
@@ -125,7 +125,7 @@ exports.calculatePayroll = async (req, res) => {
           [tenantId, emp.id, startDate, endDate]
         );
         actualHours = parseFloat(attendance[0].total_hours) || 0;
-        hourlyRate = emp.pay_per_hour * 100;
+        hourlyRate = Math.round(emp.pay_per_hour * 100);
         grossSalary = Math.round(hourlyRate * actualHours);
         deductions = 0;
         netSalary = grossSalary;
@@ -265,7 +265,7 @@ exports.calculatePayroll = async (req, res) => {
 
       // Partial payment support: if a partial amount is provided (and it's less than the
       // calculated net salary), the record is created as a partial payment.
-      const partialCents = partialPayments ? Number(partialPayments[emp.id]) || 0 : 0;
+      const partialCents = partialPayments ? Math.round(Number(partialPayments[emp.id]) || 0) : 0;
       let status = 'paid';
       let paidAmountCents = netSalary;
       let paymentType = 'full';
