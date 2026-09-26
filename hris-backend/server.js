@@ -75,9 +75,10 @@ require('dotenv').config();
 
 const app = express();
 
-// Trust Hostinger's reverse proxy so express-rate-limit can read the real
-// client IP from X-Forwarded-For instead of throwing a ValidationError.
-app.set('trust proxy', true);
+// Trust the reverse proxy hops (Cloudflare -> Hostinger) so express-rate-limit
+// reads the real client IP from X-Forwarded-For. A numeric hop count is used
+// instead of `true` to avoid the permissive-trust-proxy validation error.
+app.set('trust proxy', 2);
 
 app.use(cors());
 app.use(helmet({ crossOriginResourcePolicy: false }));
