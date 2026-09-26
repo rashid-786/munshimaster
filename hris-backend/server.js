@@ -75,6 +75,10 @@ require('dotenv').config();
 
 const app = express();
 
+// Trust Hostinger's reverse proxy so express-rate-limit can read the real
+// client IP from X-Forwarded-For instead of throwing a ValidationError.
+app.set('trust proxy', true);
+
 app.use(cors());
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use('/api/v1/core/subscription/webhook', express.raw({ type: 'application/json' }));
