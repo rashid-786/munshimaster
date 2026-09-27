@@ -355,6 +355,9 @@ db.query('SELECT 1')
   .then(() => console.log('Database connection pool verified successfully.'))
   .catch(err => console.error('Database connection failed critical error:', err));
 
+// Load runtime rate-limit config (Super Admin managed) at startup.
+require('./middleware/rateLimitConfig').refreshRateLimitConfig().catch(() => {});
+
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`SaaS Backend running securely on port ${PORT}`);

@@ -1017,6 +1017,12 @@ exports.updateSystemSettings = async (req, res) => {
       `UPDATE system_settings SET ${updates.join(', ')} WHERE id = ?`,
       params
     );
+    // Reload runtime rate-limit settings immediately so the new values apply
+    // without a redeploy.
+    if (global_config !== undefined) {
+      const { refreshRateLimitConfig } = require('../middleware/rateLimitConfig');
+      await refreshRateLimitConfig();
+    }
     res.json({ message: 'System settings updated.' });
   } catch (error) {
     console.error(error);

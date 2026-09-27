@@ -29,6 +29,17 @@ const DEFAULT_CONFIG = {
       playStoreUrl: 'https://play.google.com/store/apps/details?id=com.bahi360.app',
     },
   },
+  rateLimit: {
+    enabled: true,
+    windowMinutes: 15,
+    generalLimit: 1000,
+    authLimit: 20,
+    publicLimit: 120,
+    paymentLimit: 60,
+    superLimit: 200,
+    notificationsLimit: 60,
+    exemptedRoutes: [],
+  },
 };
 
 const TOGGLE_FIELDS = [
@@ -60,6 +71,11 @@ export default function GlobalConfig() {
               ...(gc.appVersions?.android || {}),
             },
           },
+          rateLimit: {
+            ...DEFAULT_CONFIG.rateLimit,
+            ...(gc.rateLimit || {}),
+            exemptedRoutes: Array.isArray(gc.rateLimit?.exemptedRoutes) ? gc.rateLimit.exemptedRoutes : [],
+          },
         };
         setConfig(merged);
         setInitial(merged);
@@ -86,6 +102,13 @@ export default function GlobalConfig() {
         ...prev.appVersions,
         android: { ...(prev.appVersions?.android || {}), ...patch },
       },
+    }));
+  };
+
+  const setRateLimit = (patch) => {
+    setConfig(prev => ({
+      ...prev,
+      rateLimit: { ...(prev.rateLimit || DEFAULT_CONFIG.rateLimit), ...patch },
     }));
   };
 
@@ -169,6 +192,95 @@ export default function GlobalConfig() {
               className="input-field"
               placeholder="https://play.google.com/store/apps/details?id=com.bahi360.app"
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Rate Limiting */}
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Rate Limiting</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Control API rate limits centrally. Applied dynamically without a redeploy.
+              Authenticated business APIs are limited per tenant, so one tenant never
+              consumes another's budget.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={!!config.rateLimit?.enabled}
+              onChange={() => setRateLimit({ enabled: !config.rateLimit?.enabled })}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600" />
+          </label>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Window Duration (minutes)</label>
+            <input
+              type="number"
+              min="1"
+              value={config.rateLimit?.windowMinutes ?? 15}
+              onChange={e => setRateLimit({ windowMinutes: parseInt(e.target.value, 10) || 15 })}
+              className="input-field"
+            />
+            <p className="text-xs text-gray-400 mt-1">Applies on next restart (window is static with the default store).</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">General API Limit (per tenant)</label>
+            <input
+              type="number"
+              min="1"
+              value={config.rateLimit?.generalLimit ?? 1000}
+              onChange={e => setRateLimit({ generalLimit: parseInt(e.target.value, 10) || 1000 })}
+              className="input-field"
+            />
+            <p className="text-xs text-gray-400 mt-1">Authenticated business APIs per tenant per window.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Auth API Limit (per IP)</label>
+            <input
+              type="number"
+              min="1"
+              value={config.rateLimit?.authLimit ?? 20}
+              onChange={e => setRateLimit({ authLimit: parseInt(e.target.value, 10) || 20 })}
+              className="input-field"
+            />
+            <p className="text-xs text-gray-400 mt-1">Login / register / OTP per IP per window.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Public API Limit (per minute, per IP)</label>
+            <input
+              type="number"
+              min="1"
+              value={config.rateLimit?.publicLimit ?? 120}
+              onChange={e => setRateLimit({ publicLimit: parseInt(e.target.value, 10) || 120 })}
+              className="input-field"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Limit (per tenant)</label>
+            <input
+              type="number"
+              min="1"
+              value={config.rateLimit?.paymentLimit ?? 60}
+              onChange={e => setRateLimit({ paymentLimit: parseInt(e.target.value, 10) || 60 })}
+              className="input-field"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Exempted Routes (comma-separated path prefixes)</label>
+            <input
+              type="text"
+              value={(config.rateLimit?.exemptedRoutes || []).join(', ')}
+              onChange={e => setRateLimit({ exemptedRoutes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+              className="input-field"
+              placeholder="/core/subscription/webhook, /core/invoice-payments/webhook"
+            />
+            <p className="text-xs text-gray-400 mt-1">Requests whose path starts with any prefix bypass rate limiting.</p>
           </div>
         </div>
       </div>
