@@ -7,21 +7,24 @@ exports.getDashboard = async (req, res) => {
     const [
       [customers],
       [suppliers],
-      [invoices],
-      [paid],
-      [pending],
-      [income],
-      [expense],
+      [invoiceRows],
+      [cashRows],
       [transactions],
       [pos],
     ] = await Promise.all([
       db.query('SELECT COUNT(*) as c FROM hris_saas.customers WHERE tenant_id = ? AND status = ?', [tenantId, 'active']),
       db.query('SELECT COUNT(*) as c FROM hris_saas.suppliers WHERE tenant_id = ? AND status = ?', [tenantId, 'active']),
-      db.query('SELECT COUNT(*) as c FROM hris_saas.invoices WHERE tenant_id = ?', [tenantId]),
-      db.query("SELECT COALESCE(SUM(total_amount),0) as t FROM hris_saas.invoices WHERE tenant_id = ? AND status = ?", [tenantId, 'paid']),
-      db.query("SELECT COALESCE(SUM(total_amount),0) as t, COUNT(*) as c FROM hris_saas.invoices WHERE tenant_id = ? AND status NOT IN (?, ?, ?)", [tenantId, 'paid', 'cancelled', 'draft']),
-      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = ?", [tenantId, 'IN']),
-      db.query("SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = ?", [tenantId, 'OUT']),
+      // Invoice status breakdown — derive total count, paid sum, pending in one query
+      db.query(
+        `SELECT status, COUNT(*) as c, COALESCE(SUM(total_amount),0) as t
+         FROM hris_saas.invoices WHERE tenant_id = ? GROUP BY status`,
+        [tenantId]
+      ),
+      // Kirana cashbook IN/OUT in one query
+      db.query(
+        `SELECT type, COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type IN ('IN','OUT') GROUP BY type`,
+        [tenantId]
+      ),
       db.query(
         `SELECT t.id, t.type, t.amount, t.note, t.entry_date, p.name as party_name
          FROM hris_saas.kirana_transactions t
@@ -39,15 +42,23 @@ exports.getDashboard = async (req, res) => {
       ),
     ]);
 
+    const invoiceCount = invoiceRows.reduce((s, r) => s + Number(r.c || 0), 0);
+    const paidRow = invoiceRows.find((r) => r.status === 'paid');
+    const pendingRows = invoiceRows.filter((r) => !['paid', 'cancelled', 'draft'].includes(r.status));
+    const pendingCount = pendingRows.reduce((s, r) => s + Number(r.c || 0), 0);
+    const pendingAmount = pendingRows.reduce((s, r) => s + Number(r.t || 0), 0);
+    const incomeRow = cashRows.find((r) => r.type === 'IN');
+    const expenseRow = cashRows.find((r) => r.type === 'OUT');
+
     res.json({
       totalCustomers: Number(customers[0]?.c || 0),
       totalSuppliers: Number(suppliers[0]?.c || 0),
-      totalInvoices: Number(invoices[0]?.c || 0),
-      revenue: Number(paid[0]?.t || 0),
-      expense: Number(expense[0]?.t || 0),
-      income: Number(income[0]?.t || 0),
-      pendingInvoicesCount: Number(pending[0]?.c || 0),
-      pendingInvoicesAmount: Number(pending[0]?.t || 0),
+      totalInvoices: invoiceCount,
+      revenue: Number(paidRow?.t || 0),
+      expense: Number(expenseRow?.t || 0),
+      income: Number(incomeRow?.t || 0),
+      pendingInvoicesCount: pendingCount,
+      pendingInvoicesAmount: pendingAmount,
       recentTransactions: transactions || [],
       pendingPOs: pos || [],
     });

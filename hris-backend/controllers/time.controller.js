@@ -466,6 +466,31 @@ exports.getTenantLeaves = async (req, res) => {
 // ==========================================
 // EMPLOYEE CALENDAR (Admin View)
 // ==========================================
+/**
+ * Aggregate attendance summary (total hours per employee) over a date range.
+ * Lets the dashboard replace 12 per-month calendar fetches with a single call.
+ */
+exports.getAttendanceSummary = async (req, res) => {
+  const tenantId = req.tenantId;
+  const today = new Date().toISOString().slice(0, 10);
+  const from = req.query.from || `${new Date().getFullYear()}-01-01`;
+  const to = req.query.to || today;
+  try {
+    const [rows] = await db.execute(
+      `SELECT employee_id, COALESCE(SUM(total_hours), 0) as total_hours
+       FROM hris_saas.attendance
+       WHERE tenant_id = ? AND date >= ? AND date <= ? AND total_hours > 0
+       GROUP BY employee_id`,
+      [tenantId, from, to]
+    );
+    const totalHours = rows.reduce((s, r) => s + Number(r.total_hours || 0), 0);
+    res.json({ from, to, employees: rows, totalHours });
+  } catch (error) {
+    console.error('Attendance summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance summary.' });
+  }
+};
+
 exports.getEmployeeCalendar = async (req, res) => {
   const tenantId = req.tenantId;
 
