@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
+// Build drawer.
 export default function Drawer({ open, onClose, title, children, footer }) {
   useEffect(() => {
     if (!open) return;
