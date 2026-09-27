@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { create, notifyAdmins } = require('../utils/notify');
 
+// Add advance entry.
 exports.createAdvance = async (req, res) => {
   const tenantId = req.tenantId;
   const { employeeId, amount, reason } = req.body;
