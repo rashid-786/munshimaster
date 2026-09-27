@@ -33,18 +33,29 @@ exports.getParties = async (req, res) => {
     query += ' ORDER BY name ASC';
     const [rows] = await db.execute(query, params);
 
-    const result = [];
-    for (const party of rows) {
-      const [txns] = await db.execute(
-        "SELECT COALESCE(SUM(CASE WHEN type='received' THEN amount ELSE 0 END), 0) as total_received, COALESCE(SUM(CASE WHEN type='given' THEN amount ELSE 0 END), 0) as total_given FROM kirana_transactions WHERE tenant_id = ? AND party_id = ?",
-        [req.tenantId, party.id]
-      );
+    if (rows.length === 0) return res.json([]);
+
+    // N+1 fix: single aggregate query for all parties instead of one per party.
+    const placeholders = rows.map(() => '?').join(',');
+    const [txnRows] = await db.execute(
+      `SELECT party_id,
+         COALESCE(SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END), 0) as total_received,
+         COALESCE(SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END), 0) as total_given
+       FROM kirana_transactions
+       WHERE tenant_id = ? AND party_id IN (${placeholders})
+       GROUP BY party_id`,
+      [req.tenantId, ...rows.map(p => p.id)]
+    );
+    const txnMap = new Map(txnRows.map(t => [t.party_id, t]));
+
+    const result = rows.map((party) => {
+      const txns = txnMap.get(party.id) || {};
       const ob = Number(party.opening_balance || 0);
-      const tg = Number(txns[0].total_given || 0);
-      const tr = Number(txns[0].total_received || 0);
+      const tg = Number(txns.total_given || 0);
+      const tr = Number(txns.total_received || 0);
       const balance = ob + tg - tr;
-      result.push({ ...party, openingBalance: ob, totalGiven: tg, totalReceived: tr, balance });
-    }
+      return { ...party, openingBalance: ob, totalGiven: tg, totalReceived: tr, balance };
+    });
 
     res.json(result);
   } catch (error) {

@@ -105,7 +105,9 @@ exports.getBusinessDashboard = async (req, res) => {
       [supplierCount],
       [invoiceStatusCounts],
       [monthlyRevenue],
-      [monthlyExpenses],
+      // Monthly expense trend (per-month breakdown; the old non-breakdown UNION
+      // query was redundant and unused — removed).
+      [monthlyExpenseRows],
       [topCustomers],
       [topSuppliers],
       [recentInvoices],
@@ -113,15 +115,12 @@ exports.getBusinessDashboard = async (req, res) => {
       [recentTransactions],
       [cashFlowIn],
       [cashFlowOut],
-      // Kirana party counts (buyer/seller)
-      [kiranaBuyerCount],
-      [kiranaSellerCount],
-      // Kirana cashbook IN/OUT (cash flow)
+      // Kirana party counts by type (buyer/seller) — single GROUP BY query
+      [kiranaPartyCounts],
       [kiranaCashIn],
       [kiranaCashOut],
-      // Kirana outstanding (receivables = given, payables = received)
-      [kiranaReceivables],
-      [kiranaPayables],
+      // Kirana outstanding sums by type (given = receivables, received = payables)
+      [kiranaTxnSums],
       [subscriptionRes],
     ] = await Promise.all([
       // Current period revenue (paid sales invoices)
@@ -217,12 +216,13 @@ exports.getBusinessDashboard = async (req, res) => {
       ),
       // Monthly expense trend (12 months — balance sheet OUT + paid purchase invoices)
       db.query(
-        `SELECT COALESCE(SUM(t.amount),0) as expenses FROM (
+        `SELECT DATE_TRUNC('month', t.dt) as month, COALESCE(SUM(t.amount),0) as expenses FROM (
           SELECT amount, entry_date as dt FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
           UNION ALL
           SELECT grand_total, updated_at FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid'
         ) t
-        WHERE t.dt >= ?`,
+        WHERE t.dt >= ?
+        GROUP BY DATE_TRUNC('month', t.dt) ORDER BY month`,
         [tenantId, tenantId, `${now.getFullYear() - 1}-01-01`]
       ),
       // Top 5 customers by revenue
@@ -284,14 +284,9 @@ exports.getBusinessDashboard = async (req, res) => {
         ) t WHERE t.dt BETWEEN ? AND ?`,
         [tenantId, tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
-      // Kirana buyer count
+      // Kirana party counts by type (buyer/seller) — single query
       db.query(
-        `SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'buyer'`,
-        [tenantId]
-      ),
-      // Kirana seller count
-      db.query(
-        `SELECT COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type = 'seller'`,
+        `SELECT type, COUNT(*) as c FROM hris_saas.kirana_parties WHERE tenant_id = ? AND type IN ('buyer','seller') GROUP BY type`,
         [tenantId]
       ),
       // Kirana cashbook IN sum (current period)
@@ -304,14 +299,9 @@ exports.getBusinessDashboard = async (req, res) => {
         `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_cashbook WHERE tenant_id = ? AND type = 'OUT' AND entry_date BETWEEN ? AND ?`,
         [tenantId, fromDate, toDate + 'T23:59:59Z']
       ),
-      // Kirana outstanding receivables (given = money given to buyers)
+      // Kirana outstanding sums by type (given = receivables, received = payables)
       db.query(
-        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_transactions WHERE tenant_id = ? AND type = 'given'`,
-        [tenantId]
-      ),
-      // Kirana outstanding payables (received = money received from sellers)
-      db.query(
-        `SELECT COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_transactions WHERE tenant_id = ? AND type = 'received'`,
+        `SELECT type, COALESCE(SUM(amount),0) as t FROM hris_saas.kirana_transactions WHERE tenant_id = ? AND type IN ('given','received') GROUP BY type`,
         [tenantId]
       ),
       // Subscription info
@@ -343,11 +333,15 @@ exports.getBusinessDashboard = async (req, res) => {
     const cashIn = Number(cashFlowIn[0]?.t || 0) + Number(kiranaCashIn[0]?.t || 0);
     const cashOut = Number(cashFlowOut[0]?.t || 0) + Number(kiranaCashOut[0]?.t || 0);
 
-    const outstandingReceivables = Number(receivablesRes[0]?.t || 0) + Number(kiranaReceivables[0]?.t || 0);
-    const outstandingPayables = Number(payablesRes[0]?.t || 0) + Number(kiranaPayables[0]?.t || 0);
-    const activeCustomers = Number(customerCount[0]?.c || 0) + Number(kiranaBuyerCount[0]?.c || 0);
+    const kiranaGiven = Number(kiranaTxnSums.find(r => r.type === 'given')?.t || 0);
+    const kiranaReceived = Number(kiranaTxnSums.find(r => r.type === 'received')?.t || 0);
+    const outstandingReceivables = Number(receivablesRes[0]?.t || 0) + kiranaGiven;
+    const outstandingPayables = Number(payablesRes[0]?.t || 0) + kiranaReceived;
+    const kiranaBuyers = Number(kiranaPartyCounts.find(r => r.type === 'buyer')?.c || 0);
+    const kiranaSellers = Number(kiranaPartyCounts.find(r => r.type === 'seller')?.c || 0);
+    const activeCustomers = Number(customerCount[0]?.c || 0) + kiranaBuyers;
     const newCustomers = Number(prevCustomerCount[0]?.c || 0);
-    const activeSuppliers = Number(supplierCount[0]?.c || 0) + Number(kiranaSellerCount[0]?.c || 0);
+    const activeSuppliers = Number(supplierCount[0]?.c || 0) + kiranaSellers;
     const acquisitionRate = (activeCustomers - newCustomers) > 0
       ? ((newCustomers / (activeCustomers - newCustomers)) * 100) : 0;
 
@@ -375,18 +369,7 @@ exports.getBusinessDashboard = async (req, res) => {
       if (monthMap[key]) monthMap[key].revenue = Math.round(row.revenue / 100);
     }
     // monthlyExpenses result is a single aggregated row from the UNION query
-    // We need to break it down by month — handle separately
-    // For simplicity, keep the balance_sheet monthly trend (already aggregated)
-    // But we lost the per-month breakdown from the UNION — refetch with DATE_TRUNC
-    const monthlyExpenseRows = await db.query(
-      `SELECT DATE_TRUNC('month', t.dt) as month, COALESCE(SUM(t.amount),0) as expenses FROM (
-        SELECT amount, entry_date as dt FROM hris_saas.balance_sheet WHERE tenant_id = ? AND type = 'OUT'
-        UNION ALL
-        SELECT grand_total, updated_at FROM hris_saas.transactions WHERE tenant_id = ? AND transaction_type = 'purchase_invoice' AND status = 'paid'
-      ) t WHERE t.dt >= ?
-      GROUP BY DATE_TRUNC('month', t.dt) ORDER BY month`,
-      [tenantId, tenantId, `${now.getFullYear() - 1}-01-01`]
-    );
+    // We need to break it down by month — handled in the parallel query above
     for (const row of monthlyExpenseRows) {
       const d = new Date(row.month);
       const key = monthKey(d);
