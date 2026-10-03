@@ -98,4 +98,25 @@ function referralHtml({ referrerName, rewardMonths }) {
 </body></html>`.trim();
 }
 
-module.exports = { sendEmail, trialWarningHtml, referralHtml };
+/**
+ * Build HTML for the email-OTP sign-in message.
+ */
+function otpEmailHtml({ otp, expiresInMinutes = 5, appName = 'bahi360' }) {
+  return `
+<!DOCTYPE html>
+<html><body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+  <div style="text-align:center;padding:24px 0;">
+    <h1 style="color:#0B3C5D;margin:0;">${appName}</h1>
+  </div>
+  <p>Hello,</p>
+  <p>Use the one-time password below to sign in to your account.</p>
+  <div style="text-align:center;margin:32px 0;padding:20px;background:#f3f6fb;border-radius:10px;">
+    <span style="font-size:32px;font-weight:800;letter-spacing:8px;color:#0B3C5D;">${otp}</span>
+  </div>
+  <p>This OTP is valid for <strong>${expiresInMinutes} minutes</strong>. Do not share it with anyone.</p>
+  <p style="color:#6b7280;font-size:12px;">If you didn't request this code, you can safely ignore this email.</p>
+  <p style="color:#6b7280;font-size:12px;">${appName} — Your Business in One Place</p>
+</body></html>`.trim();
+}
+
+module.exports = { sendEmail, trialWarningHtml, referralHtml, otpEmailHtml };

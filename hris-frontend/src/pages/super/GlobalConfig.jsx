@@ -23,6 +23,7 @@ const DEFAULT_CONFIG = {
   hideReferEarn: false,
   hideSubscriptionLabels: false,
   defaultCountry: 'IN',
+  authMode: 'mobile_otp',
   appVersions: {
     android: {
       minVersionCode: 0,
@@ -161,6 +162,25 @@ export default function GlobalConfig() {
             {COUNTRY_OPTIONS.map(c => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Authentication Method */}
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Authentication Method</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Controls how users sign in on the mobile app. Applied globally without a
+              redeploy. In Email mode, users receive the OTP by email instead of SMS.
+            </p>
+          </div>
+          <select value={config.authMode || 'mobile_otp'}
+            onChange={e => setConfig(prev => ({ ...prev, authMode: e.target.value }))}
+            className="input-field max-w-[220px] text-sm">
+            <option value="mobile_otp">Mobile Number + OTP</option>
+            <option value="email_otp">Email Address + OTP</option>
           </select>
         </div>
       </div>

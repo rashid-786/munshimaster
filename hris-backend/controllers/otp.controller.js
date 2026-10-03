@@ -1,24 +1,12 @@
 const db = require('../config/db');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { validateE164 } = require('../utils/phone');
-
-async function getDefaultCountryCode() {
-  try {
-    const [rows] = await db.execute('SELECT default_country_code FROM system_settings WHERE id = 1');
-    return rows.length > 0 ? rows[0].default_country_code : '+965';
-  } catch {
-    return '+965';
-  }
-}
-
-function normalizePhone(phone, countryCode) {
-  if (!phone) return phone;
-  const digits = phone.replace(/\D/g, '');
-  if (phone.startsWith('+')) return phone;
-  if (digits.startsWith('00')) return '+' + digits.slice(2);
-  return countryCode + digits;
-}
+const {
+  getDefaultCountryCode,
+  resolveAuthIdentifier,
+  findTenantAdminByEmail,
+} = require('../utils/authConfig');
+const { sendEmail, otpEmailHtml } = require('../utils/email');
 
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -53,50 +41,128 @@ async function sendOtpSms(phone, otp) {
   }
 }
 
-exports.sendOtp = async (req, res) => {
-  let { phone, purpose = 'registration' } = req.body;
+async function sendOtpEmail(email, otp) {
+  const isDev = process.env.NODE_ENV !== 'production';
 
-  if (!phone) {
-    return res.status(400).json({ error: 'Phone number is required.' });
+  if (isDev) {
+    console.log(`\n========================================`);
+    console.log(`✉️  [DEV] OTP for ${email}: ${otp}`);
+    console.log(`========================================\n`);
   }
 
-  const parsed = validateE164(phone);
-  if (!parsed) {
-    const countryCode = await getDefaultCountryCode();
-    phone = normalizePhone(phone, countryCode);
-    if (!validateE164(phone)) {
-      return res.status(400).json({ error: 'Invalid phone number format.' });
-    }
+  const result = await sendEmail({
+    to: email,
+    subject: 'Your OTP for bahi360 sign-in',
+    html: otpEmailHtml({ otp }),
+  });
+
+  if (result && result.sent) {
+    console.log(`✉️  OTP email sent to ${email}`);
   } else {
-    phone = parsed.phone_e164;
+    console.error(`✉️  OTP email failed for ${email}:`, result && result.error);
+  }
+}
+
+/** Build the login response for an OTP-verified account. */
+function buildLoginResponse(user) {
+  const parsedSettings = typeof user.settings === 'string'
+    ? JSON.parse(user.settings)
+    : (user.settings || {});
+  const userName = `${user.first_name} ${user.last_name}`.trim() || 'User';
+  const token = jwt.sign(
+    { id: user.employee_id || user.id, tenantId: user.tenant_id, role: user.role, name: userName },
+    process.env.JWT_SECRET,
+    { expiresIn: '8h' }
+  );
+
+  return {
+    message: 'OTP verified successfully.',
+    verified: true,
+    token,
+    user: {
+      id: user.employee_id || user.id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      name: userName,
+      firstName: user.first_name,
+      lastName: user.last_name,
+    },
+    tenant: {
+      id: user.tenant_id,
+      name: user.company_name,
+      subdomain: user.subdomain || null,
+      subscriptionPlan: user.subscription_plan || 'free',
+      subscriptionStatus: user.subscription_status || 'active',
+      startDate: user.start_date || null,
+      expiryDate: user.expiry_date || null,
+      phone: user.tenant_phone || null,
+      settings: parsedSettings || { primaryColor: '#0052cc' },
+    },
+  };
+}
+
+exports.sendOtp = async (req, res) => {
+  let { purpose = 'registration' } = req.body;
+
+  const resolved = await resolveAuthIdentifier(req.body);
+  if (resolved.error) {
+    return res.status(400).json({ error: resolved.error });
   }
 
-  if (purpose === 'registration') {
-    const [existing] = await db.execute(
-      'SELECT id FROM tenants WHERE phone = ?',
-      [phone]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ error: 'This phone number is already registered. Please sign in.' });
-    }
-  }
+  const { type, value } = resolved;
 
   try {
-    // Remove old unverified OTPs for this phone+purpose
-    await db.execute(
-      'DELETE FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = false AND expires_at > NOW()',
-      [phone, purpose]
-    );
+    if (purpose === 'registration') {
+      let alreadyRegistered = false;
+      if (type === 'email') {
+        const existing = await findTenantAdminByEmail(value);
+        alreadyRegistered = !!existing;
+      } else {
+        const [existing] = await db.execute(
+          'SELECT id FROM tenants WHERE phone = ?',
+          [value]
+        );
+        alreadyRegistered = existing.length > 0;
+      }
+      if (alreadyRegistered) {
+        return res.status(400).json({
+          error: type === 'email'
+            ? 'This email is already registered. Please sign in.'
+            : 'This phone number is already registered. Please sign in.',
+        });
+      }
+    }
+
+    // Remove old unverified OTPs for this identifier+purpose
+    if (type === 'email') {
+      await db.execute(
+        'DELETE FROM otp_verifications WHERE email = ? AND purpose = ? AND verified = false AND expires_at > NOW()',
+        [value, purpose]
+      );
+    } else {
+      await db.execute(
+        'DELETE FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified = false AND expires_at > NOW()',
+        [value, purpose]
+      );
+    }
 
     const otp = generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
 
-    await db.execute(
-      'INSERT INTO otp_verifications (phone, otp, purpose, expires_at) VALUES (?, ?, ?, ?)',
-      [phone, otp, purpose, expiresAt]
-    );
-
-    await sendOtpSms(phone, otp);
+    if (type === 'email') {
+      await db.execute(
+        'INSERT INTO otp_verifications (email, otp, purpose, expires_at) VALUES (?, ?, ?, ?)',
+        [value, otp, purpose, expiresAt]
+      );
+      await sendOtpEmail(value, otp);
+    } else {
+      await db.execute(
+        'INSERT INTO otp_verifications (phone, otp, purpose, expires_at) VALUES (?, ?, ?, ?)',
+        [value, otp, purpose, expiresAt]
+      );
+      await sendOtpSms(value, otp);
+    }
 
     const isDev = process.env.NODE_ENV !== 'production';
     // Internal testing: return a fixed test OTP when explicitly enabled.
@@ -114,39 +180,38 @@ exports.sendOtp = async (req, res) => {
 };
 
 exports.verifyOtp = async (req, res) => {
-  let { phone, otp, purpose = 'registration' } = req.body;
+  let { otp, purpose = 'registration' } = req.body;
 
-  if (!phone || !otp) {
-    return res.status(400).json({ error: 'Phone and OTP are required.' });
+  const resolved = await resolveAuthIdentifier(req.body);
+  if (resolved.error) {
+    return res.status(400).json({ error: resolved.error });
   }
 
-  const parsed = validateE164(phone);
-  if (!parsed) {
-    const countryCode = await getDefaultCountryCode();
-    phone = normalizePhone(phone, countryCode);
-  } else {
-    phone = parsed.phone_e164;
+  const { type, value } = resolved;
+
+  if (!otp) {
+    return res.status(400).json({ error: 'Phone/email and OTP are required.' });
   }
 
   try {
     // Internal testing: a fixed OTP (from env) lets testers sign in without
-    // real SMS. Only active when ENABLE_TEST_OTP=true AND OTP_TEST_CODE is set,
+    // real SMS/email. Only active when ENABLE_TEST_OTP=true AND OTP_TEST_CODE is set,
     // so a plain production deploy is unaffected.
     const testOtp = process.env.ENABLE_TEST_OTP === 'true' ? (process.env.OTP_TEST_CODE || null) : null;
     const isTestOtp = !!testOtp && otp === testOtp;
 
     if (!isTestOtp) {
-      const [rows] = await db.execute(
-        'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-        [phone, purpose, otp]
-      );
+      const query = type === 'email'
+        ? 'SELECT * FROM otp_verifications WHERE email = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1'
+        : 'SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1';
+      const [rows] = await db.execute(query, [value, purpose, otp]);
 
       if (rows.length === 0) {
         // Check if expired
-        const [expired] = await db.execute(
-          'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1',
-          [phone, purpose, otp]
-        );
+        const expiredQuery = type === 'email'
+          ? 'SELECT id FROM otp_verifications WHERE email = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1'
+          : 'SELECT id FROM otp_verifications WHERE phone = ? AND purpose = ? AND otp = ? AND verified = false AND expires_at <= NOW() LIMIT 1';
+        const [expired] = await db.execute(expiredQuery, [value, purpose, otp]);
         if (expired.length > 0) {
           return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
         }
@@ -160,67 +225,67 @@ exports.verifyOtp = async (req, res) => {
       );
     } else {
       // Record a verified OTP row so the registration flow's verified check passes.
-      await db.execute(
-        `INSERT INTO otp_verifications (phone, otp, purpose, verified, expires_at)
-         VALUES (?, ?, ?, true, NOW() + INTERVAL '10 minutes')
-         ON CONFLICT DO NOTHING`,
-        [phone, testOtp, purpose]
-      );
+      if (type === 'email') {
+        await db.execute(
+          `INSERT INTO otp_verifications (email, otp, purpose, verified, expires_at)
+           VALUES (?, ?, ?, true, NOW() + INTERVAL '10 minutes')
+           ON CONFLICT DO NOTHING`,
+          [value, testOtp, purpose]
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO otp_verifications (phone, otp, purpose, verified, expires_at)
+           VALUES (?, ?, ?, true, NOW() + INTERVAL '10 minutes')
+           ON CONFLICT DO NOTHING`,
+          [value, testOtp, purpose]
+        );
+      }
     }
 
-    // If this phone belongs to an existing account, issue a token so the OTP
+    // If this identifier belongs to an existing account, issue a token so the OTP
     // acts as a proper login (mirrors the /auth/login response shape).
-    const [tenants] = await db.execute(
-      'SELECT id, company_name, subdomain, subscription_plan, subscription_status, start_date, expiry_date, phone, settings FROM tenants WHERE phone = ?',
-      [phone]
-    );
-
-    if (tenants.length > 0) {
-      const tenant = tenants[0];
-      const [users] = await db.execute(
-        'SELECT * FROM employees WHERE phone = ? AND tenant_id = ? LIMIT 1',
-        [phone, tenant.id]
+    if (type === 'email') {
+      const account = await findTenantAdminByEmail(value);
+      if (account && account.status !== 'deactivated') {
+        const defaultCountryCode = await getDefaultCountryCode();
+        const login = buildLoginResponse(account);
+        return res.json({ ...login, defaultCountryCode });
+      }
+    } else {
+      const [tenants] = await db.execute(
+        'SELECT id, company_name, subdomain, subscription_plan, subscription_status, start_date, expiry_date, phone, settings FROM tenants WHERE phone = ?',
+        [value]
       );
-      if (users.length > 0) {
-        const user = users[0];
-        if (user.status !== 'deactivated') {
-          const userName = `${user.first_name} ${user.last_name}`.trim() || 'User';
-          const token = jwt.sign(
-            { id: user.id, tenantId: user.tenant_id, role: user.role, name: userName },
-            process.env.JWT_SECRET,
-            { expiresIn: '8h' }
-          );
-          const parsedSettings = typeof tenant.settings === 'string'
-            ? JSON.parse(tenant.settings)
-            : (tenant.settings || {});
-          const defaultCountryCode = await getDefaultCountryCode();
 
-          return res.json({
-            message: 'OTP verified successfully.',
-            verified: true,
-            token,
-            user: {
-              id: user.id,
+      if (tenants.length > 0) {
+        const tenant = tenants[0];
+        const [users] = await db.execute(
+          'SELECT * FROM employees WHERE phone = ? AND tenant_id = ? LIMIT 1',
+          [value, tenant.id]
+        );
+        if (users.length > 0) {
+          const user = users[0];
+          if (user.status !== 'deactivated') {
+            const defaultCountryCode = await getDefaultCountryCode();
+            const login = buildLoginResponse({
+              employee_id: user.id,
               email: user.email,
               phone: user.phone,
               role: user.role,
-              name: `${user.first_name} ${user.last_name}`.trim() || 'User',
-              firstName: user.first_name,
-              lastName: user.last_name,
-            },
-            tenant: {
-              id: user.tenant_id,
-              name: tenant.company_name,
-              subdomain: tenant.subdomain || null,
-              subscriptionPlan: tenant.subscription_plan || 'free',
-              subscriptionStatus: tenant.subscription_status || 'active',
-              startDate: tenant.start_date || null,
-              expiryDate: tenant.expiry_date || null,
-              phone: tenant.phone || null,
-              settings: parsedSettings || { primaryColor: '#0052cc' },
-            },
-            defaultCountryCode,
-          });
+              first_name: user.first_name,
+              last_name: user.last_name,
+              tenant_id: user.tenant_id,
+              company_name: tenant.company_name,
+              subdomain: tenant.subdomain,
+              subscription_plan: tenant.subscription_plan,
+              subscription_status: tenant.subscription_status,
+              start_date: tenant.start_date,
+              expiry_date: tenant.expiry_date,
+              settings: tenant.settings,
+              tenant_phone: tenant.phone,
+            });
+            return res.json({ ...login, defaultCountryCode });
+          }
         }
       }
     }

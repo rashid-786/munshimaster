@@ -164,6 +164,18 @@ app.get('/api/v1/public/check-phone', async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to check phone.' }); }
 });
 
+app.get('/api/v1/public/check-email', async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required.' });
+  try {
+    const [rows] = await db.execute(
+      "SELECT id FROM employees WHERE lower(email) = ? AND role = 'tenant_admin' LIMIT 1",
+      [email]
+    );
+    res.json({ exists: rows.length > 0 });
+  } catch { res.status(500).json({ error: 'Failed to check email.' }); }
+});
+
 app.get('/api/v1/public/gst-tax', async (req, res) => {
   try {
     const ctrl = require('./controllers/gstTax.controller');

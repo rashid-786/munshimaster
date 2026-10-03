@@ -1022,6 +1022,8 @@ exports.updateSystemSettings = async (req, res) => {
     if (global_config !== undefined) {
       const { refreshRateLimitConfig } = require('../middleware/rateLimitConfig');
       await refreshRateLimitConfig();
+      const { refreshAuthModeCache } = require('../utils/authConfig');
+      refreshAuthModeCache();
     }
     res.json({ message: 'System settings updated.' });
   } catch (error) {
